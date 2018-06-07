@@ -7,7 +7,7 @@ ULONG_PTR OperationStatusCtx = 1;
 
 #define PTDBG_TRACE_ROUTINES            0x00000001
 #define PTDBG_TRACE_OPERATION_STATUS    0x00000002
-ULONG gTraceFlags = 1;
+ULONG gTraceFlags = 0;
 
 #define FILTER_TMP_POOL_TAG 'tmp0'
 
@@ -16,6 +16,11 @@ ULONG gTraceFlags = 1;
 	(FlagOn(gTraceFlags, (_dbgLevel)) ? \
 	DbgPrint _string : \
 	((int)0))
+
+#ifdef __cplusplus
+extern "C"
+{
+#endif
 
 NTSTATUS
 PtInstanceSetup(
@@ -85,4 +90,7 @@ __in PFLT_CALLBACK_DATA Data
 
 BOOLEAN IsShadowCopyType(PUNICODE_STRING pDeviceName);
 
+#ifdef __cplusplus
+}
+#endif
 #endif

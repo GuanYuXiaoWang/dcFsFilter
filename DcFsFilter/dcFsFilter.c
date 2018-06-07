@@ -1,6 +1,7 @@
 #include "dcFsFilter.h"
 #include <wdm.h>
 #include "volumeContext.h"
+#include "fsdata.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -12,11 +13,11 @@ __in PUNICODE_STRING RegistryPath
 
 #ifdef ALLOC_PRAGMA
 #pragma alloc_text(INIT, DriverEntry)
-// #pragma alloc_text(PAGE, PtUnload)
-// #pragma alloc_text(PAGE, PtInstanceQueryTeardown)
-// #pragma alloc_text(PAGE, PtInstanceSetup)
-// #pragma alloc_text(PAGE, PtInstanceTeardownStart)
-// #pragma alloc_text(PAGE, PtInstanceTeardownComplete)
+#pragma alloc_text(PAGE, PtUnload)
+#pragma alloc_text(PAGE, PtInstanceQueryTeardown)
+#pragma alloc_text(PAGE, PtInstanceSetup)
+#pragma alloc_text(PAGE, PtInstanceTeardownStart)
+#pragma alloc_text(PAGE, PtInstanceTeardownComplete)
 #endif
 
 
@@ -219,13 +220,27 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 	{ IRP_MJ_OPERATION_END }
 };
 
+const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
+	{
+		FLT_VOLUME_CONTEXT,
+		0,
+		volumeCleanup,
+		sizeof(VOLUMECONTEXT),
+		VOLUME_CONTEXT_POOL_TAG
+	},
+
+	{
+		FLT_CONTEXT_END
+	}
+};
+
 CONST FLT_REGISTRATION FilterRegistration = {
 
 	sizeof(FLT_REGISTRATION),         //  Size
 	FLT_REGISTRATION_VERSION,           //  Version
 	0,                                  //  Flags
 
-	NULL,                               //  Context
+	ContextRegistration,                //  Context
 	Callbacks,                          //  Operation callbacks
 
 	PtUnload,                           //  MiniFilterUnload
@@ -276,26 +291,20 @@ STATUS_FLT_DO_NOT_ATTACH - do not attach
 	UNREFERENCED_PARAMETER(Flags);
 	UNREFERENCED_PARAMETER(VolumeDeviceType);
 	
-	FLT_VOLUME_PROPERTIES volumeProperties = {0};//msdn:FltGetVolumeProperties:参数2指向的空间一定要大于等于sizeof（FLT_VOLUME_PROPERTIES）
+	UCHAR szTmp[sizeof(FLT_VOLUME_PROPERTIES)+512] = { 0 };
+	//msdn:FltGetVolumeProperties:参数2指向的空间一定要大于等于sizeof（FLT_VOLUME_PROPERTIES）
+	PFLT_VOLUME_PROPERTIES pVolumeProperties = (PFLT_VOLUME_PROPERTIES)szTmp;
 	ULONG ulRetLength = 0;
 	PUCHAR pVolumeInfo = NULL;
-	PFLT_VOLUME_PROPERTIES pVolumeProperties = NULL;
 
 	PAGED_CODE();
 
+	//KdBreakPoint();
+
 	__try
 	{
-		
-		status = FltGetVolumeProperties(FltObjects->Volume, &volumeProperties, sizeof(FLT_VOLUME_PROPERTIES), &ulRetLength);
-		if (STATUS_BUFFER_OVERFLOW == status)
-		{
-			PT_DBG_PRINT(PTDBG_TRACE_ROUTINES, ("FltGetVolumeProperties return STATUS_BUFFER_OVERFLOW!\n"));
-			if (NULL == volumeProperties.RealDeviceName.Buffer || volumeProperties.RealDeviceName.Length <= 0)
-			{
-				__leave;
-			}
-		}
-		else if (STATUS_BUFFER_TOO_SMALL == status)
+		status = FltGetVolumeProperties(FltObjects->Volume, pVolumeProperties, sizeof(FLT_VOLUME_PROPERTIES) + 512, &ulRetLength);
+		if (STATUS_BUFFER_OVERFLOW == status || STATUS_BUFFER_TOO_SMALL == status)
 		{
 			pVolumeInfo = (PUCHAR)ExAllocatePoolWithTag(NonPagedPool, ulRetLength + 1, FILTER_TMP_POOL_TAG);
 			if (NULL == pVolumeInfo)
@@ -333,7 +342,7 @@ STATUS_FLT_DO_NOT_ATTACH - do not attach
 			ExFreePoolWithTag(pVolumeInfo, FILTER_TMP_POOL_TAG);
 		}
 	}
-	*/
+	
 	
 	return status;
 }
@@ -454,14 +463,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 
 	UNREFERENCED_PARAMETER(pRegistryPath);
 
-	KdBreakPoint();
-
 	status = FltRegisterFilter(pDeviceObject, &FilterRegistration, &gFilterHandle);
 	if (NT_SUCCESS(status))
 	{
+		initData();
 		status = FltStartFiltering(gFilterHandle);
 		if (!NT_SUCCESS(status))
 		{
+			unInitData();
 			FltUnregisterFilter(gFilterHandle);
 		}
 	}
@@ -498,8 +507,12 @@ Returns the final status of this operation.
 
 	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 		("PassThrough!PtUnload: Entered\n"));
+	if (gFilterHandle)
+	{
+		FltUnregisterFilter(gFilterHandle);
+	}
 
-	FltUnregisterFilter(gFilterHandle);
+	unInitData();
 
 	return STATUS_SUCCESS;
 }

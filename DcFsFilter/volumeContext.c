@@ -1,4 +1,5 @@
 #include "volumeContext.h"
+#include "defaultStruct.h"
 
 /*参考：维基ntfs
 记录每个设备的元文件：这些都是系统重要的数据（过滤时要排除系统文件，非$ROOT外）
@@ -64,7 +65,7 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 		{
 			__leave;
 		}
-
+	
 		do 
 		{
 			status = FltAllocateContext(gFilterHandle, FLT_VOLUME_CONTEXT, sizeof(VOLUMECONTEXT), NonPagedPool, (PFLT_CONTEXT *)&pVolumeContext);
@@ -82,6 +83,11 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 		}
 		memset(pVolumeContext->strDeviceName.pwszName, 0, pVolumeContext->strDeviceName.ulLength);
 		memcpy(pVolumeContext->strDeviceName.pwszName, pDevName->Buffer, pDevName->Length);
+		pVolumeContext->strMetaDataList = (PWSTRING)ExAllocatePoolWithTag(NonPagedPool, sizeof(WSTRING)* METADATA_FILE_COUNT, VOLUME_CONTEXT_POOL_TAG);
+		if (NULL == pVolumeContext->strMetaDataList)
+		{
+			__leave;
+		}
 		initMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
 		status = FltSetVolumeContext(pFltVolume, FLT_SET_CONTEXT_KEEP_IF_EXISTS, pVolumeContext, NULL);
 		if (!NT_SUCCESS(status))
@@ -96,7 +102,11 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 	{
 		if (!NT_SUCCESS(status) && pVolumeContext)
 		{
-			unInitMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
+			if (pVolumeContext->strMetaDataList)
+			{
+				unInitMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
+			}
+			
 			if (pVolumeContext->strDeviceName.pwszName)
 			{
 				ExFreePoolWithTag(pVolumeContext->strDeviceName.pwszName, VOLUME_CONTEXT_POOL_TAG);
@@ -107,4 +117,29 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 	}
 
 	return status;
+}
+
+VOID volumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType)
+{
+	PVOLUMECONTEXT pVolumeContext = (PVOLUMECONTEXT)Context;
+	UNREFERENCED_PARAMETER(ContextType);
+
+	PAGED_CODE();
+
+	__try
+	{
+		if (pVolumeContext)
+		{
+			unInitMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
+			if (pVolumeContext->strDeviceName.pwszName)
+			{
+				ExFreePoolWithTag(pVolumeContext->strDeviceName.pwszName, VOLUME_CONTEXT_POOL_TAG);
+			}
+			FltDeleteContext(pVolumeContext);
+		}
+	}
+	__finally
+	{
+
+	}
 }
