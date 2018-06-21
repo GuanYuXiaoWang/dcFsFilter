@@ -54,14 +54,16 @@ VOID unInitMetadataFileList(WSTRING * pString, int nCount)
 		}
 	}
 }
-NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOLUME pFltVolume)
+NTSTATUS SetVolumeContext(PCFLT_RELATED_OBJECTS FltObjects, PFLT_VOLUME_PROPERTIES pVolumePro, PFLT_VOLUME pFltVolume)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	PVOLUMECONTEXT pVolumeContext = NULL;
+	PFILE_FS_SIZE_INFORMATION pFileInfo = NULL;
+	IO_STATUS_BLOCK ioStatus;
 	
 	__try
 	{
-		if (NULL == pDevName || 0 == ulSectorSize || NULL == pFltVolume)
+		if (NULL == FltObjects || NULL == pVolumePro || NULL == pFltVolume)
 		{
 			__leave;
 		}
@@ -74,15 +76,30 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 		{
 			__leave;
 		}
-		pVolumeContext->ulSectorSize = max(ulSectorSize, MIN_SECTOR_SIZE);
-		pVolumeContext->strDeviceName.ulLength = pDevName->Length + 1;
-		pVolumeContext->strDeviceName.pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, pDevName->Length + 1, VOLUME_CONTEXT_POOL_TAG);
+		pVolumeContext->pEresurce = FsdAllocateResource();
+		pVolumeContext->ulSectorSize = max(pVolumeContext->ulSectorSize, MIN_SECTOR_SIZE);
+		pVolumeContext->uDeviceType = pVolumePro->DeviceType;
+		pVolumeContext->strDeviceName.ulLength = pVolumePro->RealDeviceName.Length + 1;
+		pVolumeContext->strDeviceName.pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, pVolumePro->RealDeviceName.Length + 1, VOLUME_CONTEXT_POOL_TAG);
 		if (NULL == pVolumeContext->strDeviceName.pwszName)
 		{
 			__leave;
 		}
+		pFileInfo = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, sizeof(FILE_FS_SIZE_INFORMATION), VOLUME_CONTEXT_POOL_TAG);
+		if (NULL == pFileInfo)
+		{
+			__leave;
+		}
+		status = FltQueryVolumeInformation(FltObjects->Instance, &ioStatus, pFileInfo, sizeof(FILE_FS_SIZE_INFORMATION), FileFsSizeInformation);
+		if (NT_SUCCESS(status))
+		{
+			pVolumeContext->uSectorsPerAllocationUnit = pFileInfo->SectorsPerAllocationUnit;
+		}
+		else
+			pVolumeContext->uSectorsPerAllocationUnit = 1;
+		FltIsVolumeWritable(FltObjects, &pVolumeContext->bWrite);
 		memset(pVolumeContext->strDeviceName.pwszName, 0, pVolumeContext->strDeviceName.ulLength);
-		memcpy(pVolumeContext->strDeviceName.pwszName, pDevName->Buffer, pDevName->Length);
+		memcpy(pVolumeContext->strDeviceName.pwszName, pVolumePro->RealDeviceName.Buffer, pVolumePro->RealDeviceName.Length);
 		pVolumeContext->strMetaDataList = (PWSTRING)ExAllocatePoolWithTag(NonPagedPool, sizeof(WSTRING)* METADATA_FILE_COUNT, VOLUME_CONTEXT_POOL_TAG);
 		if (NULL == pVolumeContext->strMetaDataList)
 		{
@@ -114,12 +131,17 @@ NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOL
 			FltReleaseContext((PFLT_CONTEXT)pVolumeContext);
 			pVolumeContext = NULL;
 		}
+
+		if (pFileInfo)
+		{
+			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileInfo, VOLUME_CONTEXT_POOL_TAG);
+		}
 	}
 
 	return status;
 }
 
-VOID volumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType)
+VOID VolumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType)
 {
 	PVOLUMECONTEXT pVolumeContext = (PVOLUMECONTEXT)Context;
 	UNREFERENCED_PARAMETER(ContextType);

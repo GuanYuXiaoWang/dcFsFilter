@@ -5,8 +5,80 @@
 #include <dontuse.h>
 #include <suppress.h>
 #include "nodetype.h"
+#include "fatstruc.h"
+
+#define FILE_NO_ACCESS 0x000
+#define FILE_PASS_ACCESS 0x001
+#define FILE_ONLY_READ 0x002
+#define FILE_READWRITE 0x004
+
+typedef enum tagCREATE_ACCESS_TYPE
+{
+	CREATE_ACCESS_INVALID,
+	CREATE_ACCESS_READ,
+	CREATE_ACCESS_WRITE,
+	CREATE_ACCESS_READWRITE
+}CREATE_ACCESS_TYPE;
+
+#define CACHE_READ		0x001
+#define CACHE_READWRITE		0x002
+#define CACHE_DISABLE		0x004
+#define CACHE_ALLOW			0x008
+
+#define FILE_HEADER_LENGTH 1024
+
+#define FCB_STATE_FILEHEADER_WRITED 0x001
+
+typedef struct tagDEF_IO_CONTEXT
+{
+	//
+	//  A copy of the IrpContext flags preserved for use in
+	//  async I/O completion.
+	//
+
+	ULONG IrpContextFlags;
+
+	//
+	//  These two field are used for multiple run Io
+	//
+
+	__volatile LONG IrpCount;
+	PIRP MasterIrp;
+
+	//
+	//  MDL to describe partial sector zeroing
+	//
+
+	PMDL ZeroMdl;
+
+	union {
+
+		//
+		//  This element handles the asychronous non-cached Io
+		//
+
+		struct {
+			PERESOURCE Resource;
+			PERESOURCE Resource2;
+			ERESOURCE_THREAD ResourceThreadId;
+			ULONG RequestedByteCount;
+			PFILE_OBJECT FileObject;
+			PNON_PAGED_FCB NonPagedFcb;
+		} Async;
+
+		//
+		//  and this element the sycnrhonous non-cached Io
+		//
+
+		KEVENT SyncEvent;
+
+	} Wait;
+
+
+}DEF_IO_CONTEXT, *PDEF_IO_CONTEXT;
 
 #define MIN_SECTOR_SIZE 0x200
+
 typedef struct _tagNTFSFCB
 {
 	UCHAR sz[64];
@@ -63,7 +135,7 @@ typedef struct tagDISKDIROBEJECT
 
 typedef struct tagDEFFCB
 {
-	FSRTL_COMMON_FCB_HEADER	Header;
+	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
 	UCHAR						szAlinged[4];
@@ -71,7 +143,7 @@ typedef struct tagDEFFCB
 	NTFS_FCB*					NtFsFCB;//+0x050 // this filed will be used by call back of ntfs.
 	PVOID						Vcb;//+0x054
 	ULONG						State;
-	ULONG						NonCachedUnCleanupCount;
+	
 	ULONG						UncleanCount;
 	ULONG						OpenCount;
 	SHARE_ACCESS				ShareAccess;//+0x068
@@ -81,6 +153,7 @@ typedef struct tagDEFFCB
 	PVOID						NoPagedFCB;
 	PVOID						LazyWriteThread[2];
 	SECTION_OBJECT_POINTERS		SegmentObject;
+	FAST_MUTEX AdvancedFcbHeaderMutex;
 	//
 	//  The following field is used by the oplock module
 	//  to maintain current oplock information.
@@ -88,6 +161,11 @@ typedef struct tagDEFFCB
 
 	OPLOCK		Oplock;
 
+	//
+	//  A count of how many of "UncleanCount" handles were opened for
+	//  non-cached I/O.
+	//
+	ULONG						NonCachedUnCleanupCount;
 	//
 	//  The following field is used by the filelock module
 	//  to maintain current byte range locking information.
@@ -145,6 +223,20 @@ typedef struct tagDEFFCB
 	UCHAR			szAligned2[20]; //+0x130
 	BOOLEAN			bWriteHead;
 	WCHAR			wszFile[128];
+
+	PRKEVENT		OutstandingAsyncEvent;
+	ULONG			OutstandingAsyncWrites;
+	ULONG			OpenHandleCount;
+	ULONG			ReferenceCount;
+
+	SECTION_OBJECT_POINTERS SectionObjectPointers;
+	ULONG CacheType;
+	LARGE_INTEGER ValidDataToDisk;
+	BOOLEAN bEnFile;
+	ULONG FileHeaderLength;
+	ULONG FileType;
+	HANDLE CcFileHandle;
+	PVOID CcFileObject;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -205,15 +297,21 @@ typedef struct tagSTREAM_FILE_INFO
 {
 	PFILE_OBJECT StreamObject;
 	PERESOURCE pFO_Resource;
+	HANDLE hStreamHandle;
+	FAST_MUTEX FileObjectMutex;
 }STREAM_FILE_INFO;
 
 typedef struct tagDEF_CCB
 {
+	ULONG ProcType;
+	ULONG FileAccess;
+	ULONG CcbState;
 	STREAM_FILE_INFO StreamFileInfo;
 }DEF_CCB, *PDEF_CCB;
 
 typedef struct tagCREATE_INFO
 {
+	UCHAR * pFileHeader;
 	UNICODE_STRING strName;
 	HANDLE hStreamHanle;
 	PFILE_OBJECT pStreamObject;
@@ -222,6 +320,7 @@ typedef struct tagCREATE_INFO
 	LARGE_INTEGER FileAllocationSize;
 	LARGE_INTEGER FileSize;
 	LARGE_INTEGER RealSize;
+	BOOLEAN bRealSize;
 	ULONG uProcType;
 
 	ULONG FileAccess;
@@ -234,6 +333,8 @@ typedef struct tagCREATE_INFO
 	BOOLEAN bOplockPostIrp;
 	PERESOURCE pFO_Resource;
 	PFLT_FILE_NAME_INFORMATION nameInfo;
+	BOOLEAN bWriteHeader;
+	BOOLEAN bEnFile;
 }CREATE_INFO, *PCREATE_INFO;
 
 
@@ -332,7 +433,7 @@ typedef struct tagIRP_CONTEXT
 	//
 
 	PDEVICE_OBJECT RealDevice;
-
+	PFLT_RELATED_OBJECTS FltObjects;
 	PFILE_OBJECT   Fileobject;
 	PDEVICE_OBJECT pNextDevice;
 	PPROCESSINFO   pProcessInfo;
@@ -343,6 +444,9 @@ typedef struct tagIRP_CONTEXT
 	ULONG uSectorsPerAllocationUnit;
 
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
+
+	PMDL AllocateMdl;
+	PDEF_IO_CONTEXT pIoContext;
 }DEF_IRP_CONTEXT, *PDEF_IRP_CONTEXT;
 
 
@@ -415,8 +519,17 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 #define MAIL_SLOT_PREFIX_LENGTH         (sizeof(MAIL_SLOT_PREFIX)-1)
 
 #define LAYER_NTC_FCB 12345
+#define CCB_FLAG_NETWORK_FILE 0x0010
+
+#ifndef OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY //win7及以后的系统才支持
+#define OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY   0x00000002
+#endif
 
 #define try_return(S) { S; goto try_exit; }
 #define try_leave(S) { S; __leave; }
+
+#define FsReleaseFcb(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceLite((Fcb)->Header.Resource);    \
+}
 
 #endif

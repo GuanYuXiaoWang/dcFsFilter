@@ -50,6 +50,14 @@ NTSTATUS  CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data,
 								__in PDEF_IRP_CONTEXT IrpContext
 								);
 
+NTSTATUS CreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, 
+							__in PCFLT_RELATED_OBJECTS FltObjects,
+							__in PUNICODE_STRING FileName,
+							__out PHANDLE phFile,
+							__out PFILE_OBJECT * pFileObject,
+							__out PIO_STATUS_BLOCK IoStatus,
+							__in BOOLEAN bNetWork
+							);
 #ifdef __cplusplus
 }
 #endif

@@ -2,7 +2,9 @@
 #include "fsData.h"
 #include "fatstruc.h"
 #include "volumeContext.h"
-#include <ntfs.h>
+#include <ntifs.h>
+#include <wdm.h>
+#include "defaultStruct.h"
 
 BOOLEAN IsFilterProcess(PCFLT_RELATED_OBJECTS pFltObjects, PNTSTATUS pStatus, PULONG pProcType)
 {
@@ -168,24 +170,21 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	{
 		if (KernelMode == Data->RequestorMode)
 		{
-			FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
-			__leave;
+			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		if (FlagOn(pIopb->OperationFlags, SL_OPEN_PAGING_FILE))
 		{
-			FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
-			__leave;
+			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		if (FlagOn(pIopb->TargetFileObject->Flags, FO_VOLUME_OPEN))
 		{
-			FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
-			__leave;
+			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		if (!FlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT))
 		{
 			bPostIrp = TRUE;
 			DbgPrint("No asynchronous create \n");
-			__leave;
+			try_return(FltStatus);
 		}
 		
 		Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &pVolCtx);
@@ -193,7 +192,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		{
 			Data->IoStatus.Status = Status;
 			Data->IoStatus.Information = 0;
-			return FLT_PREOP_COMPLETE;
+			try_return(FltStatus = FLT_PREOP_COMPLETE);
 		}
 		
 		if (IsMyFakeFcb(pRelatedFileObject))
@@ -209,7 +208,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			else
 			{
 				Status = STATUS_ACCESS_DENIED;
-				return FLT_PREOP_COMPLETE;
+				try_return(FltStatus = FLT_PREOP_COMPLETE);
 			}
 		}
 		
@@ -219,21 +218,21 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			if (IsMyFakeFcb(pFileObject))
 			{
 				Status = STATUS_ACCESS_DENIED;
-				return FLT_PREOP_COMPLETE;
+				try_return(FltStatus = FLT_PREOP_COMPLETE);
 			}
-			return FLT_PREOP_SUCCESS_NO_CALLBACK;
+			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 
 		if (!IsNeedSelfFcb(Data, &IrpContext->createInfo.nameInfo, &Status))
 		{
 			if (NT_SUCCESS(Status))
 			{
-				return FLT_PREOP_SUCCESS_NO_CALLBACK;
+				try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
 			else
 			{
 				Data->IoStatus.Status = Status;
-				return FLT_PREOP_COMPLETE;
+				try_return(FltStatus = FLT_PREOP_COMPLETE);
 			}
 		}
 
@@ -255,7 +254,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				pFileName->Buffer[0] == L'\\')
 			{
 				Data->IoStatus.Status = STATUS_OBJECT_NAME_INVALID;
-				return FLT_PREOP_COMPLETE;
+				try_return(FltStatus = FLT_PREOP_COMPLETE);
 			}
 		}
 
@@ -281,20 +280,20 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				bPostIrp = TRUE;
 			}
 
-			return IrpContext->FltStatus;
+			try_return(FltStatus = IrpContext->FltStatus);
 		}
 		else 
 		{
-			Status = CreateFileByNonExistFcb(Data, FltObjects, pFcb, IrpContext, HashValue);
+			Status = CreateFileByNonExistFcb(Data, FltObjects, pFcb, IrpContext);
 
 			if (Status == STATUS_PENDING)
 			{
 				IrpContext->FltStatus = FLT_PREOP_PENDING;
 				bPostIrp = TRUE;
 			}
-			return IrpContext->FltStatus;
+			try_return(FltStatus = IrpContext->FltStatus);
 		}
-
+try_exit:NOTHING;
 		if (IrpContext->createInfo.bReissueIo)
 		{
 			FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -306,11 +305,52 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	}
 	__finally
 	{
-		if (NT_SUCCESS())
+		if (NULL != IrpContext->createInfo.nameInfo)
 		{
+			FltReleaseFileNameInformation(IrpContext->createInfo.nameInfo);
+		}
+		if (bAcquireResource)
+		{
+			ExReleaseResourceLite(pVolCtx->pEresurce);
+		}
+
+		if (bFOResourceAcquired)
+		{
+			PDEF_CCB pTmp = pRelatedFileObject->FsContext2;
+			ExReleaseResourceLite(pTmp->StreamFileInfo.pFO_Resource);
+		}
+
+		if (NULL != pVolCtx)
+		{
+			FltReleaseContext(pVolCtx);
+		}
+		Data->IoStatus.Status = Status;
+
+		if (!NT_SUCCESS(Status) || FltStatus != FLT_PREOP_COMPLETE)
+		{
+			if (NULL == IrpContext->createInfo.pStreamObject)
+			{
+				ObDereferenceObject(IrpContext->createInfo.hStreamHanle);
+				FltClose(IrpContext->createInfo.hStreamHanle);
+			}
+		}
+		if (bPostIrp && !IrpContext->createInfo.bOplockPostIrp)
+		{
+			Status = FsPostRequest(Data, IrpContext);
+			if (STATUS_PENDING == Status)
+			{
+				FltStatus = FLT_PREOP_PENDING;
+			}
+			else
+			{
+				FltStatus = FLT_PREOP_COMPLETE;
+			}
+		}
+		if (!bPostIrp && !AbnormalTermination())
+		{
+			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
 		}
 	}
-
 	return FltStatus;
 }
 
@@ -445,6 +485,10 @@ BOOLEAN IsConcernedCreateOptions(__inout PFLT_CALLBACK_DATA Data)
 	return !DirectoryFile;
 }
 
+#ifndef FILE_OPEN_REQUIRING_OPLOCK
+#define FILE_OPEN_REQUIRING_OPLOCK              0x00010000
+#endif
+
 NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
@@ -519,22 +563,25 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 	__try
 	{
-		(VOID)X70FsdAcquireExclusiveFcb(IrpContext, Fcb);
+		(VOID)FsdAcquireExclusiveFcb(IrpContext, Fcb);
 		FcbAcquired = TRUE;
 
-		ExAcquireResourceExclusiveLite(Fcb->EncryptResource, TRUE);
-		EncryptResourceAcquired = TRUE;
+		if (ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE))
+		{
+			EncryptResourceAcquired = TRUE;
+		}
+		
 
-		if (FlagOn(Fcb->FcbState, SCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenHandleCount != 0)
+		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenHandleCount != 0)
 		{
 			try_return(Status = STATUS_DELETE_PENDING);
 		}
 
-		IrpContext->CreateInfo.OplockPostIrp = FALSE;
+		IrpContext->createInfo.bOplockPostIrp = FALSE;
 
-		if (IS_WINDOWS7() || IS_WINDOWS7_LATER())
+		if (IsWin7OrLater())
 		{
-			FltOplockStatus = gDynamicFunctions.CheckOplockEx(&Fcb->Oplock,
+			FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx(&Fcb->Oplock,
 				OrgData,
 				OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY,
 				NULL,
@@ -555,14 +602,14 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			FltOplockStatus = FltCheckOplock(&Fcb->Oplock,
 				OrgData,
 				IrpContext,
-				X70FsdOplockComplete,
-				X70FsdPrePostIrp);
+				FsOplockComplete,
+				FsPrePostIrp);
 
 			if (FLT_PREOP_PENDING == FltOplockStatus)
 			{
 				Status = STATUS_PENDING;
 				IrpContext->FltStatus = FLT_PREOP_PENDING;
-				IrpContext->CreateInfo.OplockPostIrp = TRUE;
+				IrpContext->createInfo.bOplockPostIrp = TRUE;
 				try_return(Status);
 			}
 			if (FltOplockStatus == FLT_PREOP_COMPLETE)
@@ -594,25 +641,25 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			&Fcb->ShareAccess,
 			FALSE)))
 		{
-			if (IS_WINDOWS7() || IS_WINDOWS7_LATER())
+			if (IsWin7OrLater())
 			{
 
 				if ((Status == STATUS_SHARING_VIOLATION) &&
 					!FlagOn(OrgData->Iopb->Parameters.Create.Options, FILE_COMPLETE_IF_OPLOCKED))
 				{
 
-					FltOplockStatus = gDynamicFunctions.OplockBreakH(&Fcb->Oplock,
+					FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH(&Fcb->Oplock,
 						OrgData,
 						0,
 						IrpContext,
-						X70FsdOplockComplete,
-						X70FsdPrePostIrp);
+						FsOplockComplete,
+						FsPrePostIrp);
 
 					if (FltOplockStatus == FLT_PREOP_PENDING) {
 
 						Status = STATUS_PENDING;
 						IrpContext->FltStatus = FLT_PREOP_PENDING;
-						IrpContext->CreateInfo.OplockPostIrp = TRUE;
+						IrpContext->createInfo.bOplockPostIrp = TRUE;
 						try_return(Status);
 
 					}
@@ -630,7 +677,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 			try_return(Status);
 		}
-		if (IS_WINDOWS7() || IS_WINDOWS7_LATER())
+		if (IsWin7OrLater())
 		{
 			if (Fcb->OpenHandleCount != 0)
 			{
@@ -638,8 +685,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				FltOplockStatus = FltCheckOplock(&Fcb->Oplock,
 					OrgData,
 					IrpContext,
-					X70FsdOplockComplete,
-					X70FsdPrePostIrp);
+					FsOplockComplete,
+					FsPrePostIrp);
 
 			}
 
@@ -647,7 +694,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			{
 				Status = STATUS_PENDING;
 				IrpContext->FltStatus = FLT_PREOP_PENDING;
-				IrpContext->CreateInfo.OplockPostIrp = TRUE;
+				IrpContext->createInfo.bOplockPostIrp = TRUE;
 				try_return(Status);
 
 			}
@@ -674,14 +721,14 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			FltOplockStatus = FltCheckOplock(&Fcb->Oplock,
 				OrgData,
 				IrpContext,
-				X70FsdOplockComplete,
-				X70FsdPrePostIrp);
+				FsOplockComplete,
+				FsPrePostIrp);
 
 			if (FltOplockStatus == FLT_PREOP_PENDING)
 			{
 				Status = STATUS_PENDING;
 				IrpContext->FltStatus = FLT_PREOP_PENDING;
-				IrpContext->CreateInfo.OplockPostIrp = TRUE;
+				IrpContext->createInfo.bOplockPostIrp = TRUE;
 				try_return(Status);
 
 			}
@@ -742,7 +789,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 		if (DeleteOnClose)
 		{
-			SetFlag(Fcb->FcbState, SCB_STATE_DELETE_ON_CLOSE);
+			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 		}
 
 		if (CreateDisposition == FILE_SUPERSEDE ||
@@ -757,16 +804,16 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 
 
-		Status = CreateFileImitation(Data,
+		Status = CreateFileLimitation(Data,
 			FltObjects,
-			&IrpContext->CreateInfo.nameInfo->Name,
-			&IrpContext->CreateInfo.StreamHandle,
-			&IrpContext->CreateInfo.StreamObject,
+			&IrpContext->createInfo.nameInfo->Name,
+			&IrpContext->createInfo.hStreamHanle,
+			&IrpContext->createInfo.pStreamObject,
 			&Data->IoStatus,
-			IrpContext->CreateInfo.Network
+			IrpContext->createInfo.bNetWork
 			);
 
-		if (!NT_SUCCESS(Status)) /
+		if (!NT_SUCCESS(Status)) 
 		{
 			if (Status == STATUS_FILE_IS_A_DIRECTORY)
 			{
@@ -779,13 +826,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 		}
 
-		IrpContext->CreateInfo.Information = Data->IoStatus.Information;
+		IrpContext->createInfo.Information = Data->IoStatus.Information;
 
 		Status = MyGetFileStandardInfo(Data,
 			FltObjects,
-			IrpContext->CreateInfo.StreamObject,
-			&IrpContext->CreateInfo.FileAllocationSize,
-			&IrpContext->CreateInfo.FileSize,
+			IrpContext->createInfo.pStreamObject,
+			&IrpContext->createInfo.FileAllocationSize,
+			&IrpContext->createInfo.FileSize,
 			&bDirectory);
 
 		if (!NT_SUCCESS(Status) || bDirectory)
@@ -793,7 +840,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
 		}
 
-		Status = CreatedFileHeaderInfo(IrpContext);
+		Status = CreatedFileHeaderInfo(FltObjects, IrpContext);
 
 		if (!NT_SUCCESS(Status))
 		{
@@ -801,13 +848,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
 		}
 
-		if (IrpContext->CreateInfo.FileAccess == FILE_NO_ACCESS)
+		if (IrpContext->createInfo.FileAccess == FILE_NO_ACCESS)
 		{
 
 			Status = STATUS_ACCESS_DENIED;
 			try_return(Status);
 		}
-		if (IrpContext->CreateInfo.FileAccess == FILE_ONLY_READ &&
+		if (IrpContext->createInfo.FileAccess == FILE_ONLY_READ &&
 			(BooleanFlagOn(DesiredAccess, FILE_WRITE_DATA) ||
 			BooleanFlagOn(DesiredAccess, FILE_APPEND_DATA)))
 		{
@@ -816,6 +863,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(Status);
 		}
 
+		/* header
 		//写过了加密头
 		if (!Fcb->IsEnFile && IrpContext->CreateInfo.IsEnFile)
 		{
@@ -823,18 +871,19 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			Fcb->FileHeaderLength = FILE_HEADER_LENGTH;
 			SetFlag(Fcb->FcbState, SCB_STATE_FILEHEADER_WRITED);
 		}
+		*/
 
 
-		Ccb = X70FsdCreateCcb();
+		Ccb = FsCreateCcb();
 
-		Ccb->StreamFileInfo.StreamHandle = IrpContext->CreateInfo.StreamHandle;
-		Ccb->StreamFileInfo.StreamObject = IrpContext->CreateInfo.StreamObject;
-		Ccb->StreamFileInfo.FO_Resource = X70FsdAllocateResource();
-		Ccb->ProcType = IrpContext->CreateInfo.ProcType;
-		Ccb->FileAccess = IrpContext->CreateInfo.FileAccess;
-		RtlCopyMemory(Ccb->ProcessGuid, IrpContext->CreateInfo.ProcessGuid, GUID_SIZE);
+		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
+		Ccb->StreamFileInfo.StreamObject = IrpContext->createInfo.pStreamObject;
+		Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
+		Ccb->ProcType = IrpContext->createInfo.uProcType;
+		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
+		//RtlCopyMemory(Ccb->ProcessGuid, IrpContext->CreateInfo.ProcessGuid, GUID_SIZE);
 
-		if (IrpContext->CreateInfo.Network)
+		if (IrpContext->createInfo.bNetWork)
 		{
 			SetFlag(Ccb->CcbState, CCB_FLAG_NETWORK_FILE);
 		}
@@ -843,7 +892,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 		FileObject->FsContext = Fcb;
 		FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
-		FileObject->Vpb = IrpContext->CreateInfo.StreamObject->Vpb;
+		FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 		FileObject->FsContext2 = Ccb;
 
 		SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
@@ -852,7 +901,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			CreateDisposition == FILE_OVERWRITE ||
 			CreateDisposition == FILE_OVERWRITE_IF)
 		{
-			Status = X70FsdOverWriteFile(FileObject, Fcb, AllocationSize);
+			Status = FsOverWriteFile(FileObject, Fcb, AllocationSize);
 		}
 
 		if (!NoIntermediateBuffering)
@@ -896,7 +945,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 				if (DeleteOnClose)
 				{
-					SetFlag(Fcb->FcbState, SCB_STATE_DELETE_ON_CLOSE);
+					SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 				}
 
 				InterlockedIncrement((PLONG)&Fcb->ReferenceCount);
@@ -904,13 +953,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 				if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
 				{
-					InterlockedIncrement((PLONG)&Fcb->NonCachedCleanupCount);
+					InterlockedIncrement((PLONG)&Fcb->NonCachedUnCleanupCount);
 				}
 
 			}
 		}
 	}
-	finally
+	__finally
 	{
 
 		if (DecrementFcbOpenCount)
@@ -933,24 +982,24 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 			if (Ccb != NULL)
 			{
-				if (Ccb->StreamFileInfo.FO_Resource != NULL)
+				if (Ccb->StreamFileInfo.pFO_Resource != NULL)
 				{
-					ExDeleteResourceLite(Ccb->StreamFileInfo.FO_Resource);
-					ExFreeToNPagedLookasideList(&G_EResourceLookasideList, Ccb->StreamFileInfo.FO_Resource);
-					Ccb->StreamFileInfo.FO_Resource = NULL;
+					ExDeleteResourceLite(Ccb->StreamFileInfo.pFO_Resource);
+					ExFreeToNPagedLookasideList(&g_EResourceLookasideList, Ccb->StreamFileInfo.pFO_Resource);
+					Ccb->StreamFileInfo.pFO_Resource = NULL;
 				}
-				ExFreeToNPagedLookasideList(&G_CcbLookasideList, Ccb);
+				ExFreeToNPagedLookasideList(&g_CcbLookasideList, Ccb);
 				FileObject->FsContext2 = NULL;
 			}
 		}
 
 		if (FcbAcquired)
 		{
-			X70FsdReleaseFcb(IrpContext, Fcb);
+			FsReleaseFcb(IrpContext, Fcb);
 		}
 		if (EncryptResourceAcquired)
 		{
-			ExReleaseResourceLite(Fcb->EncryptResource);
+			ExReleaseResourceLite(Fcb->Resource);
 		}
 	}
 	return Status;
@@ -958,5 +1007,263 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 {
+	NTSTATUS Status = STATUS_SUCCESS;
+	ULONG Options;
+	ULONG CreateDisposition;
+	BOOLEAN bDirectory = FALSE;
+	BOOLEAN bEnFile = FALSE;
+	BOOLEAN bDisEncryptFile = FALSE;
 
+	BOOLEAN bNeedOwnFcb = FALSE;
+	BOOLEAN bOrgEnFile = FALSE;
+	BOOLEAN bDeleteOnClose = FALSE;
+	BOOLEAN bNoIntermediaBuffering = FALSE;
+	BOOLEAN bOpenRequiringOplock;
+
+	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
+	PFILE_OBJECT FileObject = FltObjects->FileObject;
+	FLT_PREOP_CALLBACK_STATUS FltOplockStatus;
+	PFLT_CALLBACK_DATA OrgData = NULL;
+
+	ACCESS_MASK DesiredAccess;
+	ULONG ShareAccess;
+	LARGE_INTEGER AllocationSize;
+	LARGE_INTEGER FileBeginOffset;
+	PDEF_CCB Ccb;
+	PDEFFCB Fcb1;
+
+	AllocationSize.QuadPart = Iopb->Parameters.Create.AllocationSize.QuadPart;
+	DesiredAccess = Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+	ShareAccess = Iopb->Parameters.Create.ShareAccess;
+	Options = Iopb->Parameters.Create.Options;
+	CreateDisposition = (Options >> 24) & 0x000000ff;
+
+	bOpenRequiringOplock = BooleanFlagOn(Options, FILE_OPEN_REQUIRING_OPLOCK);
+	bDeleteOnClose = BooleanFlagOn(Options, FILE_DELETE_ON_CLOSE);
+	bNoIntermediaBuffering = BooleanFlagOn(Options, FILE_NO_INTERMEDIATE_BUFFERING);
+
+	if (NULL != IrpContext->OriginatingData)
+	{
+		OrgData = IrpContext->OriginatingData;
+	}
+	else
+	{
+		OrgData = Data;
+	}
+	IrpContext->FltStatus = FLT_PREOP_COMPLETE;
+
+	__try
+	{
+		Status = CreateFileLimitation(Data, FltObjects, &IrpContext->createInfo.nameInfo->Name, &IrpContext->createInfo.hStreamHanle,
+			&IrpContext->createInfo.pStreamObject, &Data->IoStatus, IrpContext->createInfo.bNetWork);
+		if (!NT_SUCCESS(Status))
+		{
+			if (STATUS_FILE_IS_A_DIRECTORY == Status)
+			{
+				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+			}
+			else
+			{
+				Data->IoStatus.Status = Status;
+				try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
+			}
+		}
+		IrpContext->createInfo.Information = Data->IoStatus.Information;
+		Status = MyGetFileStandardInfo(Data, FltObjects, IrpContext->createInfo.pStreamObject, &IrpContext->createInfo.FileAllocationSize,
+			&IrpContext->createInfo.FileSize, &bDirectory);//这里还不能用FltObject中的文件对象
+		if (!NT_SUCCESS(Status) || bDirectory)
+		{
+			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
+		}
+
+		Status = CreatedFileHeaderInfo(FltObjects, IrpContext);
+		if (!NT_SUCCESS(Status))
+		{
+			Data->IoStatus.Status = Status;
+			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
+		}
+		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
+		{
+			Status = STATUS_ACCESS_DENIED;
+			try_return(Status);
+		}
+		if (IrpContext->createInfo.FileAccess == FILE_ONLY_READ && (BooleanFlagOn(DesiredAccess, FILE_WRITE_DATA) || 
+			BooleanFlagOn(DesiredAccess, FILE_APPEND_DATA)))
+		{
+			Status = STATUS_ACCESS_DENIED;
+			try_return(Status);
+		}
+		IrpContext->createInfo.bDeleteOnClose = bDeleteOnClose;
+		Status = CreateFcbAndCcb(Data, FltObjects, IrpContext);
+		if (NT_SUCCESS(Status))
+		{
+			Fcb = IrpContext->createInfo.pFcb;
+			Ccb = IrpContext->createInfo.pCcb;
+			if (IsWin7OrLater())
+			{
+				FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx(&Fcb->Oplock, OrgData, OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY,
+					NULL, NULL, NULL);
+			
+				if (FLT_PREOP_COMPLETE == FltOplockStatus)
+				{
+					try_return(Status = OrgData->IoStatus.Status);
+				}
+				if (bOpenRequiringOplock)
+				{
+					FltOplockStatus = FltOplockFsctrl(&Fcb->Oplock, OrgData, Fcb->OpenHandleCount);
+					if (OrgData->IoStatus.Status != STATUS_SUCCESS && OrgData->IoStatus.Status != STATUS_OPLOCK_BREAK_IN_PROGRESS)
+					{
+						FsRaiseStatus(IrpContext, OrgData->IoStatus.Status);
+					}
+				}
+			}
+		}
+		FileObject->FsContext = Fcb;
+		FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
+		FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
+		FileObject->FsContext2 = Ccb;
+		SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
+
+		IoSetShareAccess(DesiredAccess, ShareAccess, FileObject, &Fcb->ShareAccess);
+
+		InterlockedIncrement(&Fcb->ReferenceCount);
+		InterlockedIncrement(&Fcb->OpenHandleCount);
+
+		if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
+		{
+			InterlockedIncrement(&Fcb->NonCachedUnCleanupCount);
+		}
+		if (IrpContext->createInfo.bDeleteOnClose)
+		{
+			SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
+		}
+
+		if (FILE_SUPERSEDE == CreateDisposition ||
+			FILE_OVERWRITE == CreateDisposition ||
+			FILE_OVERWRITE_IF == CreateDisposition)
+		{
+			Status = FsOverWriteFile(FileObject, Fcb, AllocationSize);
+		}
+		if (!bNoIntermediaBuffering)
+		{
+			FileObject->Flags |= FO_CACHE_SUPPORTED;
+		}
+
+		try_return(Status);
+
+try_exit: NOTHING;
+	}
+	__except(EXCEPTION_EXECUTE_HANDLER)
+	{
+		Fcb1 = FileObject->FsContext;
+		Ccb = FileObject->FsContext2;
+		IrpContext->createInfo.bReissueIo = FALSE;
+		IrpContext->FltStatus = FLT_PREOP_COMPLETE;
+		if (Fcb1 != NULL)
+		{
+			FsFreeFcb(Fcb1, IrpContext);
+			FileObject->FsContext = NULL;
+		}
+		if (Ccb != NULL)
+		{
+			if (Ccb->StreamFileInfo.pFO_Resource != NULL)
+			{
+				ExDeleteResourceLite(Ccb->StreamFileInfo.pFO_Resource);
+				ExFreeToNPagedLookasideList(&g_EResourceLookasideList, Ccb->StreamFileInfo.pFO_Resource);
+				Ccb->StreamFileInfo.pFO_Resource = NULL;
+			}
+			ExFreeToNPagedLookasideList(&g_CcbLookasideList, Ccb);
+			FileObject->FsContext2 = NULL;
+		}
+	}
+	return Status;
+}
+
+NTSTATUS CreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUNICODE_STRING FileName, __out PHANDLE phFile, __out PFILE_OBJECT * pFileObject, __out PIO_STATUS_BLOCK IoStatus, __in BOOLEAN bNetWork)
+{
+	NTSTATUS Status;
+	OBJECT_ATTRIBUTES ob;
+	PFLT_IO_PARAMETER_BLOCK CONST Iopb = Data->Iopb;
+	LARGE_INTEGER AllocationSize;
+	ACCESS_MASK DesiredAccess;
+	ULONG EaLength;
+	PVOID EaBuffer;
+	ULONG Options;
+	ULONG CreateDisposition;
+	ULONG FileAttributes;
+	ULONG	ShareAccess;
+	ULONG	Flags = 0;
+	PSECURITY_DESCRIPTOR  SecurityDescriptor = NULL;
+
+	UNREFERENCED_PARAMETER(FltObjects);
+
+	SecurityDescriptor = Iopb->Parameters.Create.SecurityContext->AccessState->SecurityDescriptor;
+	AllocationSize.QuadPart = Iopb->Parameters.Create.AllocationSize.QuadPart;
+
+	EaBuffer = Iopb->Parameters.Create.EaBuffer;
+	DesiredAccess = Iopb->Parameters.Create.SecurityContext->DesiredAccess;
+	Options = Iopb->Parameters.Create.Options;
+	FileAttributes = Iopb->Parameters.Create.FileAttributes;
+	ShareAccess = Iopb->Parameters.Create.ShareAccess;
+	EaLength = Iopb->Parameters.Create.EaLength;
+
+	if (bNetWork)
+	{
+		//SetFlag (ShareAccess ,FILE_SHARE_READ); 
+		//SetFlag (DesiredAccess ,FILE_READ_DATA  );
+
+		//SetFlag (DesiredAccess , FILE_WRITE_DATA); //???
+		ShareAccess = FILE_SHARE_READ;   //网络文件因为oplock，只能只读，要想解决去参考rdbss.sys
+		ClearFlag(DesiredAccess, FILE_WRITE_DATA);
+		ClearFlag(DesiredAccess, FILE_APPEND_DATA);
+
+	}
+#ifdef USE_CACHE_READWRITE
+
+	SetFlag(Options, FILE_WRITE_THROUGH); //如果缓存写需要加上直接写入文件，否则cccaniwrite内部会导致等待pagingio产生死锁
+
+#endif
+	ClearFlag(Options, FILE_OPEN_BY_FILE_ID);
+	ClearFlag(Options, FILE_OPEN_REQUIRING_OPLOCK);
+
+	CreateDisposition = (Options >> 24) & 0x000000ff;
+
+	InitializeObjectAttributes(&ob, FileName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, SecurityDescriptor);
+
+	Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
+		FltObjects->Instance,
+		phFile,
+		DesiredAccess,
+		&ob,
+		IoStatus,
+		&AllocationSize,
+		FileAttributes,
+		ShareAccess,
+		CreateDisposition,
+		Options,
+		EaBuffer,
+		EaLength,
+		Flags
+		);
+	if (NT_SUCCESS(Status))
+	{
+		Status = ObReferenceObjectByHandle(*phFile,
+			0,
+			*IoFileObjectType,
+			KernelMode,
+			pFileObject,
+			NULL);
+		if (!NT_SUCCESS(Status))
+		{
+			FltClose(*phFile);
+			*pFileObject = NULL;
+		}
+	}
+
+	if (!NT_SUCCESS(Status))
+	{
+		DbgPrint("create false filename %ws \n", FileName->Buffer);
+	}
+
+	return Status;
 }

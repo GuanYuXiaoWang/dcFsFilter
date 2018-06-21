@@ -2,6 +2,7 @@
 #include <wdm.h>
 #include "volumeContext.h"
 #include "fsdata.h"
+#include "fsCreate.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -24,8 +25,8 @@ __in PUNICODE_STRING RegistryPath
 CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 	{ IRP_MJ_CREATE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreOperationCreate,
+	PtPostOperationCreate },
 
 	{ IRP_MJ_CREATE_NAMED_PIPE,
 	0,
@@ -224,7 +225,7 @@ const FLT_CONTEXT_REGISTRATION ContextRegistration[] = {
 	{
 		FLT_VOLUME_CONTEXT,
 		0,
-		volumeCleanup,
+		VolumeCleanup,
 		sizeof(VOLUMECONTEXT),
 		VOLUME_CONTEXT_POOL_TAG
 	},
@@ -333,7 +334,7 @@ STATUS_FLT_DO_NOT_ATTACH - do not attach
 			status = STATUS_FLT_DO_NOT_ATTACH;
 			__leave;
 		}
-		status = setVolumeContext(pVolumeProperties->SectorSize, &pVolumeProperties->RealDeviceName, FltObjects->Volume);
+		status = SetVolumeContext(FltObjects, pVolumeProperties, FltObjects->Volume);
 	}
 	__finally
 	{
@@ -466,11 +467,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 	status = FltRegisterFilter(pDeviceObject, &FilterRegistration, &gFilterHandle);
 	if (NT_SUCCESS(status))
 	{
-		initData();
+		InitData();
 		status = FltStartFiltering(gFilterHandle);
 		if (!NT_SUCCESS(status))
 		{
-			unInitData();
+			UnInitData();
 			FltUnregisterFilter(gFilterHandle);
 		}
 	}
@@ -512,7 +513,7 @@ Returns the final status of this operation.
 		FltUnregisterFilter(gFilterHandle);
 	}
 
-	unInitData();
+	UnInitData();
 
 	return STATUS_SUCCESS;
 }

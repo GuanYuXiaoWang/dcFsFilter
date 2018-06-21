@@ -425,7 +425,7 @@ typedef struct _VCB {
     //  to this field
     //
 
-    SECTION_OBJECT_POINTERS SectionObjectPointers;
+	SECTION_OBJECT_POINTERS SectionObjectPointers;
 
     //
     //  The following fields is a hint cluster index used by the file system
@@ -1198,6 +1198,8 @@ typedef DCB *PDCB;
 #define FCB_STATE_HAS_OEM_LONG_NAME      (0x00000200)
 #define FCB_STATE_HAS_UNICODE_LONG_NAME  (0x00000400)
 #define FCB_STATE_DELAY_CLOSE            (0x00000800)
+#define FCB_STATE_NOTIFY_RESIZE_STREAM   (0x00001000)
+#define FCB_STATE_FILE_CHANGED			 (0x00002000)
 
 //
 //  Copies of the dirent's FAT_DIRENT_NT_BYTE_* flags for
@@ -1566,6 +1568,7 @@ typedef IRP_CONTEXT *PIRP_CONTEXT;
 #define IRP_CONTEXT_FLAG_DISABLE_RAISE              (0x00000800)
 #define IRP_CONTEXT_FLAG_OVERRIDE_VERIFY            (0x00001000)
 #define IRP_CONTEXT_FLAG_CLEANUP_BREAKING_OPLOCK    (0x00002000)
+#define IRP_CONTEXT_FLAG_DONT_DELETE                (0x00004000)
 
 
 #if (NTDDI_VERSION >= NTDDI_WINTHRESHOLD)

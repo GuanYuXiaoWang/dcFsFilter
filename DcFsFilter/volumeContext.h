@@ -23,6 +23,7 @@ typedef struct tagVOLUMECONTEXT
 	PERESOURCE pEresurce;
 	ULONG uDeviceType;
 	ULONG uSectorsPerAllocationUnit;
+	BOOLEAN bWrite;
 }VOLUMECONTEXT, *PVOLUMECONTEXT;
 
 #ifdef __cplusplus
@@ -30,8 +31,8 @@ extern "C"
 {
 #endif
 
-NTSTATUS setVolumeContext(ULONG ulSectorSize, PUNICODE_STRING pDevName, PFLT_VOLUME pFltVolume);
-VOID volumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType);
+	NTSTATUS SetVolumeContext(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFLT_VOLUME_PROPERTIES pVolumePro, __in PFLT_VOLUME pFltVolume);
+	VOID VolumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType);
 
 #ifdef __cplusplus
 }
