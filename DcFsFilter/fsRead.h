@@ -1,0 +1,34 @@
+#ifndef FSREAD_H
+#define FSREAD_H
+
+#include "defaultStruct.h"
+
+FLT_PREOP_CALLBACK_STATUS PtPreOperationRead(__inout PFLT_CALLBACK_DATA Data,
+											__in PCFLT_RELATED_OBJECTS FltObjects,
+											__deref_out_opt PVOID *CompletionContext);
+
+
+FLT_POSTOP_CALLBACK_STATUS PtPostOperationRead(__inout PFLT_CALLBACK_DATA Data,
+											__in PCFLT_RELATED_OBJECTS FltObjects,
+											__in_opt PVOID CompletionContext,
+											__in FLT_POST_OPERATION_FLAGS Flags);
+
+FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data,
+										__in PCFLT_RELATED_OBJECTS FltObjects,
+										__in PDEF_IRP_CONTEXT IrpContext);
+
+
+FLT_PREOP_CALLBACK_STATUS FsFastIoRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects);
+
+NTSTATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Data,
+								__in PCFLT_RELATED_OBJECTS FltObjects,
+								__in PDEF_IRP_CONTEXT IrpContext);
+
+NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects,
+	IN PDEF_IRP_CONTEXT IrpContext,
+	IN PVOID SystemBuffer,
+	IN LARGE_INTEGER ByteOffset,
+	IN ULONG ByteCount,
+	OUT PULONG_PTR RetBytes);
+
+#endif

@@ -80,7 +80,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationCreate(__inout PFLT_CALLBACK_DATA Data, 
 		bTopLevel = IsTopLevelIRP(Data);
 		__try
 		{
-			IrpContext = CreateIRPContext(Data, FltObjects, FlagOn(Data->Iopb->OperationFlags, FO_SYNCHRONOUS_IO) ? TRUE : FALSE);
+			IrpContext = FsCreateIrpContext(Data, FltObjects, FlagOn(Data->Iopb->OperationFlags, IRP_SYNCHRONOUS_API) ? TRUE : FALSE);
 			IrpContext->createInfo.uProcType = uProcType;
 			FltStatus = FsCommonCreate(Data, FltObjects, IrpContext);
 		}
@@ -563,7 +563,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 	__try
 	{
-		(VOID)FsdAcquireExclusiveFcb(IrpContext, Fcb);
+		(VOID)FsAcquireExclusiveFcb(IrpContext, Fcb);
 		FcbAcquired = TRUE;
 
 		if (ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE))
@@ -840,7 +840,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
 		}
 
-		Status = CreatedFileHeaderInfo(FltObjects, IrpContext);
+		Status = FsCreatedFileHeaderInfo(FltObjects, IrpContext);
 
 		if (!NT_SUCCESS(Status))
 		{
@@ -1076,7 +1076,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
 		}
 
-		Status = CreatedFileHeaderInfo(FltObjects, IrpContext);
+		Status = FsCreatedFileHeaderInfo(FltObjects, IrpContext);
 		if (!NT_SUCCESS(Status))
 		{
 			Data->IoStatus.Status = Status;
@@ -1094,7 +1094,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(Status);
 		}
 		IrpContext->createInfo.bDeleteOnClose = bDeleteOnClose;
-		Status = CreateFcbAndCcb(Data, FltObjects, IrpContext);
+		Status = FsCreateFcbAndCcb(Data, FltObjects, IrpContext);
 		if (NT_SUCCESS(Status))
 		{
 			Fcb = IrpContext->createInfo.pFcb;

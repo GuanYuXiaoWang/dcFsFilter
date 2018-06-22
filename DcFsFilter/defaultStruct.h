@@ -6,6 +6,7 @@
 #include <suppress.h>
 #include "nodetype.h"
 #include "fatstruc.h"
+#include "volumeContext.h"
 
 #define FILE_NO_ACCESS 0x000
 #define FILE_PASS_ACCESS 0x001
@@ -43,13 +44,13 @@ typedef struct tagDEF_IO_CONTEXT
 	//
 
 	__volatile LONG IrpCount;
-	PIRP MasterIrp;
+	PIRP TopLevelIrp;
 
 	//
 	//  MDL to describe partial sector zeroing
 	//
 
-	PMDL ZeroMdl;
+	PMDL SwapMdl;
 
 	union {
 
@@ -64,6 +65,9 @@ typedef struct tagDEF_IO_CONTEXT
 			ULONG RequestedByteCount;
 			PFILE_OBJECT FileObject;
 			PNON_PAGED_FCB NonPagedFcb;
+			PERESOURCE FO_Resource;
+			PFAST_MUTEX FileObjectMutex;
+			ULONG ByteCount;
 		} Async;
 
 		//
@@ -74,7 +78,17 @@ typedef struct tagDEF_IO_CONTEXT
 
 	} Wait;
 
+	PVOLUMECONTEXT volCtx;
+	PFLT_CALLBACK_DATA Data;
 
+	BOOLEAN bPagingIo;
+	BOOLEAN bEnFile;
+
+	PVOID SystemBuffer;
+	PVOID SwapBuffer;
+	PFLT_INSTANCE Instance;
+	PFLT_RELATED_OBJECTS FltObjects;
+	ULONG FileHeaderLength;
 }DEF_IO_CONTEXT, *PDEF_IO_CONTEXT;
 
 #define MIN_SECTOR_SIZE 0x200
@@ -231,6 +245,7 @@ typedef struct tagDEFFCB
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
+	PFILE_OBJECT CacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;

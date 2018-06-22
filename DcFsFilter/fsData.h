@@ -11,6 +11,9 @@ extern NPAGED_LOOKASIDE_LIST  g_IoContextLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_CcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_EResourceLookasideList;
+extern CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks;
+
+#define READ_AHEAD_GRANULARITY           (0x10000)
 
 #define ENCRYPT_FILE_NAME_LENGTH 128
 typedef struct tagENCRYPT_FILE_FCB
@@ -44,11 +47,6 @@ extern "C" {
 
 	BOOLEAN IsMyFakeFcb(PFILE_OBJECT FileObject);
 	BOOLEAN IsTopLevelIRP(IN PFLT_CALLBACK_DATA Data);
-
-	PDEF_IRP_CONTEXT CreateIRPContext(IN PFLT_CALLBACK_DATA Data,
-									IN PCFLT_RELATED_OBJECTS FltObjects,
-									IN BOOLEAN Wait
-									);
 	BOOLEAN GetVersion();
 	BOOLEAN IsWin7OrLater();
 
@@ -57,7 +55,10 @@ extern "C" {
 	BOOLEAN FindFcb(WCHAR * pwszFile, PDEFFCB * pFcb);
 	BOOLEAN UpdateFcbList(WCHAR * pwszFile, PDEFFCB * pFcb);
 
-	BOOLEAN FsdAcquireExclusiveFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
+	BOOLEAN FsAcquireExclusiveFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
+	BOOLEAN FsAcquireSharedFcbWaitForEx(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
+	BOOLEAN FsAcquireSharedFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
+
 	VOID FsVerifyOperationIsLegal(IN PDEF_IRP_CONTEXT IrpContext);
 	VOID FsRaiseStatus(PDEF_IRP_CONTEXT IrpContext,NTSTATUS Status);
 
@@ -82,13 +83,30 @@ extern "C" {
 									__in PLARGE_INTEGER FileSize,
 									__in PBOOLEAN bDirectory);
 
-	NTSTATUS CreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
-	NTSTATUS CreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
+	NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
+	NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
 	PDEFFCB  FsCreateFcb();
 	BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext);
 	NTSTATUS FsOverWriteFile(__in PFILE_OBJECT FileObject, __in PDEFFCB Fcb, __in LARGE_INTEGER AllocationSize);
 	NTSTATUS FsCloseGetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CONTEXT IrpContext, __inout PFILE_BASIC_INFORMATION FileInfo);
 	NTSTATUS FsCloseSetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_BASIC_INFORMATION FileInfo);
+
+	BOOLEAN CanFsWait(__in PFLT_CALLBACK_DATA Data);
+
+	FLT_PREOP_CALLBACK_STATUS FsCompleteMdl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
+	VOID FsProcessException (IN OUT PDEF_IRP_CONTEXT *IrpContext OPTIONAL, IN OUT PFLT_CALLBACK_DATA *Data  OPTIONAL, IN NTSTATUS Status);
+	PVOID FsMapUserBuffer(IN OUT PFLT_CALLBACK_DATA Data);
+
+	BOOLEAN MyFltCheckLockForReadAccess(IN PFILE_LOCK FileLock, IN PFLT_CALLBACK_DATA  Data);
+	VOID FsLookupFileAllocationSize(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb, IN PDEF_CCB Ccb);
+	VOID FsPopUpFileCorrupt(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
+
+
+
+
+
+
+
 
 
 #ifdef __cplusplus

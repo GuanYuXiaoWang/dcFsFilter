@@ -216,44 +216,6 @@ BOOLEAN IsTopLevelIRP(IN PFLT_CALLBACK_DATA Data)
 	return FALSE;
 }
 
-PDEF_IRP_CONTEXT CreateIRPContext(IN PFLT_CALLBACK_DATA Data, IN PCFLT_RELATED_OBJECTS FltObjects, IN BOOLEAN Wait)
-{
-	PDEF_IRP_CONTEXT pIrpContext = NULL;
-	PFILE_OBJECT FileObject = FltObjects->FileObject;
-
-	PAGED_CODE();
-
-	pIrpContext = ExAllocateFromNPagedLookasideList(&g_IrpContextLookasideList);
-	if (NULL != pIrpContext)
-	{
-		RtlZeroMemory(pIrpContext, sizeof(DEF_IRP_CONTEXT));
-		pIrpContext->NodeTypeCode = LAYER_NTC_FCB;
-		pIrpContext->NodeByteSize = sizeof(IRP_CONTEXT);
-		pIrpContext->OriginatingData = Data;
-
-		pIrpContext->ProcessId = PsGetCurrentProcessId();
-
-		if (Wait) { SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_WAIT); } //同步的
-
-		// Write-Through 标志
-		if (FlagOn(FileObject->Flags, FO_WRITE_THROUGH))
-		{
-			SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_WRITE_THROUGH);
-		}
-
-		pIrpContext->MajorFunction = Data->Iopb->MajorFunction;
-		pIrpContext->MinorFunction = Data->Iopb->MinorFunction;
-
-		RtlCopyMemory(pIrpContext->Fileobject, FltObjects, FltObjects->Size);
-
-		if ((PFLT_CALLBACK_DATA)IoGetTopLevelIrp() != Data)
-		{
-			SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_RECURSIVE_CALL);
-		}
-	}
-	return pIrpContext;
-}
-
 BOOLEAN GetVersion()
 {
 	NTSTATUS status = STATUS_SUCCESS;
@@ -422,7 +384,7 @@ BOOLEAN UpdateFcbList(WCHAR * pwszFile, PDEFFCB * pFcb)
 	return InsertFcbList(pFcb);
 }
 //分配独占的权限
-BOOLEAN FsdAcquireExclusiveFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
+BOOLEAN FsAcquireExclusiveFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
 {
 RetryFcbExclusive:
 	if (ExAcquireResourceExclusiveLite(Fcb->Header.Resource, BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT)))
@@ -455,13 +417,87 @@ RetryFcbExclusive:
 				FsReleaseFcb(IrpContext, Fcb);
 			}
 		}
-	}
-	else 
-	{
-		return FALSE;
+		return TRUE;
 	}
 
-	return TRUE;
+	return FALSE;
+}
+
+BOOLEAN FsAcquireSharedFcbWaitForEx(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
+{
+RetryFcbSharedWaitEx:
+	if (ExAcquireSharedWaitForExclusive(Fcb->Header.Resource, FALSE))
+	{
+
+		if ((Fcb->OutstandingAsyncWrites != 0) &&
+			(IrpContext->MajorFunction != IRP_MJ_WRITE)) {
+
+			KeWaitForSingleObject(Fcb->OutstandingAsyncEvent, //同步
+				Executive,
+				KernelMode,
+				FALSE,
+				(PLARGE_INTEGER)NULL);
+
+			FsReleaseFcb(IrpContext, Fcb);
+
+			goto RetryFcbSharedWaitEx;
+		}
+
+		__try 
+		{
+			FsVerifyOperationIsLegal(IrpContext);
+		}
+		__finally 
+		{
+			if (AbnormalTermination()) {
+
+				FsReleaseFcb(IrpContext, Fcb);
+			}
+		}
+
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+BOOLEAN FsAcquireSharedFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
+{
+RetryFcbShared:
+	if (ExAcquireResourceSharedLite(Fcb->Header.Resource, BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT)))
+	{
+		if ((Fcb->OutstandingAsyncWrites != 0) &&
+			((IrpContext->MajorFunction != IRP_MJ_WRITE) ||
+			!FlagOn(IrpContext->OriginatingData->Iopb->IrpFlags, IRP_NOCACHE) ||
+			(ExGetSharedWaiterCount(Fcb->Header.Resource) != 0) ||
+			(ExGetExclusiveWaiterCount(Fcb->Header.Resource) != 0))) {
+
+			KeWaitForSingleObject(Fcb->OutstandingAsyncEvent,
+				Executive,
+				KernelMode,
+				FALSE,
+				(PLARGE_INTEGER)NULL);
+
+			FsReleaseFcb(IrpContext, Fcb);
+
+			goto RetryFcbShared;
+		}
+
+		__try 
+		{
+			FsVerifyOperationIsLegal(IrpContext);
+		}
+		__finally
+		{
+			if (AbnormalTermination()) 
+			{
+				FsReleaseFcb(IrpContext, Fcb);
+			}
+		}
+		return TRUE;
+	}
+
+	return FALSE;
 }
 
 VOID FsVerifyOperationIsLegal(IN PDEF_IRP_CONTEXT IrpContext)
@@ -832,7 +868,7 @@ NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 }
 
 
-NTSTATUS CreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFILE_OBJECT FileObject;
@@ -889,7 +925,7 @@ NTSTATUS CreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_
 	return Status;
 }
 
-NTSTATUS CreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
@@ -1284,3 +1320,272 @@ NTSTATUS FsCloseSetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 
 	return Status;
 }
+
+BOOLEAN CanFsWait(__in PFLT_CALLBACK_DATA Data)
+{
+	if (Data && FlagOn(Data->Iopb->OperationFlags, IRP_SYNCHRONOUS_API))
+	{
+		return TRUE;
+	}
+
+	return FALSE;
+}
+
+FLT_PREOP_CALLBACK_STATUS FsCompleteMdl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+{
+	PFILE_OBJECT FileObject;
+	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
+
+	PAGED_CODE();
+
+	if (FltObjects != NULL)
+	{
+		FileObject = FltObjects->FileObject;
+	}
+	else
+	{
+		FileObject = Iopb->TargetFileObject;
+	}
+
+	switch (Iopb->MajorFunction)
+	{
+	case IRP_MJ_READ:
+		CcMdlReadComplete(FileObject, Iopb->Parameters.Read.MdlAddress);
+		break;
+	case IRP_MJ_WRITE:
+		CcMdlWriteComplete(FileObject, &Iopb->Parameters.Write.ByteOffset, Iopb->Parameters.Write.MdlAddress);
+		break;
+
+	default:
+		//FsBugCheck();
+		break;
+	}
+
+	Iopb->Parameters.Read.MdlAddress = NULL;
+	Data->IoStatus.Status = STATUS_SUCCESS;
+	FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
+
+	return FLT_PREOP_COMPLETE;
+}
+
+VOID FsProcessException(IN OUT PDEF_IRP_CONTEXT *IrpContext OPTIONAL, IN OUT PFLT_CALLBACK_DATA *Data OPTIONAL, IN NTSTATUS Status)
+{
+	BOOLEAN bPending = FALSE;
+	__try
+	{
+		if (ARGUMENT_PRESENT(IrpContext) && ARGUMENT_PRESENT(*IrpContext))
+		{
+			(*IrpContext)->ExceptionStatus = Status;
+			
+			if ((*IrpContext)->WorkItem != NULL)
+			{
+				IoFreeWorkItem((*IrpContext)->WorkItem);
+				(*IrpContext)->WorkItem = NULL;
+			}
+			//延迟的设置可以删除irp上下文了然后删除上下文
+			if ((*IrpContext)->AllocateMdl != NULL)
+			{
+				IoFreeMdl((*IrpContext)->AllocateMdl);
+				(*IrpContext)->AllocateMdl = NULL;
+			}
+			if (FlagOn((*IrpContext)->Flags, IRP_CONTEXT_FLAG_IN_FSP))
+			{
+				bPending = TRUE;
+			}
+			if (bPending)
+			{
+				ClearFlag((*IrpContext)->Flags, IRP_CONTEXT_FLAG_DONT_DELETE);
+			}
+			FsDeleteIrpContext(IrpContext);
+		}
+		if (ARGUMENT_PRESENT(Data) && ARGUMENT_PRESENT(*Data))
+		{
+			if (NT_ERROR(Status) && FlagOn((*Data)->Iopb->IrpFlags, IRP_INPUT_OPERATION))
+			{
+				(*Data)->IoStatus.Information = 0;
+			}
+			(*Data)->IoStatus.Status = Status;
+			if (bPending)
+			{
+				FltCompletePendedPreOperation(*Data, FLT_PREOP_COMPLETE, NULL);
+			}
+		}
+	}
+	__finally
+	{
+		if (ARGUMENT_PRESENT(Data) && ARGUMENT_PRESENT(*Data))
+		{
+			(*Data)->IoStatus.Status = Status;
+		}
+	}
+}
+
+PVOID FsMapUserBuffer(IN OUT PFLT_CALLBACK_DATA Data)
+{
+	NTSTATUS Status;
+	PMDL pMdl;
+	PVOID pBuffer;
+
+	PMDL *ppMdl;
+	PVOID * ppBuffer;
+	PULONG Length;
+	LOCK_OPERATION DesiredAccess;
+
+	PVOID pSystemBuffer = NULL;
+	PFLT_IO_PARAMETER_BLOCK pIopb = Data->Iopb;
+
+	PAGED_CODE();
+
+	Status = FltDecodeParameters(Data, &ppMdl, &ppBuffer, &Length, &DesiredAccess);
+	if (!NT_SUCCESS(Status))
+	{
+		FsRaiseStatus(NULL, Status);
+	}
+	pMdl = *ppMdl;
+	pBuffer = *ppBuffer;
+
+	if (NULL == pMdl)
+	{
+		return pBuffer;
+	}
+	pSystemBuffer = MmGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
+	if (NULL == pSystemBuffer)
+	{
+		FsRaiseStatus(NULL, STATUS_INSUFFICIENT_RESOURCES);
+	}
+	return pSystemBuffer;
+}
+
+BOOLEAN MyFltCheckLockForReadAccess(IN PFILE_LOCK FileLock, IN PFLT_CALLBACK_DATA Data)
+{
+	BOOLEAN Result;
+
+	PFLT_IO_PARAMETER_BLOCK  Iopb;
+
+	LARGE_INTEGER  StartingByte;
+	LARGE_INTEGER  Length;
+	ULONG          Key;
+	PFILE_OBJECT   FileObject;
+	PVOID          ProcessId;
+	LARGE_INTEGER  BeyondLastByte;
+
+	if (FileLock->LockInformation == NULL)
+	{
+		return TRUE;
+	}
+
+	Iopb = Data->Iopb;
+
+	StartingByte = Iopb->Parameters.Read.ByteOffset;
+	Length.QuadPart = (ULONGLONG)Iopb->Parameters.Read.Length;
+
+	BeyondLastByte.QuadPart = (ULONGLONG)StartingByte.QuadPart + Length.LowPart;
+
+	Key = Iopb->Parameters.Read.Key;
+	FileObject = Iopb->TargetFileObject;
+	ProcessId = FltGetRequestorProcess(Data);
+
+	Result = FsRtlFastCheckLockForRead(FileLock,
+		&StartingByte,
+		&Length,
+		Key,
+		FileObject,
+		ProcessId);
+
+	return Result;
+}
+
+
+//重新得到文件的分配大小
+VOID FsLookupFileAllocationSize(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb, IN PDEF_CCB Ccb)
+{
+	NTSTATUS Status;
+	FILE_STANDARD_INFORMATION FileInfo = { 0 };
+	PFLT_CALLBACK_DATA NewData;
+	PFLT_RELATED_OBJECTS FltObjects = IrpContext->FltObjects;
+	ULONG ClusterSize;
+	LARGE_INTEGER TempLi;
+	PVOLUMECONTEXT volCtx = NULL;
+
+
+	Status = FltAllocateCallbackData(FltObjects->Instance, Ccb->StreamFileInfo.StreamObject, &NewData);
+	if (NT_SUCCESS(Status))
+	{
+		NewData->Iopb->MajorFunction = IRP_MJ_QUERY_INFORMATION;
+		NewData->Iopb->Parameters.QueryFileInformation.FileInformationClass = FileStandardInformation;
+		NewData->Iopb->Parameters.QueryFileInformation.InfoBuffer = &FileInfo;
+		NewData->Iopb->Parameters.QueryFileInformation.Length = sizeof(FILE_STANDARD_INFORMATION);
+
+		FltPerformSynchronousIo(NewData);
+		Status = NewData->IoStatus.Status;
+	}
+	if (NT_SUCCESS(Status))
+	{
+		Fcb->Header.AllocationSize.QuadPart = FileInfo.AllocationSize.QuadPart - Fcb->FileHeaderLength;
+		if (Fcb->Header.FileSize.QuadPart > Fcb->Header.AllocationSize.QuadPart)
+		{
+			Status = FltGetVolumeContext(FltObjects->Filter,
+				FltObjects->Volume,
+				&volCtx);
+			if (!NT_SUCCESS(Status))
+			{
+				FsRaiseStatus(IrpContext, Status);
+			}
+
+			ClusterSize = volCtx->ulSectorSize * volCtx->uSectorsPerAllocationUnit; //簇大小
+
+			if (volCtx != NULL)
+			{
+				FltReleaseContext(volCtx);
+				volCtx = NULL;
+			}
+
+			TempLi.QuadPart = Fcb->Header.FileSize.QuadPart;//占用大小
+			TempLi.QuadPart += ClusterSize;
+			TempLi.HighPart += (ULONG)((LONGLONG)ClusterSize >> 32);
+
+			if (TempLi.LowPart == 0) //不需要进位 
+			{
+				TempLi.HighPart -= 1;
+			}
+
+			Fcb->Header.AllocationSize.LowPart = ((ULONG)Fcb->Header.FileSize.LowPart + (ClusterSize - 1)) & (~(ClusterSize - 1));
+
+			Fcb->Header.AllocationSize.HighPart = TempLi.HighPart;
+		}
+		if (NewData != NULL)
+		{
+			FltFreeCallbackData(NewData);
+		}
+	}
+	else
+	{
+		if (NULL != NewData)
+		{
+			FltFreeCallbackData(NewData);
+		}
+		FsRaiseStatus(IrpContext, Status);
+	}
+	if (Fcb->Header.FileSize.QuadPart > Fcb->Header.AllocationSize.QuadPart)
+	{
+		FsPopUpFileCorrupt(IrpContext, Fcb);
+		FsRaiseStatus(IrpContext, STATUS_FILE_CORRUPT_ERROR);
+	}
+}
+
+VOID FsPopUpFileCorrupt(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
+{
+	PKTHREAD Thread;
+	UNICODE_STRING unicodeString;
+	RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
+	if (IoIsSystemThread(IrpContext->OriginatingData->Thread))
+	{
+		Thread = NULL;
+	}
+	else
+	{
+		Thread = IrpContext->OriginatingData->Thread;
+	}
+	IoRaiseInformationalHardError(STATUS_FILE_CORRUPT_ERROR, &unicodeString, Thread);
+}
+
