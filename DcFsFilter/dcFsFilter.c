@@ -3,6 +3,10 @@
 #include "volumeContext.h"
 #include "fsdata.h"
 #include "fsCreate.h"
+#include "fsInformation.h"
+#include "fsRead.h"
+#include "fsClose.h"
+#include "fsCleanup.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -25,8 +29,8 @@ __in PUNICODE_STRING RegistryPath
 CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 	{ IRP_MJ_CREATE,
 	0,
-	PtPreOperationCreate,
-	PtPostOperationCreate },
+	PtPreCreate,
+	PtPostCreate },
 
 	{ IRP_MJ_CREATE_NAMED_PIPE,
 	0,
@@ -35,13 +39,13 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_CLOSE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreClose,
+	PtPostClose},
 
 	{ IRP_MJ_READ,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreRead,
+	PtPostRead },
 
 	{ IRP_MJ_WRITE,
 	0,
@@ -50,8 +54,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_QUERY_INFORMATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreQueryInformation,
+	PtPostQueryInformation },
 
 	{ IRP_MJ_SET_INFORMATION,
 	0,
@@ -115,8 +119,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_CLEANUP,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreCleanup,
+	PtPostCleanup },
 
 	{ IRP_MJ_CREATE_MAILSLOT,
 	0,
@@ -251,8 +255,8 @@ CONST FLT_REGISTRATION FilterRegistration = {
 	PtInstanceTeardownStart,            //  InstanceTeardownStart
 	PtInstanceTeardownComplete,         //  InstanceTeardownComplete
 
-	NULL,                               //  GenerateFileName
-	NULL,                               //  GenerateDestinationFileName
+	GenerateFileName,                               //  GenerateFileName
+	NormalizeNameComponentCallback,                               //  GenerateDestinationFileName
 	NULL                                //  NormalizeNameComponent
 };
 
@@ -558,8 +562,8 @@ The return value is the status of the operation.
 --*/
 {
 	NTSTATUS status;
-
-	UNREFERENCED_PARAMETER(FltObjects);
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
@@ -573,6 +577,26 @@ The return value is the status of the operation.
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
 	//
+	
+
+	if (IsMyFakeFcb(FltObjects->FileObject))
+	{
+		if (FLT_IS_FASTIO_OPERATION(Data))
+		{
+			FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+			return FltStatus;
+		}
+		if (FLT_IS_IRP_OPERATION(Data))
+		{
+			FltStatus = FsPrePassThroughIrp(Data, FltObjects, CompletionContext);
+			return FltStatus;
+		}
+		if (FLT_IS_FS_FILTER_OPERATION(Data))
+		{
+			Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+			return FltStatus;
+		}
+	}
 
 	if (PtDoRequestOperationStatus(Data)) {
 
@@ -803,4 +827,91 @@ BOOLEAN IsShadowCopyType(PUNICODE_STRING pDeviceName)
 		return TRUE;
 	}
 	return FALSE;
+}
+
+NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __in PFLT_CALLBACK_DATA CallbackData, __in FLT_FILE_NAME_OPTIONS NameOptions, __inout PBOOLEAN CacheFileNameInformation, __inout PFLT_NAME_CONTROL FileName)
+{
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	PFILE_OBJECT StreamObject = FileObject;
+	PFLT_FILE_NAME_INFORMATION FileNameInformation = NULL;
+	BOOLEAN bEncryptResource = FALSE;
+	PDEFFCB Fcb = FileObject->FsContext;
+	PDEF_CCB Ccb = FileObject->FsContext2;
+
+	FsRtlEnterFileSystem();
+
+	__try
+	{
+		if (IsMyFakeFcb(FileObject))
+		{
+			ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
+			bEncryptResource = TRUE;
+			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) || Ccb->StreamFileInfo.StreamObject == NULL)
+			{
+				try_return(Status = STATUS_FILE_DELETED);
+			}
+			else
+			{
+				StreamObject = Ccb->StreamFileInfo.StreamObject;
+			}
+		}
+
+		ClearFlag(NameOptions, FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER);
+
+		if (FlagOn(NameOptions, FLT_FILE_NAME_NORMALIZED))
+		{
+			ClearFlag(NameOptions, FLT_FILE_NAME_NORMALIZED);
+			SetFlag(NameOptions, FLT_FILE_NAME_OPENED);
+		}
+
+		if (CallbackData)
+		{
+			PFILE_OBJECT TemFileObject = CallbackData->Iopb->TargetFileObject;
+			CallbackData->Iopb->TargetFileObject = StreamObject;
+
+			FltSetCallbackDataDirty(CallbackData);
+
+			Status = FltGetFileNameInformation(CallbackData, NameOptions, &FileNameInformation);
+
+			CallbackData->Iopb->TargetFileObject = TemFileObject;
+			FltClearCallbackDataDirty(CallbackData);
+		}
+		else
+		{
+			Status = FltGetFileNameInformationUnsafe(StreamObject, Instance, NameOptions, &FileNameInformation);
+		}
+		if (!NT_SUCCESS(Status))
+		{
+			try_return(Status);
+		}
+		Status = FltCheckAndGrowNameControl(FileName, FileNameInformation->Name.Length);
+
+		if (!NT_SUCCESS(Status))
+		{
+			try_return(Status);
+		}
+
+		RtlCopyUnicodeString(&FileName->Name, &FileNameInformation->Name);
+
+		if (FileNameInformation != NULL)
+		{
+			FltReleaseFileNameInformation(FileNameInformation);
+		}
+		Status = STATUS_SUCCESS;
+	try_exit: NOTHING;
+	}
+	__finally
+	{
+		if (bEncryptResource)
+		{
+			ExReleaseResourceLite(Fcb->Resource);
+		}
+	}
+	FsRtlExitFileSystem();
+	return Status;
+}
+
+NTSTATUS NormalizeNameComponentCallback(__in PFLT_INSTANCE Instance, __in PCUNICODE_STRING ParentDirectory, __in USHORT VolumeNameLength, __in PCUNICODE_STRING Component, __inout PFILE_NAMES_INFORMATION ExpandComponentName, __in ULONG ExpandComponentNameLength, __in FLT_NORMALIZE_NAME_FLAGS Flags, __inout PVOID *NormalizationContext)
+{
+	return STATUS_UNSUCCESSFUL;
 }

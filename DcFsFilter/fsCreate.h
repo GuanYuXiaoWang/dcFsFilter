@@ -6,14 +6,13 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-BOOLEAN IsFilterProcess(PCFLT_RELATED_OBJECTS pFltObjects, PNTSTATUS pStatus, PULONG pProcType);
 
-FLT_PREOP_CALLBACK_STATUS PtPreOperationCreate(__inout PFLT_CALLBACK_DATA Data,
+FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data,
 												__in PCFLT_RELATED_OBJECTS FltObjects,
 												__deref_out_opt PVOID *CompletionContext
 												);
 
-FLT_POSTOP_CALLBACK_STATUS PtPostOperationCreate(__inout PFLT_CALLBACK_DATA Data,
+FLT_POSTOP_CALLBACK_STATUS PtPostCreate(__inout PFLT_CALLBACK_DATA Data,
 												__in PCFLT_RELATED_OBJECTS FltObjects,
 												__in_opt PVOID CompletionContext,
 												__in FLT_POST_OPERATION_FLAGS Flags

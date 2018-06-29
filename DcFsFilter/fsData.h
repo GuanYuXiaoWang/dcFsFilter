@@ -36,6 +36,9 @@ extern "C" {
 
 	VOID InitData();
 	VOID UnInitData();
+
+	BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType);
+
 	PERESOURCE FsdAllocateResource();
 	BOOLEAN FsIsIrpTopLevel(IN PFLT_CALLBACK_DATA Data);
 	PDEF_IRP_CONTEXT FsCreateIrpContext(IN PFLT_CALLBACK_DATA Data, IN PCFLT_RELATED_OBJECTS FltObjects, IN BOOLEAN bWait);
@@ -74,16 +77,14 @@ extern "C" {
 	VOID FsDeleteIrpContext(IN OUT PDEF_IRP_CONTEXT * IrpContext);
 
 	PDEF_CCB FsCreateCcb();
+	VOID FsFreeCcb(IN PDEF_CCB Ccb);
 	PERESOURCE FsAllocateResource();
 	VOID NetFileSetCacheProperty(IN PFILE_OBJECT FileObject, IN ACCESS_MASK DesiredAccess);
 	NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data,
 									__in PCFLT_RELATED_OBJECTS FltObject,
-									__in PFILE_OBJECT FileObject,
-									__in PLARGE_INTEGER FileAllocateSize,
-									__in PLARGE_INTEGER FileSize,
-									__in PBOOLEAN bDirectory);
+									__inout PDEF_IRP_CONTEXT IrpContext);
 
-	NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
+	NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_IRP_CONTEXT IrpContext);
 	NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext);
 	PDEFFCB  FsCreateFcb();
 	BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext);
@@ -102,7 +103,7 @@ extern "C" {
 	VOID FsPopUpFileCorrupt(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
 
 
-
+	FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext);
 
 
 

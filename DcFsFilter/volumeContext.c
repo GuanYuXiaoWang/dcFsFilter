@@ -76,7 +76,7 @@ NTSTATUS SetVolumeContext(PCFLT_RELATED_OBJECTS FltObjects, PFLT_VOLUME_PROPERTI
 		{
 			__leave;
 		}
-		pVolumeContext->pEresurce = FsdAllocateResource();
+		pVolumeContext->pEresurce = FsAllocateResource();
 		pVolumeContext->ulSectorSize = max(pVolumeContext->ulSectorSize, MIN_SECTOR_SIZE);
 		pVolumeContext->uDeviceType = pVolumePro->DeviceType;
 		pVolumeContext->strDeviceName.ulLength = pVolumePro->RealDeviceName.Length + 1;

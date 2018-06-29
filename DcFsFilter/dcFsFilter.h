@@ -88,6 +88,24 @@ PtDoRequestOperationStatus(
 __in PFLT_CALLBACK_DATA Data
 );
 
+NTSTATUS GenerateFileName(__in PFLT_INSTANCE  Instance,
+__in PFILE_OBJECT  FileObject,
+__in PFLT_CALLBACK_DATA  CallbackData,
+__in FLT_FILE_NAME_OPTIONS  NameOptions,
+__inout PBOOLEAN  CacheFileNameInformation,
+__inout PFLT_NAME_CONTROL  FileName
+);
+
+NTSTATUS NormalizeNameComponentCallback(__in PFLT_INSTANCE  Instance,
+__in PCUNICODE_STRING  ParentDirectory,
+__in USHORT  VolumeNameLength,
+__in PCUNICODE_STRING  Component,
+__inout PFILE_NAMES_INFORMATION  ExpandComponentName,
+__in ULONG  ExpandComponentNameLength,
+__in FLT_NORMALIZE_NAME_FLAGS  Flags,
+__inout PVOID  *NormalizationContext
+);
+
 BOOLEAN IsShadowCopyType(PUNICODE_STRING pDeviceName);
 
 #ifdef __cplusplus

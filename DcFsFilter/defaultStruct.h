@@ -8,10 +8,8 @@
 #include "fatstruc.h"
 #include "volumeContext.h"
 
-#define FILE_NO_ACCESS 0x000
-#define FILE_PASS_ACCESS 0x001
-#define FILE_ONLY_READ 0x002
-#define FILE_READWRITE 0x004
+#define FILE_NO_ACCESS 0x800
+#define FILE_PASS_ACCESS 0x400
 
 typedef enum tagCREATE_ACCESS_TYPE
 {
@@ -28,8 +26,6 @@ typedef enum tagCREATE_ACCESS_TYPE
 
 #define FILE_HEADER_LENGTH 1024
 
-#define FCB_STATE_FILEHEADER_WRITED 0x001
-
 typedef struct tagDEF_IO_CONTEXT
 {
 	//
@@ -42,8 +38,6 @@ typedef struct tagDEF_IO_CONTEXT
 	//
 	//  These two field are used for multiple run Io
 	//
-
-	__volatile LONG IrpCount;
 	PIRP TopLevelIrp;
 
 	//
@@ -152,21 +146,11 @@ typedef struct tagDEFFCB
 	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
-	UCHAR						szAlinged[4];
-	LIST_ENTRY					FcbLinks;
-	NTFS_FCB*					NtFsFCB;//+0x050 // this filed will be used by call back of ntfs.
-	PVOID						Vcb;//+0x054
-	ULONG						State;
-	
 	ULONG						UncleanCount;
 	ULONG						OpenCount;
 	SHARE_ACCESS				ShareAccess;//+0x068
-	ULONG						AttributeTypeCode_PLACE;
-	UNICODE_STRING				AttributeName_PLACE;
-	PFILE_OBJECT				FileObject_PLACE;
-	PVOID						NoPagedFCB;
+
 	PVOID						LazyWriteThread[2];
-	SECTION_OBJECT_POINTERS		SegmentObject;
 	FAST_MUTEX AdvancedFcbHeaderMutex;
 	//
 	//  The following field is used by the oplock module
@@ -186,7 +170,6 @@ typedef struct tagDEFFCB
 	//
 	// this field is protected by the fastmutex in Header.
 
-	PLIST_ENTRY PendingEofAdvances;
 	PFILE_LOCK	FileLock;
 	ULONG		FcbState;
 	ULONG		CCBFlags;
@@ -194,14 +177,11 @@ typedef struct tagDEFFCB
 	UCHAR		Flags;
 
 	LONGLONG	CreationTime;                                          //  offset = 0x000
-
 	LONGLONG	LastModificationTime;                                  //  offset = 0x008
 	//
 	//  Last time any attribute was modified.
 	//
-
 	LONGLONG		LastChangeTime;                                        //  offset = 0x010
-
 	//
 	//  Last time the file was accessed.  This field may not always
 	//  be updated (write-protected media), and even when it is
@@ -210,21 +190,12 @@ typedef struct tagDEFFCB
 	//  when the file was last accessed, for purposes of possible
 	//  file migration.
 	//
-
 	LONGLONG		LastAccessTime;                                        //  offset = 0x018
-
-
 	ULONG			Attribute;
 	ULONG			LinkCount;
-
 	LONGLONG		CurrentLastAccess;
-
-	BOOLEAN			bNeedEncrypt;
-	union
-	{
-		PDISKFILEOBJECT	pDiskFileObject;// 当是directory的时候 就设置成DISKDIROBEJECT
-		PDISKDIROBEJECT pDiskDirObject;
-	};
+	BOOLEAN			DeletePending;
+	BOOLEAN			Directory;
 
 	BOOLEAN			bModifiedByOther; //当这个cleanup里面把 UncleanCount 减为零的时候，就说明所有的Process 全部把自己的close 关闭了
 	//如果没有立即收到Close 的irp话，那么就是说明系统有这个Fileobject的reference。
@@ -232,9 +203,6 @@ typedef struct tagDEFFCB
 	//当非可信的进程有要求写的时候，判断是不是为TRUE，如果是那么ok 让它打开，
 	//当非可惜进程要求写的时候，判断为false，那么返回 说明这个文件正在编辑，以只读方式打开？？？
 	PFAST_MUTEX		Other_Mutex;
-	UCHAR			szAlinged1[36];
-	PVOID			CreateSectionThread;	//+0x12c
-	UCHAR			szAligned2[20]; //+0x130
 	BOOLEAN			bWriteHead;
 	WCHAR			wszFile[128];
 
@@ -332,10 +300,19 @@ typedef struct tagCREATE_INFO
 	PFILE_OBJECT pStreamObject;
 	BOOLEAN bNetWork;
 	ULONG_PTR Information;
+
+	//file base info
+	FILE_BASIC_INFORMATION BaseInfo;
+
+	//standard info
+	ULONG NumberOfLinks;
+	BOOLEAN DeletePending;
 	LARGE_INTEGER FileAllocationSize;
 	LARGE_INTEGER FileSize;
 	LARGE_INTEGER RealSize;
 	BOOLEAN bRealSize;
+	BOOLEAN Directory;
+
 	ULONG uProcType;
 
 	ULONG FileAccess;
@@ -380,79 +357,22 @@ typedef struct tagIRP_CONTEXT
 
 	NTSTATUS ExceptionStatus;
 
-
-	//
-	//  This is the IrpContext for the top level request.
-	//
-
-	struct _IRP_CONTEXT *TopLevelIrpContext;
-
-	//
-	//  The following union contains pointers to the IoContext for I/O
-	//  based requests and a pointer to a security context for requests
-	//  which need to capture the subject context in the calling thread.
-	//
-
-	union
-	{
-
-
-		//  The following context block is used for non-cached Io.
-
-		struct _NTFS_IO_CONTEXT *NtfsIoContext;
-
-		//  The following is the captured subject context.
-
-		PSECURITY_SUBJECT_CONTEXT SubjectContext;
-
-		//  The following is used during create for oplock cleanup.
-
-		struct _OPLOCK_CLEANUP *OplockCleanup;
-
-	} Union;
-
-	//
-	//  A pointer to the originating Irp.  We will store the Scb for
-	//  delayed or async closes here while the request is queued.
-	//
-
-	PIRP OriginatingIrp;
-
 	//
 	//  Major and minor function codes copied from the Irp
 	//
 
 	UCHAR MajorFunction;
 	UCHAR MinorFunction;
-
-	//
-	//  The following field is used to maintain a queue of records that
-	//  have been deallocated while processing this irp context.
-	//
-
-	LIST_ENTRY RecentlyDeallocatedQueue;
-
-	//PIO_WORKITEM  
-	//  This structure is used for posting to the Ex worker threads.
-	//
-
-	WORK_QUEUE_ITEM WorkQueueItem;
 	PIO_WORKITEM	WorkItem;
 
 	PFLT_CALLBACK_DATA OriginatingData;
 	HANDLE ProcessId;
-	DEFFCB*			FcbWithPagingExclusive;
 
 	//
 	//  Originating Device (required for workque algorithms)
 	//
-
-	PDEVICE_OBJECT RealDevice;
 	PFLT_RELATED_OBJECTS FltObjects;
 	PFILE_OBJECT   Fileobject;
-	PDEVICE_OBJECT pNextDevice;
-	PPROCESSINFO   pProcessInfo;
-	HANDLE		   hProcessOrignal;
 
 	CREATE_INFO createInfo;
 	ULONG ulSectorSize;

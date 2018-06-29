@@ -15,7 +15,7 @@
 	}\
 }
 
-FLT_PREOP_CALLBACK_STATUS PtPreOperationRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
 	BOOLEAN bTopLevel = FALSE;
@@ -75,7 +75,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationRead(__inout PFLT_CALLBACK_DATA Data, __
 	return FltStatus;
 }
 
-FLT_POSTOP_CALLBACK_STATUS PtPostOperationRead(__inout PFLT_CALLBACK_DATA Data,
+FLT_POSTOP_CALLBACK_STATUS PtPostRead(__inout PFLT_CALLBACK_DATA Data,
 												__in PCFLT_RELATED_OBJECTS FltObjects,
 												__in_opt PVOID CompletionContext,
 												__in FLT_POST_OPERATION_FLAGS Flags)
@@ -326,7 +326,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			ULONG readLen = ByteCount;
 			PUCHAR newBuf = NULL;
 			PMDL newMdl = NULL;
-			PMDL mdl;
 			ULONG_PTR RetBytes = 0;
 
 			ULONG_PTR ZeroOffset = 0;
@@ -592,7 +591,7 @@ VOID FsStackOverflowRead(IN PVOID Context, IN PKEVENT Event)
 	KeSetEvent(Event, 0, FALSE);
 }
 
-NTSTATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+FLT_PREOP_CALLBACK_STATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	KEVENT Event;
 	PERESOURCE Resource;
@@ -743,4 +742,5 @@ NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects, IN PDEF_IRP_CONTEXT
 			Status = FltPerformAsynchronousIo(NewData, FsReadFileAsyncCompletionRoutine, IrpContext->pIoContext);
 		}
 	}
+	return Status;
 }

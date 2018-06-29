@@ -20,6 +20,70 @@ CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks = {0};
 LARGE_INTEGER  Li0 = { 0, 0 };
 LARGE_INTEGER  Li1 = { 1, 0 };
 
+NTKERNELAPI UCHAR * PsGetProcessImageFileName(__in PEPROCESS Process);
+
+BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType)
+{
+	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
+	HANDLE ProcessId = NULL;
+	PEPROCESS Process = NULL;
+	PUCHAR ProcessName;
+	BOOLEAN bFilter = FALSE;
+	UNICODE_STRING unicodeString;
+	RtlInitUnicodeString(&unicodeString, L"\\Device\\HarddiskVolume1\\Users\\Sea\\Desktop\\1.rtf");
+
+	UNREFERENCED_PARAMETER(pProcType);
+
+	//先判断文件是否为加密文件，再判断访问进程是否为受控进程(可以不区分先后)
+
+	__try
+	{
+		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+		if (!NT_SUCCESS(*pStatus))
+		{
+			__leave;
+		}
+		//DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
+		//test
+		if (0 != RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
+		{
+			__leave;
+		}
+
+		ProcessId = PsGetCurrentProcessId();
+		if (NULL == ProcessId)
+		{
+			*pStatus = STATUS_UNSUCCESSFUL;
+			__leave;
+		}
+		*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
+		if (!NT_SUCCESS(*pStatus))
+		{
+			__leave;
+		}
+		ProcessName = PsGetProcessImageFileName(Process);
+		//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
+		if (0 == stricmp("wordpad.exe", ProcessName))
+		{
+			bFilter = TRUE;
+		}
+	}
+	__finally
+	{
+		if (FileInfo != NULL)
+		{
+			FltReleaseFileNameInformation(FileInfo);
+		}
+		if (Process != NULL)
+		{
+			ObDereferenceObject(Process);
+		}
+	}
+
+	return bFilter;
+}
+
+
 VOID InitData()
 {
 	UNICODE_STRING RoutineString = { 0 };
@@ -155,7 +219,10 @@ VOID FsReleaseFcbFromLazyWrite(IN PVOID Fcb)
 		IoSetTopLevelIrp(NULL);
 	}
 	pFcb->LazyWriteThread[uIndex] = NULL;
-	ExReleaseResourceLite(pFcb->Header.PagingIoResource);
+	if (pFcb->Header.PagingIoResource)
+	{
+		ExReleaseResourceLite(pFcb->Header.PagingIoResource);
+	}
 }
 
 //预读
@@ -185,7 +252,10 @@ VOID FsReleaseFcbFromReadAhead(IN PVOID Fcb)
 	{
 		return;
 	}
-	ExReleaseResourceLite(pFcb->Header.Resource);
+	if (pFcb->Header.Resource)
+	{
+		ExReleaseResourceLite(pFcb->Header.Resource);
+	}
 }
 
 BOOLEAN IsMyFakeFcb(PFILE_OBJECT FileObject)
@@ -193,6 +263,7 @@ BOOLEAN IsMyFakeFcb(PFILE_OBJECT FileObject)
 	DEFFCB * Fcb;
 	if (FileObject == NULL || FileObject->FsContext == NULL)
 	{
+		//no file open
 		return FALSE;
 	}
 	Fcb = FileObject->FsContext;
@@ -842,37 +913,32 @@ VOID NetFileSetCacheProperty(IN PFILE_OBJECT FileObject, IN ACCESS_MASK DesiredA
 }
 
 //获得文件信息
-NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObject, __in PFILE_OBJECT FileObject, __in PLARGE_INTEGER FileAllocateSize, __in PLARGE_INTEGER FileSize, __in PBOOLEAN bDirectory)
+NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObject, __inout PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	FILE_STANDARD_INFORMATION FileInfo;
+	FILE_STANDARD_INFORMATION FileInfo = {0};
 
-	status = FltQueryInformationFile(FltObject->Instance, FileObject, &FileInfo, sizeof(FILE_STANDARD_INFORMATION), FileStandardInformation, NULL);
+	status = FltQueryInformationFile(FltObject->Instance, IrpContext->createInfo.pStreamObject, &FileInfo, sizeof(FILE_STANDARD_INFORMATION), FileStandardInformation, NULL);
 	if (NT_SUCCESS(status))
 	{
-		if (NULL != FileSize)
-		{
-			*FileSize = FileInfo.EndOfFile;
-		}
-		if (NULL != FileAllocateSize)
-		{
-			*FileAllocateSize = FileInfo.AllocationSize;
-		}
-		if (NULL != bDirectory)
-		{
-			*bDirectory = FileInfo.Directory;
-		}
+		//这里是实际大小
+		IrpContext->createInfo.FileSize = FileInfo.EndOfFile;
+		IrpContext->createInfo.FileAllocationSize = FileInfo.AllocationSize;
+		IrpContext->createInfo.Directory = FileInfo.Directory;
+		IrpContext->createInfo.DeletePending = FileInfo.DeletePending;
+		IrpContext->createInfo.NumberOfLinks = FileInfo.NumberOfLinks;
 	}
 
 	return status;
 }
 
 
-NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
-	PFILE_OBJECT FileObject;
-	LARGE_INTEGER ByteOffset;
+	PFILE_OBJECT FileObject = NULL;
+	LARGE_INTEGER ByteOffset = {0};
+	FILE_BASIC_INFORMATION FileInfo = {0};
 	ByteOffset.QuadPart = 0;
 
 	FileObject = IrpContext->createInfo.pStreamObject;
@@ -901,21 +967,23 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDE
 			*/
 		}
 	}
-
-	/*
-		if(NT_SUCCESS(Status))
+	//获取文件的访问权限
+	if (NT_SUCCESS(Status))
+	{
+		Status = FltQueryInformationFile(FltObjects->Instance, FileObject, &FileInfo, sizeof(FILE_BASIC_INFORMATION), FileBasicInformation, NULL);
+		if (NT_SUCCESS(Status))
 		{
-
-		if(R3FileAccessNotify(IrpContext)) //通知应用层去判断，这里也可以你自动判断了
-		{
-		Status = STATUS_SUCCESS;
+			if (FlagOn(FileInfo.FileAttributes, FILE_ATTRIBUTE_READONLY))
+			{
+				IrpContext->createInfo.FileAccess = FILE_READ_ACCESS;
+			}
+			else
+			{
+				IrpContext->createInfo.FileAccess = FILE_WRITE_ACCESS;
+			}
+			RtlCopyMemory(&IrpContext->createInfo.BaseInfo, &FileInfo, sizeof(FILE_BASIC_INFORMATION));
 		}
-		else
-		{
-		Status = STATUS_UNSUCCESSFUL;
-		}
-		}
-	*/
+	}
 
 	if (NULL != IrpContext->createInfo.pFileHeader)
 	{
@@ -929,7 +997,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 {
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
-	NTSTATUS status;
+	NTSTATUS status = STATUS_SUCCESS;
 	OBJECT_ATTRIBUTES ob;
 	IO_STATUS_BLOCK IoStatus;
 	PFILE_OBJECT FileObject;
@@ -937,6 +1005,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 	ULONG ClusterSize = 0;
 	LARGE_INTEGER Temp;
 	ULONG Options = 0;
+	UNICODE_STRING unicodeString;
 
 	__try
 	{
@@ -959,16 +1028,17 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		{
 			try_return(status = STATUS_INSUFFICIENT_RESOURCES);
 		}
+
 		ExInitializeFastMutex(&Fcb->AdvancedFcbHeaderMutex);
 		FsRtlSetupAdvancedHeader(&Fcb->Header, &Fcb->AdvancedFcbHeaderMutex);
 		bAdvancedHeader = TRUE;
-		/*todo::如果解密，需减去加密头的长度
-		if (IrpContext->createInfo.bDecrementHeader)
-		{
-			IrpContext->createInfo.FileSize.QuadPart -= FILE_HEADER_LENGTH;
-			IrpContext->createInfo.FileAllocationSize.QuadPart -= FILE_HEADER_LENGTH;
-		}
-		*/
+		//todo::如果解密，需减去加密头的长度
+// 		if (IrpContext->createInfo.bDecrementHeader)
+// 		{
+// 			IrpContext->createInfo.FileSize.QuadPart -= FILE_HEADER_LENGTH;
+// 			IrpContext->createInfo.FileAllocationSize.QuadPart -= FILE_HEADER_LENGTH;
+// 		}
+		
 		Fcb->Header.FileSize.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
 		Fcb->Header.ValidDataLength.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
 		if (IrpContext->createInfo.FileSize.QuadPart > IrpContext->createInfo.FileAllocationSize.QuadPart)
@@ -1003,6 +1073,15 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 				Fcb->ValidDataToDisk.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
 			}
 		}
+		Fcb->LastAccessTime = IrpContext->createInfo.BaseInfo.LastAccessTime.QuadPart;
+		Fcb->CreationTime = IrpContext->createInfo.BaseInfo.CreationTime.QuadPart;
+		Fcb->CurrentLastAccess = IrpContext->createInfo.BaseInfo.ChangeTime.QuadPart;
+		Fcb->Attribute = IrpContext->createInfo.BaseInfo.FileAttributes;
+		Fcb->LastModificationTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
+		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
+		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
+		Fcb->Directory = IrpContext->createInfo.Directory;
+
 		FltInitializeOplock(&Fcb->Oplock);
 		Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
 		if (IrpContext->createInfo.bWriteHeader)
@@ -1023,11 +1102,20 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		if (TRUE/*FLT_FILE_LOCK*/)
 		{
 			Fcb->FileLock = FltAllocateFileLock(NULL, NULL);
+			if (Fcb->FileLock)
+			{
+				FltInitializeFileLock(Fcb->FileLock);
+			}
 		}
 		else
 		{
 			Fcb->FileLock = FsRtlAllocateFileLock(NULL, NULL);
+			if (Fcb->FileLock)
+			{
+				FsRtlInitializeFileLock(Fcb->FileLock, NULL, NULL);
+			}
 		}
+		
 		Fcb->CacheType = CACHE_ALLOW;
 		Fcb->FileType = IrpContext->createInfo.uProcType;
 		
@@ -1037,14 +1125,16 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		}
 		else
 			RtlCopyMemory(Fcb->wszFile, IrpContext->createInfo.nameInfo->Name.Buffer, 127);
-		
+#if 0		
 		if (!IrpContext->createInfo.bNetWork)
 		{
 			Options = FILE_NON_DIRECTORY_FILE;
 #ifdef USE_CACHE_READWRITE
 			SetFlag(Options, FILE_WRITE_THROUGH);//直接写入
 #endif
-			//InitializeObjectAttributes(&ob, &Fcb->wszFile, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+			
+			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
+			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
 			status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
 				NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
 			if (!NT_SUCCESS(status))
@@ -1055,8 +1145,13 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 			if (!NT_SUCCESS(status))
 			{
 				FltClose(Fcb->CcFileHandle);
+				Fcb->CcFileHandle = NULL;
 				try_return(status);
 			}
+			
+			//Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
+			//Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+
 		}
 		else
 		{
@@ -1079,6 +1174,8 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		{
 			try_return(status = STATUS_INSUFFICIENT_RESOURCES);
 		}
+		
+#endif
 		IrpContext->createInfo.pFcb = Fcb;
 		IrpContext->createInfo.pCcb = Ccb;
 
@@ -1088,16 +1185,27 @@ try_exit:NOTHING;
 	}
 	__finally
 	{
-		if (AbnormalTermination())
+		if (AbnormalTermination() || !NT_SUCCESS(status))
 		{
 			status = STATUS_UNSUCCESSFUL;
-		}
-		if (!NT_SUCCESS(status))
-		{
-
-
+			FltUninitializeOplock(&Fcb->Oplock);
 			if (Fcb != NULL)
 			{
+				if (Fcb->FileLock)
+				{
+					if (TRUE/*FLT_FILE_LOCK*/)
+					{
+						FltUninitializeFileLock(Fcb->FileLock);
+						FltFreeFileLock(Fcb->FileLock);
+					}
+					else
+					{
+						FsRtlUninitializeFileLock(Fcb->FileLock);
+						FsRtlFreeFileLock(Fcb->FileLock);
+					}
+					Fcb->FileLock = NULL;
+				}
+
 				FsFreeFcb(Fcb, IrpContext);
 				FileObject->FsContext = NULL;
 			}
@@ -1323,7 +1431,7 @@ NTSTATUS FsCloseSetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 
 BOOLEAN CanFsWait(__in PFLT_CALLBACK_DATA Data)
 {
-	if (Data && FlagOn(Data->Iopb->OperationFlags, IRP_SYNCHRONOUS_API))
+	if (Data && FlagOn(Data->Iopb->IrpFlags, IRP_SYNCHRONOUS_API))
 	{
 		return TRUE;
 	}
@@ -1587,5 +1695,25 @@ VOID FsPopUpFileCorrupt(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb)
 		Thread = IrpContext->OriginatingData->Thread;
 	}
 	IoRaiseInformationalHardError(STATUS_FILE_CORRUPT_ERROR, &unicodeString, Thread);
+}
+
+VOID FsFreeCcb(IN PDEF_CCB Ccb)
+{
+	if (NULL != Ccb)
+	{
+		ExFreeToNPagedLookasideList(&g_CcbLookasideList, Ccb);
+	}
+}
+
+FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	//哪些IRP要特殊处理？？
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+
+	return FltStatus;
 }
 
