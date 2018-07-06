@@ -7,6 +7,8 @@
 #include "fsRead.h"
 #include "fsClose.h"
 #include "fsCleanup.h"
+#include "fsControl.h"
+#include "fsWrite.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -49,8 +51,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_WRITE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreWrite,
+	PtPostWrite },
 
 	{ IRP_MJ_QUERY_INFORMATION,
 	0,
@@ -59,18 +61,18 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_SET_INFORMATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreSetInformation,
+	PtPostSetInformation },
 
 	{ IRP_MJ_QUERY_EA,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreQueryEA,
+	PtPostQueryEA },
 
 	{ IRP_MJ_SET_EA,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreSetEA,
+	PtPostSetEA },
 
 	{ IRP_MJ_FLUSH_BUFFERS,
 	0,
@@ -94,8 +96,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_FILE_SYSTEM_CONTROL,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreFileSystemControl,
+	PtPostFileSystemControl },
 
 	{ IRP_MJ_DEVICE_CONTROL,
 	0,
@@ -154,13 +156,13 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_ACQUIRE_FOR_SECTION_SYNCHRONIZATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreAcquireForSection,
+	PtPostAcquireForSection },
 
 	{ IRP_MJ_RELEASE_FOR_SECTION_SYNCHRONIZATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreReleaseForSection,
+	PtPostReleaseForSection },
 
 	{ IRP_MJ_ACQUIRE_FOR_MOD_WRITE,
 	0,
@@ -303,8 +305,6 @@ STATUS_FLT_DO_NOT_ATTACH - do not attach
 	PUCHAR pVolumeInfo = NULL;
 
 	PAGED_CODE();
-
-	//KdBreakPoint();
 
 	__try
 	{
@@ -577,6 +577,14 @@ The return value is the status of the operation.
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
 	//
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 	
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
@@ -596,6 +604,7 @@ The return value is the status of the operation.
 			Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 			return FltStatus;
 		}
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
 	if (PtDoRequestOperationStatus(Data)) {

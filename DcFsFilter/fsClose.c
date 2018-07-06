@@ -3,25 +3,44 @@
 
 FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	BOOLEAN bTopLevelIrp = FALSE;
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 
 	PAGED_CODE();
 
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
 	FsRtlEnterFileSystem();
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		FsRtlExitFileSystem();
-		return FltStatus;
+ 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
 	bTopLevelIrp = IsTopLevelIRP(Data);
 	__try
 	{
-
+		Fcb = FltObjects->FileObject->FsContext;
+		Ccb = FltObjects->FileObject->FsContext2;
+		if (NULL == Fcb)
+		{
+			__leave;
+		}
+		if (0 == Fcb->OpenCount)
+		{
+			FsFreeFcb(Fcb, NULL);
+			FsFreeCcb(Ccb);
+		}
 	}
 	__finally
 	{

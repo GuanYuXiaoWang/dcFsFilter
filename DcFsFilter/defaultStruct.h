@@ -146,32 +146,23 @@ typedef struct tagDEFFCB
 	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
+	UCHAR						szAlinged[4];
+	LIST_ENTRY					FcbLinks;
+	PNTFS_FCB					NtfsFcb;//ntfs
+	PVOID						Vcb;
+	ULONG						FcbState;
+	ULONG						NonCachedUnCleanupCount;
 	ULONG						UncleanCount;
 	ULONG						OpenCount;
 	SHARE_ACCESS				ShareAccess;//+0x068
-
 	PVOID						LazyWriteThread[2];
-	FAST_MUTEX AdvancedFcbHeaderMutex;
+	FAST_MUTEX					AdvancedFcbHeaderMutex;
 	//
 	//  The following field is used by the oplock module
 	//  to maintain current oplock information.
 	//
-
 	OPLOCK		Oplock;
-
-	//
-	//  A count of how many of "UncleanCount" handles were opened for
-	//  non-cached I/O.
-	//
-	ULONG						NonCachedUnCleanupCount;
-	//
-	//  The following field is used by the filelock module
-	//  to maintain current byte range locking information.
-	//
-	// this field is protected by the fastmutex in Header.
-
 	PFILE_LOCK	FileLock;
-	ULONG		FcbState;
 	ULONG		CCBFlags;
 
 	UCHAR		Flags;
@@ -290,6 +281,7 @@ typedef struct tagDEF_CCB
 	ULONG FileAccess;
 	ULONG CcbState;
 	STREAM_FILE_INFO StreamFileInfo;
+	UCHAR TypeOfOpen;	
 }DEF_CCB, *PDEF_CCB;
 
 typedef struct tagCREATE_INFO
@@ -453,7 +445,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 #define MAIL_SLOT_PREFIX                "\\\\.\\MailSlot"
 #define MAIL_SLOT_PREFIX_LENGTH         (sizeof(MAIL_SLOT_PREFIX)-1)
 
-#define LAYER_NTC_FCB 12345
+#define LAYER_NTC_FCB -32768
 #define CCB_FLAG_NETWORK_FILE 0x0010
 
 #ifndef OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY //win7及以后的系统才支持

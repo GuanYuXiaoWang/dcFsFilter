@@ -12,6 +12,10 @@ extern NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_CcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_EResourceLookasideList;
 extern CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks;
+extern NPAGED_LOOKASIDE_LIST g_NTFSFCBLookasideList;
+extern NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
+
+UCHAR szVcbPlacer[300];
 
 #define READ_AHEAD_GRANULARITY           (0x10000)
 
@@ -79,6 +83,7 @@ extern "C" {
 	PDEF_CCB FsCreateCcb();
 	VOID FsFreeCcb(IN PDEF_CCB Ccb);
 	PERESOURCE FsAllocateResource();
+
 	VOID NetFileSetCacheProperty(IN PFILE_OBJECT FileObject, IN ACCESS_MASK DesiredAccess);
 	NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data,
 									__in PCFLT_RELATED_OBJECTS FltObject,
@@ -106,7 +111,7 @@ extern "C" {
 	FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext);
 
 
-
+	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 
 
 

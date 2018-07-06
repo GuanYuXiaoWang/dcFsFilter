@@ -7,16 +7,29 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	PFILE_OBJECT FileObject = FltObjects->FileObject;
-	BOOLEAN bTopLevelIrp = IsTopLevelIRP(Data);
+	BOOLEAN bTopLevelIrp = FALSE;
+	ULONG ProcessType = 0;
+ 	
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
-	if (!IsMyFakeFcb(FileObject))
+
+	if (IsTest(Data, FltObjects))
 	{
-		FsRtlExitFileSystem();
+		KdBreakPoint();
+	}
+	else
+	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	FsRtlEnterFileSystem();
+	bTopLevelIrp = IsTopLevelIRP(Data);
 	
 	__try
 	{
@@ -57,8 +70,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	PLARGE_INTEGER TruncateSize = NULL;
 	LARGE_INTEGER LocalTruncateSize;
 
-	UNREFERENCED_PARAMETER(Data);
-
 	Fcb = FltObjects->FileObject->FsContext;
 	Ccb = FltObjects->FileObject->FsContext2;
 	//
@@ -86,6 +97,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			{
 
 			}
+			FltCheckOplock(&Fcb->Oplock, Data, IrpContext, NULL, NULL);
+
 			LocalTruncateSize = Fcb->Header.FileSize;
 			TruncateSize = &LocalTruncateSize;
 

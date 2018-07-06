@@ -21,12 +21,23 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	BOOLEAN bTopLevel = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 
-	FsRtlEnterFileSystem();
-	if (!IsMyFakeFcb(FltObjects->FileObject))
+	if (IsTest(Data, FltObjects))
 	{
-		FsRtlExitFileSystem();
+		KdBreakPoint();
+	}
+	else
+	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	FsRtlEnterFileSystem();
+ 	if (!IsMyFakeFcb(FltObjects->FileObject))
+ 	{
+// 		FsRtlExitFileSystem();
+// 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+ 	}
+
+	KdBreakPoint();
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{

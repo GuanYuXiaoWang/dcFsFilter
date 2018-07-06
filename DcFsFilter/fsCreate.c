@@ -67,7 +67,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	}
 
 	FsRtlEnterFileSystem();
-	if (FLT_IS_IRP_OPERATION(Data))//IRP write
+	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
 		bTopLevel = IsTopLevelIRP(Data);
 		__try
@@ -784,7 +784,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING) &&
 			(Fcb->SectionObjectPointers.DataSectionObject != NULL))//ÏÈË¢ÐÂ»º´æ //¼ûfat create 2932
 		{
-			CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, NULL);
+			//CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, NULL);
 			ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, FALSE);
@@ -961,7 +961,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	}
 	__finally
 	{
-
 		if (DecrementFcbOpenCount)
 		{
 			InterlockedDecrement((PLONG)&Fcb->ReferenceCount);
@@ -1098,7 +1097,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			PDEF_CCB Ccb;
 			Fcb = IrpContext->createInfo.pFcb;
 			Ccb = IrpContext->createInfo.pCcb;
-
+			Ccb->TypeOfOpen = 2;
 			if (IsWin7OrLater())
 			{
 				FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx(&Fcb->Oplock, OrgData, OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY,
@@ -1117,12 +1116,13 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 					}
 				}
 			}
+#if 1
 			FileObject->FsContext = Fcb;
 			FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
 			FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 			FileObject->FsContext2 = Ccb;
 			SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
-#if 0
+
 			IoSetShareAccess(DesiredAccess, ShareAccess, FileObject, &Fcb->ShareAccess);
 
 			InterlockedIncrement(&Fcb->ReferenceCount);
@@ -1149,6 +1149,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			}
 #endif
 		}
+
 		try_return(Status);
 
 try_exit: NOTHING;

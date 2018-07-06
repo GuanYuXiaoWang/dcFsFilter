@@ -4,7 +4,7 @@
 //fastFat中，文件信息在创建FCB时就保存在FCB结构中
 FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	ULONG uProcessType = 0;
 	BOOLEAN bTopLevelIrp = FALSE;
@@ -14,12 +14,28 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	
 	PAGED_CODE();
 
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		FsRtlExitFileSystem();
-		return FltStatus;
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	if (IsFilterProcess(Data, &ntStatus, &uProcessType))
+	{
+		KdBreakPoint();
+	}
+
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -123,7 +139,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			break;
 
 		default:
-			try_return(ntStatus);
+			try_return(ntStatus = STATUS_INVALID_PARAMETER);
 			break;
 		}
 		ntStatus = STATUS_SUCCESS;
@@ -134,4 +150,163 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 
 	}
 	return ntStatus;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+	PAGED_CODE();
+
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+	PAGED_CODE();
+
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+	PAGED_CODE();
+
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	UNREFERENCED_PARAMETER(CompletionContext);
+	PAGED_CODE();
+
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb && Fcb->Header.PagingIoResource)
+	{
+		ExAcquireResourceExclusive(Fcb->Header.PagingIoResource, TRUE);
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostAcquireForSection(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	UNREFERENCED_PARAMETER(CompletionContext);
+	PAGED_CODE();
+
+	if (IsTest(Data, FltObjects))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb && Fcb->Header.PagingIoResource)
+	{
+		ExReleaseResource(Fcb->Header.PagingIoResource);
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForSection(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }

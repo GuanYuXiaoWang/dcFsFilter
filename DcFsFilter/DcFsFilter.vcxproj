@@ -166,10 +166,12 @@
     <ClCompile Include="dcFsFilter.c" />
     <ClCompile Include="fsCleanup.c" />
     <ClCompile Include="fsClose.c" />
+    <ClCompile Include="fsControl.c" />
     <ClCompile Include="fsCreate.c" />
     <ClCompile Include="fsData.c" />
     <ClCompile Include="fsInformation.c" />
     <ClCompile Include="fsRead.c" />
+    <ClCompile Include="fsWrite.c" />
     <ClCompile Include="volumeContext.c" />
   </ItemGroup>
   <ItemGroup>
@@ -179,10 +181,12 @@
     <ClInclude Include="fatstruc.h" />
     <ClInclude Include="fsCleanup.h" />
     <ClInclude Include="fsClose.h" />
+    <ClInclude Include="fsControl.h" />
     <ClInclude Include="fsCreate.h" />
     <ClInclude Include="fsData.h" />
     <ClInclude Include="fsInformation.h" />
     <ClInclude Include="fsRead.h" />
+    <ClInclude Include="fsWrite.h" />
     <ClInclude Include="nodetype.h" />
     <ClInclude Include="volumeContext.h" />
   </ItemGroup>
