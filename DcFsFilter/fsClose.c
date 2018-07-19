@@ -7,10 +7,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	BOOLEAN bTopLevelIrp = FALSE;
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
+	PLARGE_INTEGER TruncateSize = NULL;
+	LARGE_INTEGER LocalTruncateSize;
+	BOOLEAN bAcquire = FALSE;
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects))
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreClose"))
 	{
 		KdBreakPoint();
 	}
@@ -18,7 +21,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#endif
 	FsRtlEnterFileSystem();
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -26,25 +29,49 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 
 	bTopLevelIrp = IsTopLevelIRP(Data);
-	__try
+	if (FLT_IS_IRP_OPERATION(Data))
 	{
-		Fcb = FltObjects->FileObject->FsContext;
-		Ccb = FltObjects->FileObject->FsContext2;
-		if (NULL == Fcb)
+		__try
 		{
-			__leave;
+			Fcb = FltObjects->FileObject->FsContext;
+			Ccb = FltObjects->FileObject->FsContext2;
+			if (NULL == Fcb)
+			{
+				__leave;
+			}
+
+			if (0 == Fcb->OpenCount)
+			{
+// 				FltCheckOplock(&Fcb->Oplock, Data, NULL, NULL, NULL);
+// 
+// 				LocalTruncateSize = Fcb->Header.AllocationSize;
+// 				TruncateSize = &LocalTruncateSize;
+// 				if (Fcb->CacheObject)
+// 				{
+// 					CcUninitializeCacheMap(Fcb->CacheObject, TruncateSize, NULL);
+// 				}
+// 				
+// 				FsFreeCcb(Ccb);
+// 				FltObjects->FileObject->FsContext2 = NULL;
+			}
 		}
-		if (0 == Fcb->OpenCount)
+		__finally
 		{
-			FsFreeFcb(Fcb, NULL);
-			FsFreeCcb(Ccb);
+
 		}
 	}
-	__finally
+	else if (FLT_IS_FASTIO_OPERATION(Data))
 	{
-
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else 
+	{
+		Data->IoStatus.Status = STATUS_UNSUCCESSFUL;
+		Data->IoStatus.Information = 0;
+		FltStatus = FLT_PREOP_COMPLETE;
 	}
 
 	if (bTopLevelIrp)

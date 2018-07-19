@@ -1,5 +1,6 @@
 #include "volumeContext.h"
 #include "defaultStruct.h"
+#include "fsData.h"
 
 /*参考：维基ntfs
 记录每个设备的元文件：这些都是系统重要的数据（过滤时要排除系统文件，非$ROOT外）
@@ -77,7 +78,7 @@ NTSTATUS SetVolumeContext(PCFLT_RELATED_OBJECTS FltObjects, PFLT_VOLUME_PROPERTI
 			__leave;
 		}
 		pVolumeContext->pEresurce = FsAllocateResource();
-		pVolumeContext->ulSectorSize = max(pVolumeContext->ulSectorSize, MIN_SECTOR_SIZE);
+		pVolumeContext->ulSectorSize = max(pVolumePro->SectorSize, MIN_SECTOR_SIZE);
 		pVolumeContext->uDeviceType = pVolumePro->DeviceType;
 		pVolumeContext->strDeviceName.ulLength = pVolumePro->RealDeviceName.Length + 1;
 		pVolumeContext->strDeviceName.pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, pVolumePro->RealDeviceName.Length + 1, VOLUME_CONTEXT_POOL_TAG);

@@ -9,6 +9,7 @@
 #include "fsCleanup.h"
 #include "fsControl.h"
 #include "fsWrite.h"
+#include "FsFastIo.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -186,8 +187,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_FAST_IO_CHECK_IF_POSSIBLE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreFastIoCheckPossible,
+	PtPostFastIoCheckPossible },
 
 	{ IRP_MJ_NETWORK_QUERY_OPEN,
 	0,
@@ -257,8 +258,8 @@ CONST FLT_REGISTRATION FilterRegistration = {
 	PtInstanceTeardownStart,            //  InstanceTeardownStart
 	PtInstanceTeardownComplete,         //  InstanceTeardownComplete
 
-	GenerateFileName,                               //  GenerateFileName
-	NormalizeNameComponentCallback,                               //  GenerateDestinationFileName
+	/*GenerateFileName*/NULL,                               //  GenerateFileName
+	/*NormalizeNameComponentCallback*/NULL,                               //  GenerateDestinationFileName
 	NULL                                //  NormalizeNameComponent
 };
 
@@ -577,15 +578,17 @@ The return value is the status of the operation.
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
 	//
-	if (IsTest(Data, FltObjects))
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreOperationPassThrough"))
 	{
 		KdBreakPoint();
+		//return FltStatus;
 	}
 	else
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	
+#endif	
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{

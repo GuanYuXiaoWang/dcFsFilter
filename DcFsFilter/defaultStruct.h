@@ -24,7 +24,8 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define CACHE_DISABLE		0x004
 #define CACHE_ALLOW			0x008
 
-#define FILE_HEADER_LENGTH 1024
+#define FILE_HEADER_LENGTH 8
+#define ENCRYPTION_HEADER_KEY "zhouyang"
 
 typedef struct tagDEF_IO_CONTEXT
 {
@@ -54,7 +55,6 @@ typedef struct tagDEF_IO_CONTEXT
 
 		struct {
 			PERESOURCE Resource;
-			PERESOURCE Resource2;
 			ERESOURCE_THREAD ResourceThreadId;
 			ULONG RequestedByteCount;
 			PFILE_OBJECT FileObject;
@@ -211,6 +211,7 @@ typedef struct tagDEFFCB
 	ULONG FileType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
+	ULONG ProcessID;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -319,6 +320,7 @@ typedef struct tagCREATE_INFO
 	PFLT_FILE_NAME_INFORMATION nameInfo;
 	BOOLEAN bWriteHeader;
 	BOOLEAN bEnFile;
+	BOOLEAN bDecrementHeader;
 }CREATE_INFO, *PCREATE_INFO;
 
 
@@ -358,7 +360,7 @@ typedef struct tagIRP_CONTEXT
 	PIO_WORKITEM	WorkItem;
 
 	PFLT_CALLBACK_DATA OriginatingData;
-	HANDLE ProcessId;
+	ULONG_PTR ProcessId;
 
 	//
 	//  Originating Device (required for workque algorithms)

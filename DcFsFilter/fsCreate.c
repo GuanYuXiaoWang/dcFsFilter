@@ -66,6 +66,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		return FLT_PREOP_COMPLETE;
 	}
 
+	KdBreakPoint();
+
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
@@ -113,6 +115,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 {
 	ULONG ProcType = 0;
 	NTSTATUS Status;
+	
+	if (IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
+	{
+		KdBreakPoint();
+	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
 	{
@@ -147,8 +158,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	BOOLEAN bFOResourceAcquired = FALSE;
 	PDEFFCB pFcb = NULL;
 	PDEF_CCB pCcb = NULL;
-
-	KdBreakPoint();
 
 	if (NULL == FltObjects)
 	{
@@ -264,7 +273,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		IrpContext->uSectorsPerAllocationUnit = pVolCtx->uSectorsPerAllocationUnit;
 
 		Status = STATUS_SUCCESS;
-		if (IsMyFakeFcb(pFileObject) || FindFcb(pFileObject->FileName.Buffer, &pFcb))
+		if (IsMyFakeFcb(pFileObject) || FindFcb(Data, pFileObject->FileName.Buffer, &pFcb))
 		{
 			Status = CreateFileByExistFcb(Data, FltObjects, pFcb, IrpContext);
 
@@ -296,6 +305,7 @@ try_exit:NOTHING;
 		{
 			Data->IoStatus.Information = IrpContext->createInfo.Information;
 		}
+		DbgPrint("Fcb=0x%x...\n", IrpContext->createInfo.pFcb);
 	}
 	__finally
 	{
@@ -325,7 +335,7 @@ try_exit:NOTHING;
 
 		if (!NT_SUCCESS(Status) || FltStatus != FLT_PREOP_COMPLETE)
 		{
-			if (NULL == IrpContext->createInfo.pStreamObject)
+			if (NULL != IrpContext->createInfo.pStreamObject)
 			{
 				ObDereferenceObject(IrpContext->createInfo.hStreamHanle);
 				FltClose(IrpContext->createInfo.hStreamHanle);
@@ -351,8 +361,6 @@ try_exit:NOTHING;
 		{
 			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
 		}
-
-		FltSetCallbackDataDirty(Data);
 	}
 	return FltStatus;
 }
@@ -510,6 +518,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	ULONG  CreateDisposition;
 	ULONG	FileAttributes;
 	ULONG	ShareAccess;
+	ULONG ClusterSize = 0;
+	LARGE_INTEGER Temp;
 
 	BOOLEAN NoEaKnowledge;
 	BOOLEAN DeleteOnClose;
@@ -566,8 +576,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 	__try
 	{
-		FsAcquireExclusiveFcb(IrpContext, Fcb);
-		FcbAcquired = TRUE;
+		FcbAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
 
 		if (ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE))
 		{
@@ -872,7 +881,57 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			SetFlag(Fcb->FcbState, SCB_STATE_FILEHEADER_WRITED);
 		}
 		*/
+		//todo::如果解密，需减去加密头的长度
+		if (IrpContext->createInfo.bDecrementHeader)
+		{
+			IrpContext->createInfo.FileSize.QuadPart -= FILE_HEADER_LENGTH;
+			IrpContext->createInfo.FileAllocationSize.QuadPart -= FILE_HEADER_LENGTH;
+		}
 
+		Fcb->Header.FileSize.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
+		Fcb->Header.ValidDataLength.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
+		if (IrpContext->createInfo.FileSize.QuadPart > IrpContext->createInfo.FileAllocationSize.QuadPart)
+		{
+			ClusterSize = IrpContext->ulSectorSize * IrpContext->uSectorsPerAllocationUnit;
+			Temp.QuadPart = Fcb->Header.FileSize.QuadPart;
+			Temp.QuadPart += ClusterSize;
+			Temp.HighPart += (ULONG)((LONGLONG)ClusterSize >> 32);
+
+			if (0 == Temp.LowPart)
+			{
+				Temp.LowPart -= 1;
+			}
+			Fcb->Header.AllocationSize.LowPart = ((ULONG)Fcb->Header.FileSize.LowPart + (ClusterSize - 1)) & (~(ClusterSize - 1));
+			Fcb->Header.AllocationSize.HighPart = Temp.HighPart;
+		}
+		else
+		{
+			Fcb->Header.AllocationSize.QuadPart = IrpContext->createInfo.FileAllocationSize.QuadPart;
+		}
+
+		if (IrpContext->createInfo.bRealSize)
+		{
+			if (IrpContext->createInfo.RealSize.QuadPart > Fcb->Header.AllocationSize.QuadPart)
+			{
+				IrpContext->createInfo.RealSize.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
+			}
+			else
+			{
+				Fcb->Header.FileSize.QuadPart = IrpContext->createInfo.RealSize.QuadPart;
+				Fcb->Header.ValidDataLength.QuadPart = IrpContext->createInfo.RealSize.QuadPart;
+				Fcb->ValidDataToDisk.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
+			}
+		}
+		Fcb->LastAccessTime = IrpContext->createInfo.BaseInfo.LastAccessTime.QuadPart;
+		Fcb->CreationTime = IrpContext->createInfo.BaseInfo.CreationTime.QuadPart;
+		Fcb->CurrentLastAccess = IrpContext->createInfo.BaseInfo.ChangeTime.QuadPart;
+		Fcb->Attribute = IrpContext->createInfo.BaseInfo.FileAttributes;
+		Fcb->LastModificationTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
+		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
+		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
+		Fcb->Directory = IrpContext->createInfo.Directory;
+		Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
+		Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
 
 		Ccb = FsCreateCcb();
 
@@ -881,7 +940,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
 		Ccb->ProcType = IrpContext->createInfo.uProcType;
 		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
-		//RtlCopyMemory(Ccb->ProcessGuid, IrpContext->CreateInfo.ProcessGuid, GUID_SIZE);
+		
+
 
 		if (IrpContext->createInfo.bNetWork)
 		{
@@ -1149,8 +1209,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			}
 #endif
 		}
-
-		try_return(Status);
 
 try_exit: NOTHING;
 	}

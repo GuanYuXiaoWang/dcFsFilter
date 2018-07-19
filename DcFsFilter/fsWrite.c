@@ -8,7 +8,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 	PAGED_CODE();
 
-	if (IsTest(Data, FltObjects))
+	if (IsTest(Data, FltObjects, "PtPreWrite"))
 	{
 		KdBreakPoint();
 	}
@@ -27,7 +27,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostWrite(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 	PAGED_CODE();
 
-	if (IsTest(Data, FltObjects))
+	if (IsTest(Data, FltObjects, "PtPostWrite"))
 	{
 		KdBreakPoint();
 	}

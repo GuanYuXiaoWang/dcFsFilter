@@ -59,7 +59,7 @@ extern "C" {
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);
-	BOOLEAN FindFcb(WCHAR * pwszFile, PDEFFCB * pFcb);
+	BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pFcb);
 	BOOLEAN UpdateFcbList(WCHAR * pwszFile, PDEFFCB * pFcb);
 
 	BOOLEAN FsAcquireExclusiveFcb(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
@@ -111,7 +111,7 @@ extern "C" {
 	FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext);
 
 
-	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects);
+	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
 
 

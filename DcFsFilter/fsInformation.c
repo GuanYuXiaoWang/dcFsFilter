@@ -13,8 +13,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	UNREFERENCED_PARAMETER(CompletionContext);
 	
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects))
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
 		KdBreakPoint();
 	}
@@ -22,7 +22,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#endif
 
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -31,12 +31,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	if (IsFilterProcess(Data, &ntStatus, &uProcessType))
-	{
-		KdBreakPoint();
-	}
+	KdBreakPoint();
 
-	if (FLT_IS_IRP_OPERATION(Data))
+	if (FLT_IS_IRP_OPERATION(Data) /*|| FLT_IS_FASTIO_OPERATION(Data) || FLT_IS_FS_FILTER_OPERATION(Data)*/)
 	{
 		__try
 		{
@@ -63,7 +60,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		}
 		FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
 	}
-	else if (FLT_IS_FASTIO_OPERATION(Data))
+ 	else if (FLT_IS_FASTIO_OPERATION(Data))
 	{
 		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
 	}
@@ -90,12 +87,14 @@ FLT_POSTOP_CALLBACK_STATUS PtPostQueryInformation(__inout PFLT_CALLBACK_DATA Dat
 
 NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
-	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFILE_BASIC_INFORMATION FileBasicInfo = NULL;
 	PFILE_STANDARD_INFORMATION FileStandardInfo = NULL;
+	PFILE_ALL_INFORMATION FileAllInfo = NULL;
 	PDEFFCB Fcb = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
 	PVOID pFileInfoBuffer = Data->Iopb->Parameters.QueryFileInformation.InfoBuffer;
+	ULONG length = 0;
 
 	//查询信息，是否需要独占FCB资源？？？
 	__try
@@ -115,6 +114,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_BASIC_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
 				try_return(ntStatus);
 			}
+			length = sizeof(FILE_BASIC_INFORMATION);
 			FileBasicInfo = (PFILE_BASIC_INFORMATION)pFileInfoBuffer;
 			FileBasicInfo->CreationTime.QuadPart = Fcb->CreationTime;
 			FileBasicInfo->ChangeTime.QuadPart = Fcb->LastChangeTime;
@@ -123,6 +123,23 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileBasicInfo->LastWriteTime.QuadPart = Fcb->LastChangeTime;
 			break;
 		case FileAllInformation:
+			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_ALL_INFORMATION))
+			{
+				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_ALL_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				try_return(ntStatus);
+			}
+			length = sizeof(FILE_ALL_INFORMATION);
+			FileAllInfo = (PFILE_ALL_INFORMATION)pFileInfoBuffer;
+			FileAllInfo->BasicInformation.CreationTime.QuadPart = Fcb->CreationTime;
+			FileAllInfo->BasicInformation.ChangeTime.QuadPart = Fcb->LastChangeTime;
+			FileAllInfo->BasicInformation.FileAttributes = Fcb->Attribute;
+			FileAllInfo->BasicInformation.LastAccessTime.QuadPart = Fcb->LastAccessTime;
+			FileAllInfo->BasicInformation.LastWriteTime.QuadPart = Fcb->LastChangeTime;
+			FileAllInfo->StandardInformation.AllocationSize = Fcb->Header.AllocationSize;
+			FileAllInfo->StandardInformation.DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+			FileAllInfo->StandardInformation.Directory = Fcb->Directory;
+			FileAllInfo->StandardInformation.NumberOfLinks = Fcb->LinkCount;
+			FileAllInfo->StandardInformation.EndOfFile = Fcb->Header.FileSize;
 			break;
 		case FileStandardInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
@@ -130,19 +147,20 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
 				try_return(ntStatus);
 			}
+			length = sizeof(FILE_STANDARD_INFORMATION);
 			FileStandardInfo = (PFILE_STANDARD_INFORMATION)pFileInfoBuffer;
 			FileStandardInfo->AllocationSize = Fcb->Header.AllocationSize;
-			FileStandardInfo->DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);;
+			FileStandardInfo->DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileStandardInfo->Directory = Fcb->Directory;
 			FileStandardInfo->NumberOfLinks = Fcb->LinkCount;
 			FileStandardInfo->EndOfFile = Fcb->Header.FileSize;
 			break;
 
 		default:
-			try_return(ntStatus = STATUS_INVALID_PARAMETER);
+			ntStatus = STATUS_INVALID_PARAMETER;
 			break;
 		}
-		ntStatus = STATUS_SUCCESS;
+		Data->IoStatus.Information = length;
 	try_exit:NOTHING;
 	}
 	__finally
@@ -159,9 +177,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 
 	PAGED_CODE();
 
-	if (IsTest(Data, FltObjects))
+	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
 	{
+#ifdef TEST
 		KdBreakPoint();
+#endif
 	}
 	else
 	{
@@ -187,9 +207,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 	PAGED_CODE();
 
-	if (IsTest(Data, FltObjects))
+	if (IsTest(Data, FltObjects, "PtPreQueryEA"))
 	{
+#ifdef TEST
 		KdBreakPoint();
+#endif
 	}
 	else
 	{
@@ -215,9 +237,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 	PAGED_CODE();
 
-	if (IsTest(Data, FltObjects))
+	if (IsTest(Data, FltObjects, "PtPreSetEA"))
 	{
+#ifdef TEST
 		KdBreakPoint();
+#endif
 	}
 	else
 	{
@@ -241,8 +265,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects))
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreAcquireForSection"))
 	{
 		KdBreakPoint();
 	}
@@ -250,6 +274,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -278,8 +303,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects))
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreReleaseForSection"))
 	{
 		KdBreakPoint();
 	}
@@ -287,6 +312,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;

@@ -13,20 +13,21 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
-	
-	if (IsFilterProcess(Data, &ntStatus, &uProcessType))
+	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
 		KdBreakPoint();
 	}
+	else
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 
+	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
-	
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -38,7 +39,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 			{
 				FsRaiseStatus(IrpContext, STATUS_INSUFFICIENT_RESOURCES);
 			}
-			ntStatus = FsControl(Data, FltObjects, IrpContext);
+			ntStatus = FsControl(Data, FltObjects, (PVOID)&IrpContext);
 			if (!NT_SUCCESS(ntStatus))
 			{
 				Data->IoStatus.Status = ntStatus;
