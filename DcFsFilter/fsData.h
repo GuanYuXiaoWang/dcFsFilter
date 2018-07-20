@@ -113,7 +113,7 @@ extern "C" {
 
 	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
-
+	BOOLEAN fsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout LONG* nLength);
 
 #ifdef __cplusplus
 }

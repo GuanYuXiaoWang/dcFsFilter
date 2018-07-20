@@ -12,16 +12,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		KdBreakPoint();
-	}
-	else
+#ifdef TEST
+	if (!IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#endif
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{

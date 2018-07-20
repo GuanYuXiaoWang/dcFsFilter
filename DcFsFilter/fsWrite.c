@@ -7,15 +7,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPreWrite"))
-	{
-		KdBreakPoint();
-	}
-	else
+#ifdef TEST
+	if (!IsTest(Data, FltObjects, "PtPreWrite"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+#endif
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -26,15 +23,6 @@ FLT_POSTOP_CALLBACK_STATUS PtPostWrite(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	UNREFERENCED_PARAMETER(Flags);
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPostWrite"))
-	{
-		KdBreakPoint();
-	}
-	else
-	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	}
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }

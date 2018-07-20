@@ -192,8 +192,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_NETWORK_QUERY_OPEN,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreOperationNetworkQueryOpen,
+	PtPostOperationNetworkQueryOpen },
 
 	{ IRP_MJ_MDL_READ,
 	0,
@@ -581,12 +581,7 @@ The return value is the status of the operation.
 #ifdef TEST
 	if (IsTest(Data, FltObjects, "PtPreOperationPassThrough"))
 	{
-		KdBreakPoint();
 		//return FltStatus;
-	}
-	else
-	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 #endif	
 

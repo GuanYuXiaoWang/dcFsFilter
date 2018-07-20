@@ -14,11 +14,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	
 	PAGED_CODE();
 #ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		KdBreakPoint();
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
@@ -176,18 +172,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
-	{
 #ifdef TEST
-		KdBreakPoint();
-#endif
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreSetInformation"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#endif
 	return FLT_PREOP_COMPLETE;
 }
 
@@ -206,17 +196,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPreQueryEA"))
-	{
 #ifdef TEST
-		KdBreakPoint();
-#endif
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreQueryEA"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+#endif
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -236,18 +221,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-
-	if (IsTest(Data, FltObjects, "PtPreSetEA"))
-	{
 #ifdef TEST
-		KdBreakPoint();
-#endif
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreSetEA"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#endif
 	return FLT_PREOP_COMPLETE;
 }
 
@@ -266,11 +245,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
 #ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreAcquireForSection"))
-	{
-		KdBreakPoint();
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreAcquireForSection"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
@@ -304,11 +279,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
 #ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreReleaseForSection"))
-	{
-		KdBreakPoint();
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreReleaseForSection"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}

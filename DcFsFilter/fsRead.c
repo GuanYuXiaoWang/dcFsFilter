@@ -24,12 +24,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	ULONG ProcessType = 0;
 
 	PAGED_CODE();
-// 
-// 	if (!IsFilterProcess(Data, &Status, &ProcessType))
-// 	{
-// 		FsMapUserBuffer(Data);
-// 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-// 	}
+
+#ifdef TEST
+	if (!IsTest(Data, FltObjects, "PtPreRead"))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+#endif
 
 	FsRtlEnterFileSystem();
  	if (!IsMyFakeFcb(FltObjects->FileObject))

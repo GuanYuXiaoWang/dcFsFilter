@@ -18,6 +18,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 
 	PAGED_CODE();
 
+#ifdef TEST
+	if (!IsTest(Data, FltObjects, "PtPreCreate"))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+#endif
+
 	if (!IsFilterProcess(Data, &status, &uProcType))
 	{
 		if (NT_SUCCESS(status))
@@ -115,16 +122,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 {
 	ULONG ProcType = 0;
 	NTSTATUS Status;
-	
-	if (IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
+#ifdef TEST	
+	if (!IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
 	{
-		KdBreakPoint();
+		
 	}
-	else
-	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	}
-
+#endif
 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
 	{
 		return FLT_PREOP_DISALLOW_FASTIO;

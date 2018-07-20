@@ -13,11 +13,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 	PAGED_CODE();
 #ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreClose"))
-	{
-		KdBreakPoint();
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreClose"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}

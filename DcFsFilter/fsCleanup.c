@@ -14,11 +14,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	PAGED_CODE();
 
 #ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreCleanup"))
-	{
-		KdBreakPoint();
-	}
-	else
+	if (!IsTest(Data, FltObjects, "PtPreCleanup"))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}

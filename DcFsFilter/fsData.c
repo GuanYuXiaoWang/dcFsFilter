@@ -35,6 +35,8 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	UNICODE_STRING stringTest;
 	RtlInitUnicodeString(&unicodeString, L"\\Device\\HarddiskVolume1\\4.um");
 	RtlInitUnicodeString(&stringTest, L"\\Device\\HarddiskVolume1\\1.docx");
+	WCHAR szExName[32] = { 0 };
+	ULONG length = 0;
 
 	UNREFERENCED_PARAMETER(pProcType);
 
@@ -54,12 +56,22 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 // 			DbgPrint("Read Length=0x%x, Offset=0x%x....\n", Data->Iopb->Parameters.Read.Length, Data->Iopb->Parameters.Read.ByteOffset);
 // 			KdBreakPoint();
 // 		}
-
- 		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
- 		{
- 			__leave;
- 		}
-		//DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
+		//判断文件后缀名
+//  		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
+//  		{
+//  			__leave;
+//  		}
+		if (!fsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
+		{
+			__leave;
+		}
+		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
+			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+		{
+			__leave;
+		}
 		ProcessId = PsGetCurrentProcessId();
 		if (NULL == ProcessId)
 		{
@@ -73,9 +85,11 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		}
 		ProcessName = PsGetProcessImageFileName(Process);
 		//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
-		if (0 == stricmp("wps.exe", ProcessName) || 0 == stricmp("notepad++.exe", ProcessName))//qu shi :NTRtScan.exe
+		if (/*0 == stricmp("wps.exe", ProcessName) ||*/ 
+			0 == stricmp("notepad++.exe", ProcessName) ||
+			0 == stricmp("notepad.exe", ProcessName))//qu shi :NTRtScan.exe
 		{
-			DbgPrint("data flag=0x%x...\n", Data->Flags);
+			DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
 			//KdBreakPoint();
 			bFilter = TRUE;
 		}
@@ -1818,66 +1832,81 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	WCHAR wszName[32] = { L"1.um" };/*Device\HarddiskVolume1*/
 	BOOLEAN bTrue = FALSE;
 
-	return FALSE;
-
 	if (FileObject && (NULL != FileObject->FileName.Buffer))
 	{
-		//PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
-		//if (NT_SUCCESS(FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo)))
+		//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题	
+		hProcessId = PsGetCurrentProcessId();
+		if (NULL != hProcessId)
 		{
-			/*
-			if (NULL != wcsstr(FileInfo->Name.Buffer, wszName))
+			status = PsLookupProcessByProcessId(hProcessId, &Process);
+			if (NT_SUCCESS(status))
 			{
-				DbgPrint("File Name:%S...\n", FileInfo->Name.Buffer);
-				hProcessId = PsGetCurrentProcessId();
-				if (NULL != hProcessId)
-				{
-					status = PsLookupProcessByProcessId(hProcessId, &Process);
-					if (NT_SUCCESS(status))
-					{
-						ProcessName = PsGetProcessImageFileName(Process);
-						DbgPrint("process name=%s, funtionName=%s...\n", ProcessName, FunctionName);
-					}
-				}
+				ProcessName = PsGetProcessImageFileName(Process);
 			}
-			if (NULL != FileInfo)
-			{
-				FltReleaseFileNameInformation(FileInfo);
-			}
-			*/
-			int nLength = FileObject->FileName.Length + sizeof(WCHAR);
-			WCHAR * pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, nLength, 'aaaa');
-			RtlZeroMemory(pwszName, nLength);
-			RtlCopyMemory(pwszName, FileObject->FileName.Buffer, FileObject->FileName.Length);
-			if (NULL != wcsstr(pwszName, wszName))
-			{
-				DbgPrint("file name:%S...\n", FileObject->FileName.Buffer);
-				hProcessId = PsGetCurrentProcessId();
-				if (NULL != hProcessId)
-				{
-					status = PsLookupProcessByProcessId(hProcessId, &Process);
-					if (NT_SUCCESS(status))
-					{
-						ProcessName = PsGetProcessImageFileName(Process);
-						DbgPrint("process name=%s...\n", ProcessName);
-					}
-				}
-			}
-			ExFreePoolWithTag(pwszName, 'aaaa');
 		}
 	}
 
-	if (ProcessName /*&& 0 == stricmp("wps.exe", ProcessName)*/)
+	if (ProcessName && 0 == stricmp("wps.exe", ProcessName))
 	{
 // 		DbgPrint("*********Data=0x%x, data flag=0x%x, fileClass=%d, fsContext=0x%x, fsContext2=0x%x................\n", \
 // 			Data, Data->Flags, Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, FltObjects->FileObject->FsContext, FltObjects->FileObject->FsContext2);
 		//bTrue = TRUE;
-		DbgPrint("process name=%s, funtionName=%s...\n", ProcessName, FunctionName);
+		DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, FileObject->FileName.Buffer);
 	}
-// 	if (NULL != Process)
-// 	{
-// 		ObDereferenceObject(Process);
-// 	}
+ 	if (NULL != Process)
+ 	{
+ 		ObDereferenceObject(Process);
+ 	}
 
 	return bTrue;
+}
+
+BOOLEAN fsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout LONG* nLength)
+{
+	PWCHAR pFileName = NULL;
+	LONG   nIndex = 0;
+	PWCHAR pTemp = FileExt;
+
+	if (FilePath == NULL)
+		return FALSE;
+
+	if (!FilePath->Buffer || FilePath->Length == 0)
+		return FALSE;
+
+	if (FilePath->Length == sizeof(WCHAR) && FilePath->Buffer[0] == L'\\')
+		return FALSE;
+
+	pFileName = FilePath->Buffer;
+	nIndex = FilePath->Length / sizeof(WCHAR)-1;
+
+	while (nIndex >= 0)
+	{
+		if (pFileName[nIndex] == L'.' || pFileName[nIndex] == L'\\')
+		{
+			break;
+		}
+		nIndex--;
+
+	};
+
+	if (nIndex <0)
+		return FALSE;
+
+	if (pFileName[nIndex] == L'\\')
+		return FALSE;
+	if (pFileName[nIndex] == L'.' && nIndex>0 && pFileName[nIndex - 1] == L'*')
+		return FALSE;
+	nIndex++;
+
+	if (FilePath->Length / sizeof(WCHAR)-nIndex > 49)
+		return FALSE;
+
+	while ((USHORT)nIndex < FilePath->Length / sizeof(WCHAR) && pFileName[nIndex] != 0)
+	{
+		*pTemp = pFileName[nIndex++];
+		pTemp++;
+	};
+	*pTemp = 0;
+	*nLength = (pTemp - FileExt)*sizeof(WCHAR);
+	return TRUE;
 }
