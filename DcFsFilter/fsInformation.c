@@ -18,6 +18,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 
 	FsRtlEnterFileSystem();
@@ -27,9 +28,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	KdBreakPoint();
-
-	if (FLT_IS_IRP_OPERATION(Data) /*|| FLT_IS_FASTIO_OPERATION(Data) || FLT_IS_FS_FILTER_OPERATION(Data)*/)
+	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
 		{
@@ -177,6 +176,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 	return FLT_PREOP_COMPLETE;
 }
@@ -201,6 +201,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 
 	return FLT_PREOP_COMPLETE;
@@ -226,6 +227,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 	return FLT_PREOP_COMPLETE;
 }
@@ -249,6 +251,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -283,6 +286,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{

@@ -33,6 +33,7 @@ LIST_ENTRY g_FcbEncryptFileList;
 
 extern DYNAMIC_FUNCTION_POINTERS g_DYNAMIC_FUNCTION_POINTERS;
 extern LARGE_INTEGER  Li0;
+extern KSPIN_LOCK g_GeneralSpinLock;
 
 #ifdef __cplusplus
 extern "C" {
@@ -107,13 +108,21 @@ extern "C" {
 	VOID FsLookupFileAllocationSize(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb, IN PDEF_CCB Ccb);
 	VOID FsPopUpFileCorrupt(IN PDEF_IRP_CONTEXT IrpContext, IN PDEFFCB Fcb);
 
-
 	FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext);
-
 
 	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
 	BOOLEAN fsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout LONG* nLength);
+	NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_CCB Ccb);
+	NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PLARGE_INTEGER RealFileSize, __in WCHAR * FileFullName);
+	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
+	BOOLEAN FsZeroData(IN PDEF_IRP_CONTEXT IrpContext,
+		IN PDEFFCB Fcb,
+		IN PFILE_OBJECT FileObject,
+		IN LONGLONG StartingZero,
+		IN LONGLONG ByteCount,
+		IN ULONG SectorSize);
+	BOOLEAN FsMyFltCheckLockForWriteAccess(__in PFILE_LOCK FileLock, __in PFLT_CALLBACK_DATA  Data);
 
 #ifdef __cplusplus
 }

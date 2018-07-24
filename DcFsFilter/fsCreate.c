@@ -73,7 +73,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		return FLT_PREOP_COMPLETE;
 	}
 
-	KdBreakPoint();
+//	KdBreakPoint();
 
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
@@ -587,7 +587,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		
 
-		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenHandleCount != 0)
+		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenCount != 0)
 		{
 			try_return(Status = STATUS_DELETE_PENDING);
 		}
@@ -633,7 +633,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 
 		}
-		if (CreateDisposition == FILE_CREATE && Fcb->OpenHandleCount != 0)
+		if (CreateDisposition == FILE_CREATE && Fcb->OpenCount != 0)
 		{
 			Status = STATUS_OBJECT_NAME_COLLISION;
 			try_return(Status);
@@ -694,7 +694,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (IsWin7OrLater())
 		{
-			if (Fcb->OpenHandleCount != 0)
+			if (Fcb->OpenCount != 0)
 			{
 
 				FltOplockStatus = FltCheckOplock(&Fcb->Oplock,
@@ -722,7 +722,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 				FltOplockStatus = FltOplockFsctrl(&Fcb->Oplock,
 					OrgData,
-					Fcb->OpenHandleCount);
+					Fcb->OpenCount);
 
 				if (OrgData->IoStatus.Status != STATUS_SUCCESS &&
 					OrgData->IoStatus.Status != STATUS_OPLOCK_BREAK_IN_PROGRESS)
@@ -779,7 +779,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		if (FlagOn(DesiredAccess, FILE_WRITE_DATA) || DeleteOnClose)
 		{
 
-			InterlockedIncrement((PLONG)&Fcb->ReferenceCount);
+			InterlockedIncrement((PLONG)&Fcb->UncleanCount);
 			DecrementFcbOpenCount = TRUE;
 
 			if (!MmFlushImageSection(&Fcb->SectionObjectPointers,
@@ -1011,8 +1011,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 					SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 				}
 
-				InterlockedIncrement((PLONG)&Fcb->ReferenceCount);
-				InterlockedIncrement((PLONG)&Fcb->OpenHandleCount);
+				InterlockedIncrement((PLONG)&Fcb->OpenCount);
+				InterlockedIncrement((PLONG)&Fcb->UncleanCount);
 
 				if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
 				{
@@ -1026,7 +1026,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		if (DecrementFcbOpenCount)
 		{
-			InterlockedDecrement((PLONG)&Fcb->ReferenceCount);
+			InterlockedDecrement((PLONG)&Fcb->UncleanCount);
 		}
 
 		if (AbnormalTermination())
@@ -1160,7 +1160,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			PDEF_CCB Ccb;
 			Fcb = IrpContext->createInfo.pFcb;
 			Ccb = IrpContext->createInfo.pCcb;
-			Ccb->TypeOfOpen = 2;
+			Ccb->TypeOfOpen = 2;//2:ntfs file open
 			if (IsWin7OrLater())
 			{
 				FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx(&Fcb->Oplock, OrgData, OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY,
@@ -1172,14 +1172,14 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				}
 				if (bOpenRequiringOplock)
 				{
-					FltOplockStatus = FltOplockFsctrl(&Fcb->Oplock, OrgData, Fcb->OpenHandleCount);
+					FltOplockStatus = FltOplockFsctrl(&Fcb->Oplock, OrgData, Fcb->OpenCount);
 					if (OrgData->IoStatus.Status != STATUS_SUCCESS && OrgData->IoStatus.Status != STATUS_OPLOCK_BREAK_IN_PROGRESS)
 					{
 						FsRaiseStatus(IrpContext, OrgData->IoStatus.Status);
 					}
 				}
 			}
-#if 1
+
 			FileObject->FsContext = Fcb;
 			FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
 			FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
@@ -1188,8 +1188,8 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 			IoSetShareAccess(DesiredAccess, ShareAccess, FileObject, &Fcb->ShareAccess);
 
-			InterlockedIncrement(&Fcb->ReferenceCount);
-			InterlockedIncrement(&Fcb->OpenHandleCount);
+			InterlockedIncrement(&Fcb->UncleanCount);
+			InterlockedIncrement(&Fcb->OpenCount);
 
 			if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
 			{
@@ -1210,7 +1210,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			{
 				FileObject->Flags |= FO_CACHE_SUPPORTED;
 			}
-#endif
 		}
 
 try_exit: NOTHING;

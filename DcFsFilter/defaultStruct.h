@@ -11,6 +11,10 @@
 #define FILE_NO_ACCESS 0x800
 #define FILE_PASS_ACCESS 0x400
 
+#ifndef MAX_PATH
+#define MAX_PATH 256
+#endif
+
 typedef enum tagCREATE_ACCESS_TYPE
 {
 	CREATE_ACCESS_INVALID,
@@ -23,6 +27,10 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define CACHE_READWRITE		0x002
 #define CACHE_DISABLE		0x004
 #define CACHE_ALLOW			0x008
+
+#define FILE_ACCESS_PROCESS_READ 0x001
+#define FILE_ACCESS_PROCESS_RW 0x002
+#define FILE_ACCESS_PROCESS_DISABLE 0x004
 
 #define FILE_HEADER_LENGTH 8
 #define ENCRYPTION_HEADER_KEY "zhouyang"
@@ -55,6 +63,7 @@ typedef struct tagDEF_IO_CONTEXT
 
 		struct {
 			PERESOURCE Resource;
+			PERESOURCE Resource2;
 			ERESOURCE_THREAD ResourceThreadId;
 			ULONG RequestedByteCount;
 			PFILE_OBJECT FileObject;
@@ -62,6 +71,8 @@ typedef struct tagDEF_IO_CONTEXT
 			PERESOURCE FO_Resource;
 			PFAST_MUTEX FileObjectMutex;
 			ULONG ByteCount;
+			PRKEVENT		OutstandingAsyncEvent;
+			ULONG			OutstandingAsyncWrites;
 		} Async;
 
 		//
@@ -83,6 +94,7 @@ typedef struct tagDEF_IO_CONTEXT
 	PFLT_INSTANCE Instance;
 	PFLT_RELATED_OBJECTS FltObjects;
 	ULONG FileHeaderLength;
+	LARGE_INTEGER ByteOffset;
 }DEF_IO_CONTEXT, *PDEF_IO_CONTEXT;
 
 #define MIN_SECTOR_SIZE 0x200
@@ -199,8 +211,6 @@ typedef struct tagDEFFCB
 
 	PRKEVENT		OutstandingAsyncEvent;
 	ULONG			OutstandingAsyncWrites;
-	ULONG			OpenHandleCount;
-	ULONG			ReferenceCount;
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
@@ -212,6 +222,7 @@ typedef struct tagDEFFCB
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
 	ULONG ProcessID;
+	PKEVENT MoveFileEvent;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -373,6 +384,7 @@ typedef struct tagIRP_CONTEXT
 	ULONG uSectorsPerAllocationUnit;
 
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
+	PFILE_OBJECT FileObject;
 
 	PMDL AllocateMdl;
 	PDEF_IO_CONTEXT pIoContext;
@@ -449,6 +461,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 
 #define LAYER_NTC_FCB -32768
 #define CCB_FLAG_NETWORK_FILE 0x0010
+#define CCB_FLAG_FILE_CHANGED 0x0020
 
 #ifndef OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY //win7及以后的系统才支持
 #define OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY   0x00000002

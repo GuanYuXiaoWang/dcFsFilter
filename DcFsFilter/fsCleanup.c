@@ -18,13 +18,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdBreakPoint();
 #endif
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	KdBreakPoint();
 
 	FsRtlEnterFileSystem();
 	bTopLevelIrp = IsTopLevelIRP(Data);
@@ -95,7 +95,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	{
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
 
-		if (0 == Fcb->OpenCount)
+		if (1 == Fcb->OpenCount)
 		{
 			//
 			//  Check if we should be deleting the file.  The
@@ -125,12 +125,17 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			}
 			if (Fcb->CacheObject)
 			{
-				//CcUninitializeCacheMap(Fcb->CacheObject, TruncateSize, NULL);
+				CcUninitializeCacheMap(Fcb->CacheObject, TruncateSize, NULL);
 			}
-			//CcUninitializeCacheMap(FltObjects->FileObject, TruncateSize, NULL);
-		
-			//FsFreeFcb(Fcb, IrpContext);
+			InterlockedDecrement((PLONG)&Fcb->OpenCount);
+			InterlockedDecrement((PLONG)&Fcb->UncleanCount);
+
 			FsFreeCcb(Ccb);
+		}
+		else if (&Fcb->OpenCount > 1)
+		{
+			InterlockedDecrement((PLONG)&Fcb->OpenCount);
+			InterlockedDecrement((PLONG)&Fcb->UncleanCount);
 		}
 	}
 	__finally
