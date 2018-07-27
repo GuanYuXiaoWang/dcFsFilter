@@ -30,7 +30,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	KdBreakPoint();
 #endif
 
 	FsRtlEnterFileSystem();

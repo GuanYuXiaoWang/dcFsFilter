@@ -16,8 +16,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 #ifdef TEST
 	if (!IsTest(Data, FltObjects, "PtPreWrite"))
 	{
+		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	KdBreakPoint();
 #endif
 
@@ -28,6 +30,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	KdBreakPoint();
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -127,6 +131,10 @@ FLT_PREOP_CALLBACK_STATUS FsFastIoWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	{
 		FltStatus = FLT_PREOP_COMPLETE;
 	}
+	if (bAcquireResource)
+	{
+		ExReleaseResourceLite(Fcb->Resource);
+	}
 	return FltStatus;
 }
 
@@ -150,6 +158,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	LONGLONG FileSizeOld = 0;
 	ULONG ByteCount = 0;
 	ULONG RequestedByteCount = 0;
+	BOOLEAN bFileSizeChanged = FALSE;
 
 	BOOLEAN bWait = FALSE;
 	BOOLEAN bPagingIo = FALSE;
@@ -187,7 +196,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	ByteRange.QuadPart = StartByte.QuadPart + (LONGLONG)ByteCount;
 	if (NULL == FltObjects)
 	{
-		FltObjects = &IrpContext->FltObjects;
+		FltObjects = IrpContext->FltObjects;
 	}
 	if (NULL != FltObjects)
 	{
@@ -464,7 +473,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					bUnwindOutstandingAsync = TRUE;
 
 					IrpContext->pIoContext->Wait.Async.OutstandingAsyncEvent = Fcb->OutstandingAsyncEvent;
-					IrpContext->pIoContext->Wait.Async.OutstandingAsyncWrites = &Fcb->OutstandingAsyncWrites;
+					IrpContext->pIoContext->Wait.Async.OutstandingAsyncWrites = Fcb->OutstandingAsyncWrites;
 				}
 			}
 			//调整资源后重新取得文件大小信息
@@ -602,6 +611,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			{
 				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
 			}
+			else
+				bFileSizeChanged = TRUE;
 		}
 
 		if (!bCalledByLazyWrite &&
@@ -632,7 +643,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			PUCHAR newBuf = NULL;
 			PMDL newMdl = NULL;
 			ULONG_PTR RetBytes = 0;
-			ULONG_PTR i;
 			ULONG SectorSize = volCtx->ulSectorSize;
 
 			SystemBuffer = FsMapUserBuffer(Data);
@@ -749,7 +759,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		}
 		else
 		{
-			if (FileObject->PrivateCacheMap == NULL)
+			if (NULL == FileObject->PrivateCacheMap)
 			{
 				if (Fcb->Header.AllocationSize.QuadPart == FCB_LOOKUP_ALLOCATIONSIZE_HINT)
 				{
@@ -769,10 +779,14 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					Fcb
 					);
 
+				if (bFileSizeChanged)
+				{
+					CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
+				}
+
 				CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
 				//CcSetAdditionalCacheAttributes(FileObject,TRUE,TRUE);
 				Fcb->CacheObject = FileObject;
-
 			}
 
 			//如果写入的时候大小超过了有效数据范围我们需要清0
@@ -965,6 +979,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
 		}
 	}
+	return FltStatus;
 }
 
 NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext, __in PVOID SystemBuffer, __in LARGE_INTEGER ByteOffset, __in ULONG ByteCount, __in PULONG_PTR RetBytes)
@@ -1043,7 +1058,7 @@ VOID FsWriteFileAsyncCompletionRoutine(__in PFLT_CALLBACK_DATA Data, __in PFLT_C
 	PVOLUMECONTEXT volCtx = IoContext->volCtx;
 	PFLT_CALLBACK_DATA OrgData = IoContext->Data;
 	PFILE_OBJECT FileObject = IoContext->Wait.Async.FileObject;
-	PDEFFCB Fcb = (PFCB)FileObject->FsContext;
+	PDEFFCB Fcb = (PDEFFCB)FileObject->FsContext;
 	PFAST_MUTEX pFileObjectMutex = IoContext->Wait.Async.FileObjectMutex;
 	LONGLONG EndByteOffset = 0;
 	ULONG ByteCount = IoContext->Wait.Async.RequestedByteCount;
@@ -1064,7 +1079,7 @@ VOID FsWriteFileAsyncCompletionRoutine(__in PFLT_CALLBACK_DATA Data, __in PFLT_C
 	OrgData->IoStatus.Information = (RetBytes < ByteCount) ? RetBytes : ByteCount;
 
 	if ((IoContext->Wait.Async.OutstandingAsyncEvent != NULL) &&
-		(ExInterlockedAddUlong(IoContext->Wait.Async.OutstandingAsyncWrites,
+		(ExInterlockedAddUlong(&IoContext->Wait.Async.OutstandingAsyncWrites,
 		0xffffffff,
 		&g_GeneralSpinLock) == 1))
 	{

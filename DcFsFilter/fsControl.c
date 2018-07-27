@@ -17,6 +17,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 #endif
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))

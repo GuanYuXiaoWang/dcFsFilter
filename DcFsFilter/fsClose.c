@@ -17,6 +17,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	Fcb = FltObjects->FileObject->FsContext;
 	KdBreakPoint();
 #endif
 	FsRtlEnterFileSystem();

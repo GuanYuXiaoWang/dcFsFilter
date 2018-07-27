@@ -14,6 +14,7 @@ extern NPAGED_LOOKASIDE_LIST  g_EResourceLookasideList;
 extern CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks;
 extern NPAGED_LOOKASIDE_LIST g_NTFSFCBLookasideList;
 extern NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
+extern ULONG g_SectorSize;
 
 UCHAR szVcbPlacer[300];
 

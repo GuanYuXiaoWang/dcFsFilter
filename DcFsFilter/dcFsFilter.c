@@ -10,6 +10,7 @@
 #include "fsControl.h"
 #include "fsWrite.h"
 #include "FsFastIo.h"
+#include "fsFlush.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -77,8 +78,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_FLUSH_BUFFERS,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreFlush,
+	PtPostFlush },
 
 	{ IRP_MJ_QUERY_VOLUME_INFORMATION,
 	0,

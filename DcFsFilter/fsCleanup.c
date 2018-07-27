@@ -3,7 +3,6 @@
 
 FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	NTSTATUS  status;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	PFILE_OBJECT FileObject = FltObjects->FileObject;
@@ -16,8 +15,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 #ifdef TEST
 	if (!IsTest(Data, FltObjects, "PtPreCleanup"))
 	{
+		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	KdBreakPoint();
 #endif
 
@@ -34,7 +35,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		__try
 		{
 			IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
-			status = FsCommonCleanup(Data, FltObjects, IrpContext);
+			FltStatus = FsCommonCleanup(Data, FltObjects, IrpContext);
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
@@ -82,6 +83,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	BOOLEAN bAcquireFcb = FALSE;
 	PLARGE_INTEGER TruncateSize = NULL;
 	LARGE_INTEGER LocalTruncateSize;
+	PFILE_OBJECT FileObject = FltObjects->FileObject;
+	IO_STATUS_BLOCK IoStatus = { 0 };
 
 	Fcb = FltObjects->FileObject->FsContext;
 	Ccb = FltObjects->FileObject->FsContext2;
@@ -102,6 +105,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			//  delete operation really deletes the file but
 			//  keeps the Fcb around for close to do away with.
 			//
+			bAcquireFcb = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
 			if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
 			{
 				//todo:delete opereation
@@ -115,17 +119,16 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			LocalTruncateSize = Fcb->Header.AllocationSize;
 			TruncateSize = &LocalTruncateSize;
 			
-			if (FlagOn(Fcb->FcbState, FO_CACHE_SUPPORTED) && (Fcb->NonCachedUnCleanupCount != 0) &&
-				(Fcb->NonCachedUnCleanupCount == Fcb->UncleanCount))
+			if (FlagOn(FileObject->Flags, FO_CACHE_SUPPORTED) && (Fcb->UncleanCount != 0) &&
+				(Fcb->NonCachedUnCleanupCount == (Fcb->UncleanCount - 1)) &&
+				Fcb->SectionObjectPointers.DataSectionObject != NULL)
 			{
-				//CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, NULL);
-				ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
-				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
-				CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, FALSE);
+				CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
+				//CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, FALSE);
 			}
-			if (Fcb->CacheObject)
+			if (Fcb->CacheObject && Fcb->SectionObjectPointers.DataSectionObject != NULL)
 			{
-				CcUninitializeCacheMap(Fcb->CacheObject, TruncateSize, NULL);
+			//	CcUninitializeCacheMap(FltObjects->FileObject, TruncateSize, NULL);
 			}
 			InterlockedDecrement((PLONG)&Fcb->OpenCount);
 			InterlockedDecrement((PLONG)&Fcb->UncleanCount);
@@ -140,7 +143,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	}
 	__finally
 	{
-
+		if (bAcquireFcb)
+		{
+			ExReleaseResourceLite(Fcb->Header.Resource);
+		}
 	}
 	return FLT_PREOP_COMPLETE;
 }

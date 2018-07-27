@@ -4,6 +4,12 @@
 #include <ntifs.h>
 #include <wdm.h>
 #include "fsCreate.h"
+#include "fsInformation.h"
+#include "fsFlush.h"
+#include "fsRead.h"
+#include "fsWrite.h"
+#include "fsCleanup.h"
+#include "fsClose.h"
 
 NPAGED_LOOKASIDE_LIST  g_IrpContextLookasideList;
 NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
@@ -16,6 +22,7 @@ NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
 
 ULONG g_OsMajorVersion = 0;
 ULONG g_OsMinorVersion = 0;
+ULONG g_SectorSize = 512;
 
 CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks = {0};
 
@@ -828,6 +835,8 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 	SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 	SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_IN_FSP);
 
+	DbgPrint("DispatchWorkItem,function=0x%x......\n", IrpContext->MajorFunction);
+
 	while (TRUE)
 	{
 		FsRtlEnterFileSystem();
@@ -852,19 +861,19 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 					FsCommonCreate(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_CLOSE:
-
+					
 					break;
 				case IRP_MJ_READ:
-
+					FsCommonRead(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_WRITE:
-
+					FsCommonWrite(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_QUERY_INFORMATION:
-
+					FsCommonQueryInformation(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_SET_INFORMATION:
-
+					FsCommonSetInformation(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_SET_EA:
 
@@ -873,10 +882,10 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 
 					break;
 				case IRP_MJ_FLUSH_BUFFERS:
-
+					FsCommonFlush(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_CLEANUP:
-
+					FsCommonCleanup(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_LOCK_CONTROL:
 
@@ -1829,34 +1838,59 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	HANDLE hProcessId = NULL;
 	PEPROCESS Process = NULL;
 	PUCHAR ProcessName = NULL;
-	WCHAR wszName[32] = { L"1.um" };/*Device\HarddiskVolume1*/
+	WCHAR szExName[8] = { 0 };
 	BOOLEAN bTrue = FALSE;
-
-	if (FileObject && (NULL != FileObject->FileName.Buffer))
+	ULONG length = 0;
+	WCHAR * pwszName = NULL;
+	WCHAR wszName[5] = {L"1.um"};
+	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
+	__try
 	{
-		//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题	
-		hProcessId = PsGetCurrentProcessId();
-		if (NULL != hProcessId)
+		if (FileObject && (NULL != FileObject->FileName.Buffer))
 		{
-			status = PsLookupProcessByProcessId(hProcessId, &Process);
-			if (NT_SUCCESS(status))
+			length = FileObject->FileName.Length + sizeof(WCHAR);
+			pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, length, 'aaaa');
+			RtlZeroMemory(pwszName, length);
+			RtlCopyMemory(pwszName, FileObject->FileName.Buffer, FileObject->FileName.Length);
+			if (NULL != wcsstr(pwszName, wszName))
 			{
-				ProcessName = PsGetProcessImageFileName(Process);
+				hProcessId = PsGetCurrentProcessId();
+				if (NULL != hProcessId)
+				{
+					status = PsLookupProcessByProcessId(hProcessId, &Process);
+					if (NT_SUCCESS(status))
+					{
+						ProcessName = PsGetProcessImageFileName(Process);
+					}
+					else
+					{
+						__leave;
+					}
+				}
+				else
+				{
+					__leave;
+				}
 			}
 		}
-	}
 
-	if (ProcessName && 0 == stricmp("wps.exe", ProcessName))
-	{
-// 		DbgPrint("*********Data=0x%x, data flag=0x%x, fileClass=%d, fsContext=0x%x, fsContext2=0x%x................\n", \
-// 			Data, Data->Flags, Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, FltObjects->FileObject->FsContext, FltObjects->FileObject->FsContext2);
-		//bTrue = TRUE;
-		DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, FileObject->FileName.Buffer);
+		if (ProcessName && 0 == stricmp("FileIRP.exe", ProcessName))
+		{
+			bTrue = TRUE;
+			DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, pwszName);
+		}
 	}
- 	if (NULL != Process)
- 	{
- 		ObDereferenceObject(Process);
- 	}
+	__finally
+	{
+		if (NULL != Process)
+		{
+			ObDereferenceObject(Process);
+		}
+		if (pwszName)
+		{
+			ExFreePoolWithTag(pwszName, 'aaaa');
+		}
+	}
 
 	return bTrue;
 }
@@ -2174,12 +2208,11 @@ NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJ
 	return Status;
 }
 
+//设置文件的大小
 NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb)
 {
-	NTSTATUS Status;
-	//设置文件的大小
-	FILE_VALID_DATA_LENGTH_INFORMATION fvi;
-
+	NTSTATUS Status = STATUS_UNSUCCESSFUL;
+	FILE_VALID_DATA_LENGTH_INFORMATION fvi = {0};
 	ULONG RetryCount = 0;
 
 	fvi.ValidDataLength.QuadPart = Fcb->Header.FileSize.QuadPart + Fcb->FileHeaderLength;
