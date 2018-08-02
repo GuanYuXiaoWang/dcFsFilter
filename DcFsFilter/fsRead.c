@@ -22,14 +22,20 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	NTSTATUS Status = STATUS_SUCCESS;
 	ULONG ProcessType = 0;
+	LARGE_INTEGER FlushValidSize;
 
 	PAGED_CODE();
 
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreRead"))
+	if (IsTest(Data, FltObjects, "PtPreRead"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
+	if (FltObjects->FileObject->SectionObjectPointer)
+	{
+		FlushValidSize = CcGetFlushedValidData(FltObjects->FileObject->SectionObjectPointer, FALSE);
+	}
+	
 #endif
 
 	FsRtlEnterFileSystem();
@@ -38,7 +44,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
  		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
  	}
-
+#ifdef TEST
+	KdBreakPoint();
+#endif
+	DbgPrint("PtPreRead......\n");
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
 	{
@@ -130,6 +139,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	BOOLEAN bScbAcquired = FALSE;
 	BOOLEAN bFOResourceAcquired = FALSE;
 	BOOLEAN bFcbResourceAcquired = FALSE;
+	BOOLEAN bPagingIoResourceAcquired = FALSE;
 	DEF_IO_CONTEXT stackIoContext = { 0 };
 	
 	StartByte = Iopb->Parameters.Read.ByteOffset.QuadPart;
@@ -219,6 +229,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				try_return(bPostIrp = TRUE);
 			}
 			ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);
+			//DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 			CcFlushCache(FileObject->SectionObjectPointer, (PLARGE_INTEGER)&StartByte, (ULONG)ByteCount, &Data->IoStatus);
 			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			Status = Data->IoStatus.Status;
@@ -226,8 +237,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			{
 				try_return(Status);
 			}
-			ExAcquireResourceExclusive(Fcb->Header.PagingIoResource, TRUE);
-			ExReleaseResource(Fcb->Header.PagingIoResource);
+// 			ExAcquireResourceExclusive(Fcb->Header.PagingIoResource, TRUE);
+// 			ExReleaseResource(Fcb->Header.PagingIoResource);
 		}
 		if (!bPagingIo)
 		{
@@ -251,12 +262,15 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		{
 			if (Fcb->Header.PagingIoResource != NULL)
 			{
+				DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 				if (!ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, bWait))
 				{
 					try_return(bPostIrp = TRUE);
 				}
+				bPagingIoResourceAcquired = TRUE;
 				if (!bWait)
 				{
+					DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 					IrpContext->pIoContext->Wait.Async.Resource = Fcb->Header.PagingIoResource;
 				}
 			}
@@ -455,7 +469,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 					CcInitializeCacheMap(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize, FALSE, &g_CacheManagerCallbacks, Fcb);
 					CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
-					Fcb->CacheObject = FileObject;
+					Fcb->DestCacheObject = FileObject;
 				}
 				if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 				{
@@ -516,6 +530,7 @@ try_exit:NOTHING;
 			{
 				if (bPagingIo)
 				{
+					DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				}
 				else
@@ -523,6 +538,10 @@ try_exit:NOTHING;
 					FsReleaseFcb(NULL, Fcb);
 				}
 			}
+		}
+		if (bPagingIoResourceAcquired)
+		{
+			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 		}
 
 		if (volCtx != NULL)
@@ -667,9 +686,9 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 	orgData->IoStatus.Status = Data->IoStatus.Status;
 	char * pBuf = (char*)IoContext->SwapBuffer;
 	int i = 0;
-
+#ifdef TEST
 	KdBreakPoint();
-
+#endif
 	if (NT_SUCCESS(orgData->IoStatus.Status))
 	{
 		if (!IoContext->bPagingIo)
@@ -690,11 +709,11 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 		if (IoContext->bEnFile)
 		{
 			//SwapBuffer
-			DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
-			for (i; i < ByteCount; i++)
-			{
-				pBuf[i] = pBuf[i] + 1;
-			}
+			//DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
+// 			for (i; i < ByteCount; i++)
+// 			{
+// 				pBuf[i] = pBuf[i] + 1;
+// 			}
 			DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
 		}
 		RtlCopyMemory(IoContext->SystemBuffer, IoContext->SwapBuffer, ByteCount);

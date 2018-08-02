@@ -113,7 +113,7 @@ extern "C" {
 
 	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
-	BOOLEAN fsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout LONG* nLength);
+	BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout LONG* nLength);
 	NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_CCB Ccb);
 	NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PLARGE_INTEGER RealFileSize, __in WCHAR * FileFullName);
 	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
@@ -124,6 +124,8 @@ extern "C" {
 		IN LONGLONG ByteCount,
 		IN ULONG SectorSize);
 	BOOLEAN FsMyFltCheckLockForWriteAccess(__in PFILE_LOCK FileLock, __in PFLT_CALLBACK_DATA  Data);
+
+	NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass);
 
 #ifdef __cplusplus
 }

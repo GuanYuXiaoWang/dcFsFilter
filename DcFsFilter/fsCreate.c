@@ -19,9 +19,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	PAGED_CODE();
 
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreCreate"))
+	if (IsTest(Data, FltObjects, "PtPreCreate"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
 #endif
 
@@ -73,8 +73,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		return FLT_PREOP_COMPLETE;
 	}
 
-//	KdBreakPoint();
-
+	DbgPrint("PtPreCreate......\n");
+#ifdef TEST
+	KdBreakPoint();
+#endif
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
@@ -123,7 +125,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	ULONG ProcType = 0;
 	NTSTATUS Status;
 #ifdef TEST	
-	if (!IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
+	if (IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
 	{
 		
 	}
@@ -796,10 +798,10 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING) &&
 			(Fcb->SectionObjectPointers.DataSectionObject != NULL))//先刷新缓存 //见fat create 2932
 		{
-			//CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, NULL);
 			ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
-			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+			CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, NULL);
 			CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, FALSE);
+			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 		}
 
 		if (DeleteOnClose)
@@ -875,15 +877,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(Status);
 		}
 
-		/* header
 		//写过了加密头
-		if (!Fcb->IsEnFile && IrpContext->CreateInfo.IsEnFile)
+		if (!Fcb->bEnFile && IrpContext->createInfo.bEnFile)
 		{
-			Fcb->IsEnFile = IrpContext->CreateInfo.IsEnFile;
+			Fcb->bEnFile = IrpContext->createInfo.bEnFile;
 			Fcb->FileHeaderLength = FILE_HEADER_LENGTH;
-			SetFlag(Fcb->FcbState, SCB_STATE_FILEHEADER_WRITED);
+			SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
 		}
-		*/
 		//todo::如果解密，需减去加密头的长度
 		if (IrpContext->createInfo.bDecrementHeader)
 		{
@@ -958,7 +958,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 		FileObject->FsContext2 = Ccb;
 
-		SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
+		//SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
 
 		if (CreateDisposition == FILE_SUPERSEDE ||
 			CreateDisposition == FILE_OVERWRITE ||
@@ -1184,7 +1184,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
 			FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 			FileObject->FsContext2 = Ccb;
-			SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
+		//	SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
 
 			IoSetShareAccess(DesiredAccess, ShareAccess, FileObject, &Fcb->ShareAccess);
 

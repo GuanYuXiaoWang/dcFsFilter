@@ -58,29 +58,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		//DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-		//test
-// 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE))
-// 		{
-// 			DbgPrint("Read Length=0x%x, Offset=0x%x....\n", Data->Iopb->Parameters.Read.Length, Data->Iopb->Parameters.Read.ByteOffset);
-// 			KdBreakPoint();
-// 		}
-		//判断文件后缀名
-//  		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
-//  		{
-//  			__leave;
-//  		}
-		if (!fsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
-		{
-			__leave;
-		}
-		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
-			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
-		{
-			__leave;
-		}
 		ProcessId = PsGetCurrentProcessId();
 		if (NULL == ProcessId)
 		{
@@ -96,12 +73,39 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
 			0 == stricmp("notepad++.exe", ProcessName) ||
-			0 == stricmp("notepad.exe", ProcessName))//qu shi :NTRtScan.exe
+			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe
 		{
 			DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-			//KdBreakPoint();
-			bFilter = TRUE;
 		}
+		else
+		{
+			__leave;
+		}
+		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
+		//test
+// 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
+// 		{
+// 			DbgPrint("Read Length=0x%x, Offset=0x%x....\n", Data->Iopb->Parameters.Read.Length, Data->Iopb->Parameters.Read.ByteOffset);
+// 			KdBreakPoint();
+// 		}
+// 		
+//  		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
+//  		{
+//  			__leave;
+//  		}
+		//判断文件后缀名
+		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
+		{
+			__leave;
+		}
+		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
+			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+		{
+			__leave;
+		}
+		bFilter = TRUE;
 	}
 	__finally
 	{
@@ -770,6 +774,8 @@ VOID FsOplockComplete(IN PFLT_CALLBACK_DATA Data, IN PVOID Context)
 
 VOID FsAddToWorkQueue(IN PFLT_CALLBACK_DATA Data, IN PDEF_IRP_CONTEXT IrpContext)
 {
+	KdBreakPoint();
+
 	PFLT_IO_PARAMETER_BLOCK CONST Iopb = IrpContext->OriginatingData->Iopb;
 	IrpContext->WorkItem = IoAllocateWorkItem(Iopb->TargetFileObject->DeviceObject);
 	IoQueueWorkItem(IrpContext->WorkItem, FsDispatchWorkItem, DelayedWorkQueue, (PVOID)IrpContext);
@@ -917,7 +923,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 			}
 			else
 			{
-				FsRaiseStatus(IrpContext, ExceptionCode);
+				FsRaiseStatus(NULL, ExceptionCode);
 			}
 		}
 		IoSetTopLevelIrp(NULL);
@@ -1054,7 +1060,7 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 			{
 				IrpContext->createInfo.bEnFile = TRUE;
 				IrpContext->createInfo.bWriteHeader = TRUE;
-				IrpContext->createInfo.bDecrementHeader = TRUE;
+				//IrpContext->createInfo.bDecrementHeader = TRUE;
 			}
 			
 		}
@@ -1214,25 +1220,26 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 #ifdef USE_CACHE_READWRITE
 			SetFlag(Options, FILE_WRITE_THROUGH);//直接写入
 #endif
+			UNICODE_STRING unicodeString;
+			IO_STATUS_BLOCK IoStatus;
+			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
+			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+			status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
+				NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
+			if (!NT_SUCCESS(status))
+			{
+				try_return(status);
+			}
+			status = ObReferenceObjectByHandle(Fcb->CcFileHandle, 0, *IoFileObjectType, KernelMode, &Fcb->CcFileObject, NULL);
+			if (!NT_SUCCESS(status))
+			{
+				FltClose(Fcb->CcFileHandle);
+				Fcb->CcFileHandle = NULL;
+				try_return(status);
+			}
 			
-// 			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
-// 			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-// 			status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
-// 				NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
-// 			if (!NT_SUCCESS(status))
-// 			{
-// 				try_return(status);
-// 			}
-// 			status = ObReferenceObjectByHandle(Fcb->CcFileHandle, 0, *IoFileObjectType, KernelMode, &Fcb->CcFileObject, NULL);
-// 			if (!NT_SUCCESS(status))
-// 			{
-// 				FltClose(Fcb->CcFileHandle);
-// 				Fcb->CcFileHandle = NULL;
-// 				try_return(status);
-// 			}
-			
-			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
-			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+// 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
+// 			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
 		}
 		else
 		{
@@ -1479,6 +1486,7 @@ NTSTATUS FsCloseGetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 		{
 			NewData->Iopb->MajorFunction = IRP_MJ_QUERY_INFORMATION;
 			NewData->Iopb->MinorFunction = 0;
+			NewData->Iopb->Parameters.QueryFileInformation.InfoBuffer = FileInfo;
 			NewData->Iopb->Parameters.QueryFileInformation.FileInformationClass = FileBasicInformation;
 			NewData->Iopb->Parameters.QueryFileInformation.Length = sizeof(FILE_BASIC_INFORMATION);
 			NewData->Iopb->TargetFileObject = FileObject;
@@ -1842,7 +1850,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L"1.um"};
+	WCHAR wszName[5] = {L"4.um"};
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
@@ -1874,7 +1882,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 			}
 		}
 
-		if (ProcessName && 0 == stricmp("FileIRP.exe", ProcessName))
+		if (ProcessName && 0 == stricmp("FileIRP1.exe", ProcessName))
 		{
 			bTrue = TRUE;
 			DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, pwszName);
@@ -1895,7 +1903,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	return bTrue;
 }
 
-BOOLEAN fsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout LONG* nLength)
+BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout LONG* nLength)
 {
 	PWCHAR pFileName = NULL;
 	LONG   nIndex = 0;
@@ -2221,7 +2229,7 @@ NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEF
 	{
 		Status = FltSetInformationFile(
 			FltObjects->Instance,
-			Ccb->StreamFileInfo.StreamObject,
+			Fcb->CcFileObject,
 			&fvi,
 			sizeof(FILE_VALID_DATA_LENGTH_INFORMATION),
 			FileValidDataLengthInformation
@@ -2321,4 +2329,31 @@ BOOLEAN FsMyFltCheckLockForWriteAccess(__in PFILE_LOCK FileLock, __in PFLT_CALLB
 		ProcessId);
 
 	return Result;
+}
+
+NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	PFLT_CALLBACK_DATA NewData = NULL;
+
+	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
+	if (NT_SUCCESS(Status))
+	{
+		NewData->Iopb->MajorFunction = IRP_MJ_SET_INFORMATION;
+		NewData->Iopb->Parameters.SetFileInformation.FileInformationClass = FileInfoClass;
+		NewData->Iopb->Parameters.SetFileInformation.Length = Length;
+		NewData->Iopb->Parameters.SetFileInformation.InfoBuffer = FileInfoBuffer;
+		NewData->Iopb->TargetFileObject = FileObject;
+
+
+		SetFlag(NewData->Iopb->IrpFlags, IRP_SYNCHRONOUS_API);
+		FltPerformSynchronousIo(NewData);
+		Status = NewData->IoStatus.Status;
+	}
+
+	if (NewData != NULL)
+	{
+		FltFreeCallbackData(NewData);
+	}
+	return Status;
 }

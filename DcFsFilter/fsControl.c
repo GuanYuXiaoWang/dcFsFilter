@@ -13,9 +13,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreQueryInformation"))
+	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 #endif
@@ -25,6 +25,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	DbgPrint("PtPreFileSystemControl......\n");
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -94,4 +96,119 @@ NTSTATUS FsControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS F
 
 	
 	return ntStatus;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreLockControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	PFILE_OBJECT FileObject = FltObjects->FileObject;
+	BOOLEAN bTopLevelIrp = FALSE;
+	PDEF_IRP_CONTEXT IrpContext = NULL;
+	NTSTATUS Status = STATUS_SUCCESS;
+
+	UNREFERENCED_PARAMETER(CompletionContext);
+	
+	PAGED_CODE();
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	bTopLevelIrp = FsIsIrpTopLevel(Data);
+
+	do 
+	{
+		__try
+		{
+			if (NULL == IrpContext)
+			{
+				IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
+			}
+			FltStatus = FsCommonLockControl(Data, FltObjects, IrpContext);
+			Status = IrpContext->ExceptionStatus;
+			break;
+		}
+		__except (EXCEPTION_EXECUTE_HANDLER)
+		{
+			FsProcessException(&IrpContext, &Data, GetExceptionCode());
+			FltStatus = FLT_PREOP_COMPLETE;
+			break;
+		}
+	} while (Status == STATUS_CANT_WAIT || Status == STATUS_LOG_FILE_FULL);
+	
+	if (bTopLevelIrp)
+	{
+		IoSetTopLevelIrp(NULL);
+
+	}
+
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostLockControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	BOOLEAN bFcbAcquired = FALSE;
+	BOOLEAN bOplockPostIrp = FALSE;
+	__try
+	{
+		if (NULL == Fcb->CcFileObject)
+		{
+			__leave;
+		}
+
+		FltStatus = FltCheckOplock(&Fcb->Oplock, Data, IrpContext, FsOplockComplete, NULL);
+		if (FLT_PREOP_COMPLETE == FltStatus)
+		{
+			__leave;
+		}
+		if (FLT_PREOP_PENDING == FltStatus)
+		{
+			FltStatus = FLT_PREOP_PENDING;
+			bOplockPostIrp = TRUE;
+			__leave;
+		}
+		ExAcquireFastMutex(Fcb->Header.FastMutex);
+		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
+		{
+			if (Fcb->FileLock && Fcb->FileLock->FastIoIsQuestionable)
+			{
+				Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
+			}
+			else
+			{
+				Fcb->Header.IsFastIoPossible = FastIoIsPossible;
+			}
+		}
+		else
+		{
+			Fcb->Header.IsFastIoPossible = FastIoIsNotPossible;
+		}
+		ExReleaseFastMutex(Fcb->Header.FastMutex);
+
+		FltStatus = FltProcessFileLock(Fcb->FileLock, Data, NULL);
+	}
+	__finally
+	{
+		if (!AbnormalTermination() && !bOplockPostIrp) {
+
+			FsCompleteRequest(&IrpContext, NULL, STATUS_SUCCESS, FALSE);
+		}
+	}
+
+	return FltStatus;
 }

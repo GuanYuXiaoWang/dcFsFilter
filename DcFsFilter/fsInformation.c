@@ -14,9 +14,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreQueryInformation"))
+	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		
 	}
 #endif
 
@@ -27,6 +27,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	DbgPrint("PreQueryInformation......\n");
+#ifdef TEST
+	KdBreakPoint();
+#endif
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -133,7 +136,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileAllInfo->StandardInformation.DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileAllInfo->StandardInformation.Directory = Fcb->Directory;
 			FileAllInfo->StandardInformation.NumberOfLinks = Fcb->LinkCount;
-			FileAllInfo->StandardInformation.EndOfFile = Fcb->Header.FileSize;
+			FileAllInfo->StandardInformation.EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - FILE_HEADER_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 		case FileStandardInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
@@ -147,7 +150,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileStandardInfo->DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileStandardInfo->Directory = Fcb->Directory;
 			FileStandardInfo->NumberOfLinks = Fcb->LinkCount;
-			FileStandardInfo->EndOfFile = Fcb->Header.FileSize;
+			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - FILE_HEADER_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 
 		default:
@@ -175,12 +178,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreSetInformation"))
+	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+		KdBreakPoint();
 	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	KdBreakPoint();
+	
 #endif
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -188,8 +191,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	DbgPrint("PtPreSetInformation......\n");
+#ifdef TEST
 	KdBreakPoint();
-
+#endif
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -215,7 +220,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 				IoSetTopLevelIrp(NULL);
 			}
 		}
-		FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
+		//FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
 	}
 	else if (FLT_IS_FASTIO_OPERATION(Data))
 	{
@@ -249,11 +254,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreQueryEA"))
+	if (IsTest(Data, FltObjects, "PtPreQueryEA"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
-	KdBreakPoint();
+	
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -312,11 +317,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreAcquireForSection"))
+	if (IsTest(Data, FltObjects, "PtPreAcquireForSection"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
-	KdBreakPoint();
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -347,11 +351,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreReleaseForSection"))
+	if (IsTest(Data, FltObjects, "PtPreReleaseForSection"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
-	KdBreakPoint();
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -475,7 +478,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		{
 			FsReleaseFcb(IrpContext, Fcb);
 		}
-		if (!AbnormalTermination())
+		if (!AbnormalTermination() && Status != STATUS_PENDING)
 		{
 			FsCompleteRequest(&IrpContext, &Data, Status, FALSE);
 		}

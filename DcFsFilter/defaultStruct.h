@@ -214,7 +214,7 @@ typedef struct tagDEFFCB
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
-	PFILE_OBJECT CacheObject;
+	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;

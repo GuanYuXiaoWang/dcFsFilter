@@ -168,23 +168,23 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_ACQUIRE_FOR_MOD_WRITE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreAcquireForModWrite,
+	PtPostAcquireForModWrite },
 
 	{ IRP_MJ_RELEASE_FOR_MOD_WRITE,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreReleaseForModWrite,
+	PtPostReleaseForModWrite },
 
 	{ IRP_MJ_ACQUIRE_FOR_CC_FLUSH,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreAcquireForCcFlush,
+	PtPostAcquireForCcFlush },
 
 	{ IRP_MJ_RELEASE_FOR_CC_FLUSH,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreReleaseForCcFlush,
+	PtPostReleaseForCcFlush },
 
 	{ IRP_MJ_FAST_IO_CHECK_IF_POSSIBLE,
 	0,

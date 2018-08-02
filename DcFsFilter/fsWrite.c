@@ -9,18 +9,22 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	BOOLEAN bTopLevel = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	BOOLEAN bModifyWriter = FALSE;
+	LARGE_INTEGER FlushValidSize;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreWrite"))
+	if (IsTest(Data, FltObjects, "PtPreWrite"))
 	{
 		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		KdBreakPoint();
 	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	KdBreakPoint();
+	if (FltObjects->FileObject->SectionObjectPointer)
+	{
+		FlushValidSize = CcGetFlushedValidData(FltObjects->FileObject->SectionObjectPointer, FALSE);
+	}
+
 #endif
 
 	FsRtlEnterFileSystem();
@@ -30,8 +34,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+#ifdef TEST
 	KdBreakPoint();
+#endif
+	DbgPrint("PtPreWrite......\n");
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -301,17 +307,18 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			bFcbAcquired = TRUE;
 			bFcbAcquredExclusive = TRUE;
-			ExAcquireSharedStarveExclusive(Header->PagingIoResource, TRUE);
+			bPagingIoResourceAcquired = ExAcquireSharedStarveExclusive(Header->PagingIoResource, TRUE);
 			CcFlushCache(FileObject->SectionObjectPointer,
 				bWriteToEndOfFile ? &Header->FileSize : (PLARGE_INTEGER)&StartByte,
 				ByteCount,
 				&Data->IoStatus);
-			ExReleaseResourceLite(Header->PagingIoResource);
+			
 			if (!NT_SUCCESS(Data->IoStatus.Status))
 			{
+				ExReleaseResourceLite(Header->PagingIoResource);
 				try_return(Status = Data->IoStatus.Status);
 			}
-			bPagingIoResourceAcquired = ExAcquireResourceExclusiveLite(Header->PagingIoResource, TRUE);
+
 			CcPurgeCacheSection(FileObject->SectionObjectPointer,
 				bWriteToEndOfFile ? &Header->FileSize : (PLARGE_INTEGER)&StartByte,
 				ByteCount,
@@ -324,9 +331,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		}
 		if (bPagingIo)
 		{
+			DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 			bPagingIoResourceAcquired = ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);
 			if (!bWait)
 			{
+				DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 				IrpContext->pIoContext->Wait.Async.Resource = Header->PagingIoResource;
 			}
 			if (Fcb->MoveFileEvent)//TODO：处理move事件
@@ -578,7 +587,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		if (bExtendingFile) //扩展了文件大小
 		{
 			FileSize.QuadPart = StartByte.QuadPart + ByteCount;
-
 			if (Fcb->Header.AllocationSize.QuadPart == FCB_LOOKUP_ALLOCATIONSIZE_HINT)
 			{
 				FsLookupFileAllocationSize(IrpContext, Fcb, Ccb);
@@ -586,7 +594,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			if (FileSize.QuadPart > Fcb->Header.AllocationSize.QuadPart)
 			{
-
 				ULONG ClusterSize = volCtx->ulSectorSize * volCtx->uSectorsPerAllocationUnit; //簇大小
 				LARGE_INTEGER TempLI;
 
@@ -598,15 +605,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				{
 					TempLI.HighPart -= 1;
 				}
-
 				Fcb->Header.AllocationSize.LowPart = ((ULONG)FileSize.LowPart + (ClusterSize - 1)) & (~(ClusterSize - 1));
-
 				Fcb->Header.AllocationSize.HighPart = TempLI.HighPart;
-
 			}
 
 			Fcb->Header.FileSize.QuadPart = FileSize.QuadPart;
-
 			if (CcIsFileCached(FileObject))
 			{
 				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
@@ -619,9 +622,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			!bRecursiveWriteThrough &&
 			(StartByte.QuadPart + ByteCount > ValidDataLength.QuadPart))
 		{
-
 			bExtendingValidData = TRUE;
-
 #ifndef CHANGE_TOP_IRP
 			FsExtendingValidDataSetFile(FltObjects, Fcb, Ccb);
 #endif
@@ -644,6 +645,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			PMDL newMdl = NULL;
 			ULONG_PTR RetBytes = 0;
 			ULONG SectorSize = volCtx->ulSectorSize;
+
+			KdBreakPoint();
 
 			SystemBuffer = FsMapUserBuffer(Data);
 
@@ -785,8 +788,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				}
 
 				CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
-				//CcSetAdditionalCacheAttributes(FileObject,TRUE,TRUE);
-				Fcb->CacheObject = FileObject;
+				//CcSetAdditionalCacheAttributes(FileObject, FALSE, TRUE);
+				Fcb->DestCacheObject = FileObject;
 			}
 
 			//如果写入的时候大小超过了有效数据范围我们需要清0
@@ -850,7 +853,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 						SetFlag(FileObject->Flags, FO_FILE_MODIFIED);
 					}
 
-					if (bExtendingFile && !bWriteFileSizeToDirent)
+					if (bExtendingFile /*&& !bWriteFileSizeToDirent*/)
 					{
 						SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
 					}
@@ -882,8 +885,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				{
 					if (bExtendingFile)
 					{
-						if (Fcb->Header.PagingIoResource != NULL) {
-
+						if (Fcb->Header.PagingIoResource != NULL) 
+						{
 							(VOID)ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 						}
 						Fcb->Header.FileSize.QuadPart = InitialFileSize.QuadPart;
@@ -891,8 +894,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 						{
 							CcGetFileSizePointer(FileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;
 						}
-						if (Fcb->Header.PagingIoResource != NULL) {
-
+						if (Fcb->Header.PagingIoResource != NULL)
+						{
+							//DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 							ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 						}
 					}
@@ -931,6 +935,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			if (bPagingIoResourceAcquired)
 			{
+				DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			}
 
@@ -1133,4 +1138,79 @@ VOID FsWriteFileAsyncCompletionRoutine(__in PFLT_CALLBACK_DATA Data, __in PFLT_C
 		volCtx = NULL;
 	}
 	FltCompletePendedPreOperation(OrgData, FLT_PREOP_COMPLETE, NULL);
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreAcquireForModWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	BOOLEAN bAcquiredFile = FALSE;
+	UNREFERENCED_PARAMETER(CompletionContext);
+	PAGED_CODE();
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreAcquireForModWrite"))
+	{
+		KdBreakPoint();
+	}
+#endif
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreAcquireForModWrite......\n");
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb != NULL && Fcb->Header.PagingIoResource != NULL)
+	{
+		bAcquiredFile = ExAcquireResourceShared(Fcb->Header.PagingIoResource, FALSE);
+	}
+
+	if (!bAcquiredFile)
+	{
+		Data->IoStatus.Status = STATUS_CANT_WAIT;
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostAcquireForModWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreReleaseForModWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	UNREFERENCED_PARAMETER(CompletionContext);
+	PAGED_CODE();
+#ifdef TEST
+	if (IsTest(Data, FltObjects, "PtPreReleaseForModWrite"))
+	{
+		KdBreakPoint();
+	}
+	DbgPrint("PtPreReleaseForModWrite......\n");
+#endif
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreReleaseForModWrite......\n");
+	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb && Fcb->Header.PagingIoResource != NULL)
+	{
+		ExReleaseResource(Fcb->Header.PagingIoResource);
+	}
+
+	return FLT_PREOP_COMPLETE;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForModWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }

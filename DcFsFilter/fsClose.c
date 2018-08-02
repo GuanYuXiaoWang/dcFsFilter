@@ -13,12 +13,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 	PAGED_CODE();
 #ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreClose"))
+	if (IsTest(Data, FltObjects, "PtPreClose"))
 	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+		Fcb = FltObjects->FileObject->FsContext;
+		KdBreakPoint();
 	}
-	Fcb = FltObjects->FileObject->FsContext;
-	KdBreakPoint();
+	
 #endif
 	FsRtlEnterFileSystem();
 
@@ -27,6 +27,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}	
+	DbgPrint("PtPreClose......\n");
 
 	bTopLevelIrp = IsTopLevelIRP(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
