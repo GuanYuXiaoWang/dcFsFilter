@@ -69,13 +69,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		ProcessName = PsGetProcessImageFileName(Process);
-		//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
+		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
 			0 == stricmp("notepad++.exe", ProcessName) ||
 			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe
 		{
-			DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
+			DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 		}
 		else
 		{
@@ -105,7 +104,14 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
+#ifdef TEST
+		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
+		{
+			bFilter = TRUE;
+		}
+#else
 		bFilter = TRUE;
+#endif
 	}
 	__finally
 	{
@@ -1850,7 +1856,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L"4.um"};
+	WCHAR wszName[5] = {L"1.um"};
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
@@ -1882,10 +1888,11 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 			}
 		}
 
-		if (ProcessName && 0 == stricmp("FileIRP1.exe", ProcessName))
+		if (ProcessName && (0 == stricmp("FileIRP1.exe", ProcessName) || 
+			0 == stricmp("notepad++.exe", ProcessName)))
 		{
 			bTrue = TRUE;
-			DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, pwszName);
+			DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, FileObject->FileName.Buffer ? FileObject->FileName.Buffer : L"none");
 		}
 	}
 	__finally

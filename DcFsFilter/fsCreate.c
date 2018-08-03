@@ -132,6 +132,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 #endif
 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
 	{
+		DbgPrint("PtPreOperationNetworkQueryOpen......\n");
 		return FLT_PREOP_DISALLOW_FASTIO;
 	}
 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -310,7 +311,6 @@ try_exit:NOTHING;
 		{
 			Data->IoStatus.Information = IrpContext->createInfo.Information;
 		}
-		DbgPrint("Fcb=0x%x...\n", IrpContext->createInfo.pFcb);
 	}
 	__finally
 	{

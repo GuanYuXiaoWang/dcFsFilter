@@ -191,7 +191,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetInformation......\n");
+	DbgPrint("PtPreSetInformation(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
 #ifdef TEST
 	KdBreakPoint();
 #endif

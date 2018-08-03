@@ -331,11 +331,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		}
 		if (bPagingIo)
 		{
-			DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 			bPagingIoResourceAcquired = ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);
 			if (!bWait)
 			{
-				DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 				IrpContext->pIoContext->Wait.Async.Resource = Header->PagingIoResource;
 			}
 			if (Fcb->MoveFileEvent)//TODO：处理move事件
@@ -1189,7 +1187,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForModWrite(__inout PFLT_CALLBACK_DATA Dat
 	{
 		KdBreakPoint();
 	}
-	DbgPrint("PtPreReleaseForModWrite......\n");
+	
 #endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{

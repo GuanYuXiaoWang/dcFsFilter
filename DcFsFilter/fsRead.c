@@ -228,8 +228,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			{
 				try_return(bPostIrp = TRUE);
 			}
-			ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);
-			//DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
+			ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);		
 			CcFlushCache(FileObject->SectionObjectPointer, (PLARGE_INTEGER)&StartByte, (ULONG)ByteCount, &Data->IoStatus);
 			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			Status = Data->IoStatus.Status;
@@ -262,7 +261,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		{
 			if (Fcb->Header.PagingIoResource != NULL)
 			{
-				DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 				if (!ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, bWait))
 				{
 					try_return(bPostIrp = TRUE);
@@ -270,7 +268,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				bPagingIoResourceAcquired = TRUE;
 				if (!bWait)
 				{
-					DbgPrint("[%s]Acquire pagingIoResource, line=%d....\n", __FUNCDNAME__, __LINE__);
 					IrpContext->pIoContext->Wait.Async.Resource = Fcb->Header.PagingIoResource;
 				}
 			}
