@@ -15,6 +15,12 @@ extern CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks;
 extern NPAGED_LOOKASIDE_LIST g_NTFSFCBLookasideList;
 extern NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
 extern ULONG g_SectorSize;
+extern NPAGED_LOOKASIDE_LIST	g_Npaged4KBList;
+extern NPAGED_LOOKASIDE_LIST	g_Npaged64KBList;
+
+extern BOOLEAN g_bUnloading;
+extern BOOLEAN g_bAllModuleInitOk;
+extern BOOLEAN g_bSafeDataReady;
 
 UCHAR szVcbPlacer[300];
 
@@ -87,7 +93,7 @@ extern "C" {
 	PERESOURCE FsAllocateResource();
 
 	VOID NetFileSetCacheProperty(IN PFILE_OBJECT FileObject, IN ACCESS_MASK DesiredAccess);
-	NTSTATUS MyGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data,
+	NTSTATUS FsGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data,
 									__in PCFLT_RELATED_OBJECTS FltObject,
 									__inout PDEF_IRP_CONTEXT IrpContext);
 
@@ -126,7 +132,7 @@ extern "C" {
 	BOOLEAN FsMyFltCheckLockForWriteAccess(__in PFILE_LOCK FileLock, __in PFLT_CALLBACK_DATA  Data);
 
 	NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass);
-
+	BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType);
 #ifdef __cplusplus
 }
 #endif

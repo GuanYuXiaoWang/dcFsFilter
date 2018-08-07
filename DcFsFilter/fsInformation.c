@@ -136,7 +136,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileAllInfo->StandardInformation.DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileAllInfo->StandardInformation.Directory = Fcb->Directory;
 			FileAllInfo->StandardInformation.NumberOfLinks = Fcb->LinkCount;
-			FileAllInfo->StandardInformation.EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - FILE_HEADER_LENGTH : Fcb->Header.FileSize.QuadPart;
+			FileAllInfo->StandardInformation.EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 		case FileStandardInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
@@ -150,7 +150,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileStandardInfo->DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileStandardInfo->Directory = Fcb->Directory;
 			FileStandardInfo->NumberOfLinks = Fcb->LinkCount;
-			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - FILE_HEADER_LENGTH : Fcb->Header.FileSize.QuadPart;
+			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 
 		default:

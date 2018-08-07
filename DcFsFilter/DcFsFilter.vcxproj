@@ -255,10 +255,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Crypto.cpp" />
     <ClCompile Include="dcFsFilter.c" />
+    <ClCompile Include="EncFile.c" />
     <ClCompile Include="fsCleanup.c" />
     <ClCompile Include="fsClose.c" />
-    <ClCompile Include="fsCommunication.cpp" />
+    <ClCompile Include="fsCommunication.c" />
     <ClCompile Include="fsControl.c" />
     <ClCompile Include="fsCreate.c" />
     <ClCompile Include="fsData.c" />
@@ -267,11 +269,15 @@
     <ClCompile Include="fsInformation.c" />
     <ClCompile Include="fsRead.c" />
     <ClCompile Include="fsWrite.c" />
+    <ClCompile Include="Head.cpp" />
     <ClCompile Include="volumeContext.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="Crypto.h" />
     <ClInclude Include="dcFsFilter.h" />
     <ClInclude Include="defaultStruct.h" />
+    <ClInclude Include="EncFile.h" />
+    <ClInclude Include="EncFlagData.h" />
     <ClInclude Include="fat.h" />
     <ClInclude Include="fatstruc.h" />
     <ClInclude Include="fsCleanup.h" />
@@ -285,7 +291,9 @@
     <ClInclude Include="fsInformation.h" />
     <ClInclude Include="fsRead.h" />
     <ClInclude Include="fsWrite.h" />
+    <ClInclude Include="Head.h" />
     <ClInclude Include="nodetype.h" />
+    <ClInclude Include="userkernel.h" />
     <ClInclude Include="volumeContext.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

@@ -32,7 +32,9 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define FILE_ACCESS_PROCESS_RW 0x002
 #define FILE_ACCESS_PROCESS_DISABLE 0x004
 
-#define FILE_HEADER_LENGTH 8
+#ifndef ENCRYPT_HEAD_LENGTH
+#define ENCRYPT_HEAD_LENGTH 1024
+#endif
 #define ENCRYPTION_HEADER_KEY "zhouyang"
 
 typedef struct tagDEF_IO_CONTEXT
@@ -95,6 +97,7 @@ typedef struct tagDEF_IO_CONTEXT
 	PFLT_RELATED_OBJECTS FltObjects;
 	ULONG FileHeaderLength;
 	LARGE_INTEGER ByteOffset;
+	UCHAR FileHeader[ENCRYPT_HEAD_LENGTH];
 }DEF_IO_CONTEXT, *PDEF_IO_CONTEXT;
 
 #define MIN_SECTOR_SIZE 0x200
@@ -208,6 +211,7 @@ typedef struct tagDEFFCB
 	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
 	WCHAR			wszFile[128];
+	UCHAR			szFileHead[ENCRYPT_HEAD_LENGTH];
 
 	PRKEVENT		OutstandingAsyncEvent;
 	ULONG			OutstandingAsyncWrites;
@@ -218,7 +222,7 @@ typedef struct tagDEFFCB
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;
-	ULONG FileType;
+	ULONG FileAcessType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
 	ULONG ProcessID;
@@ -298,7 +302,7 @@ typedef struct tagDEF_CCB
 
 typedef struct tagCREATE_INFO
 {
-	UCHAR * pFileHeader;
+	UCHAR FileHeader[ENCRYPT_HEAD_LENGTH];
 	UNICODE_STRING strName;
 	HANDLE hStreamHanle;
 	PFILE_OBJECT pStreamObject;

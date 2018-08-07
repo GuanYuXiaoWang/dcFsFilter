@@ -1,5 +1,6 @@
 #include "fsRead.h"
 #include "fsData.h"
+#include "Crypto.h"
 
 #if defined(_M_IX86)
 #define OVERFLOW_READ_THRESHHOLD         (0xE00)
@@ -217,6 +218,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			IrpContext->pIoContext->Wait.Async.RequestedByteCount = ByteCount;
 			IrpContext->pIoContext->Wait.Async.FileObject = FileObject;
 		}
+		RtlCopyMemory(IrpContext->pIoContext->FileHeader, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
 	}
 
 	__try
@@ -415,7 +417,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			{
 				if (Fcb->bEnFile)
 				{
-					//½âÃÜBuf
+					//½âÃÜnewBuf
+					DecBuf(newBuf, ByteCount, IrpContext->pIoContext->FileHeader);
 				}
 				RtlCopyMemory(SystemBuffer, newBuf, ByteCount);
 				if (NT_SUCCESS(Status))
@@ -683,9 +686,7 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 	orgData->IoStatus.Status = Data->IoStatus.Status;
 	char * pBuf = (char*)IoContext->SwapBuffer;
 	int i = 0;
-#ifdef TEST
-	KdBreakPoint();
-#endif
+
 	if (NT_SUCCESS(orgData->IoStatus.Status))
 	{
 		if (!IoContext->bPagingIo)
@@ -707,10 +708,7 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 		{
 			//SwapBuffer
 			//DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
-// 			for (i; i < ByteCount; i++)
-// 			{
-// 				pBuf[i] = pBuf[i] + 1;
-// 			}
+			DecBuf(IoContext->SwapBuffer, orgData->IoStatus.Information, IoContext->FileHeader);
 			DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
 		}
 		RtlCopyMemory(IoContext->SystemBuffer, IoContext->SwapBuffer, ByteCount);

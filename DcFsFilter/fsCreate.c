@@ -77,6 +77,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 #ifdef TEST
 	KdBreakPoint();
 #endif
+
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
@@ -845,7 +846,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
 
-		Status = MyGetFileStandardInfo(Data,
+		Status = FsGetFileStandardInfo(Data,
 			FltObjects,
 			IrpContext);
 
@@ -855,7 +856,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 
 		Status = FsCreatedFileHeaderInfo(FltObjects, IrpContext);
-
 		if (!NT_SUCCESS(Status))
 		{
 			Data->IoStatus.Status = Status;
@@ -864,7 +864,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 		if (IrpContext->createInfo.FileAccess == FILE_NO_ACCESS)
 		{
-
 			Status = STATUS_ACCESS_DENIED;
 			try_return(Status);
 		}
@@ -872,7 +871,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			(BooleanFlagOn(DesiredAccess, FILE_WRITE_DATA) ||
 			BooleanFlagOn(DesiredAccess, FILE_APPEND_DATA)))
 		{
-
 			Status = STATUS_ACCESS_DENIED;
 			try_return(Status);
 		}
@@ -881,14 +879,14 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		if (!Fcb->bEnFile && IrpContext->createInfo.bEnFile)
 		{
 			Fcb->bEnFile = IrpContext->createInfo.bEnFile;
-			Fcb->FileHeaderLength = FILE_HEADER_LENGTH;
+			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 			SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
 		}
 		//todo::如果解密，需减去加密头的长度
 		if (IrpContext->createInfo.bDecrementHeader)
 		{
-			IrpContext->createInfo.FileSize.QuadPart -= FILE_HEADER_LENGTH;
-			IrpContext->createInfo.FileAllocationSize.QuadPart -= FILE_HEADER_LENGTH;
+			IrpContext->createInfo.FileSize.QuadPart -= ENCRYPT_HEAD_LENGTH;
+			IrpContext->createInfo.FileAllocationSize.QuadPart -= ENCRYPT_HEAD_LENGTH;
 		}
 
 		Fcb->Header.FileSize.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
@@ -1129,7 +1127,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			}
 		}
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
-		Status = MyGetFileStandardInfo(Data, FltObjects, IrpContext);//这里还不能用FltObject中的文件对象
+		Status = FsGetFileStandardInfo(Data, FltObjects, IrpContext);//这里还不能用FltObject中的文件对象
 		if (!NT_SUCCESS(Status) || bDirectory)
 		{
 			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));

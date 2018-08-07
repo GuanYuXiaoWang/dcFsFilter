@@ -2,6 +2,7 @@
 #include "fsWrite.h"
 #include "fsData.h"
 #include "volumeContext.h"
+#include "Crypto.h"
 
 FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
@@ -124,7 +125,7 @@ FLT_PREOP_CALLBACK_STATUS FsFastIoWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		return FLT_PREOP_DISALLOW_FASTIO;
 	}
 	bAcquireResource = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
-	if (!Fcb->bEnFile && BooleanFlagOn(Fcb->FileType, FILE_ACCESS_PROCESS_RW))
+	if (!Fcb->bEnFile && BooleanFlagOn(Fcb->FileAcessType, FILE_ACCESS_PROCESS_RW))
 	{
 		if (bAcquireResource)
 		{
@@ -231,7 +232,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		return FLT_PREOP_COMPLETE;
 	}
 	//如果一个非加密文件收到了写请求转变他成为加密文件
-	if (!bPagingIo && !Fcb->bEnFile && BooleanFlagOn(Fcb->FileType, FILE_ACCESS_PROCESS_RW))
+	if (!bPagingIo && !Fcb->bEnFile && BooleanFlagOn(Fcb->FileAcessType, FILE_ACCESS_PROCESS_RW))
 	{
 		Status = FsTransformFileToEncrypted(Data, FltObjects, Fcb, Ccb);
 		if (!NT_SUCCESS(Status))
@@ -644,38 +645,31 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			ULONG_PTR RetBytes = 0;
 			ULONG SectorSize = volCtx->ulSectorSize;
 
-			KdBreakPoint();
+			//KdBreakPoint();
 
 			SystemBuffer = FsMapUserBuffer(Data);
-
 			//修正大小变成扇区整数倍
-
 			//WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen,CRYPT_UNIT); error
 
 			WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen, SectorSize);
-
 			if ((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
 
 				((WriteLen != (ULONG)ByteCount)
 				&& (StartByte.QuadPart + (LONGLONG)ByteCount < ValidDataLength.QuadPart)))
 			{
-
 				try_return(Status = STATUS_NOT_IMPLEMENTED);
 			}
-
 			//清0数据
 			if (!bCalledByLazyWrite &&
 				!bRecursiveWriteThrough &&
 				(StartByte.QuadPart > ValidDataLength.QuadPart))
 			{
-
 				FsZeroData(IrpContext,
 					Fcb,
 					FileObject,
 					ValidDataLength.QuadPart,
 					StartByte.QuadPart - ValidDataLength.QuadPart,
 					volCtx->ulSectorSize);
-
 			}
 
 			bWriteFileSizeToDirent = TRUE;
@@ -711,6 +705,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			{
 				//RealWriteLen = (ULONG)ROUND_TO_SIZE(RealWriteLen,CRYPT_UNIT);
 				//TODO：加密newBuf
+				EncBuf(newBuf, ByteCount, Fcb->szFileHead);
 			}
 
 			IrpContext->FileObject = BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject;

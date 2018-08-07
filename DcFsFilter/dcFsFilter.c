@@ -11,6 +11,7 @@
 #include "fsWrite.h"
 #include "FsFastIo.h"
 #include "fsFlush.h"
+#include "fsCommunication.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -477,8 +478,15 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 		status = FltStartFiltering(gFilterHandle);
 		if (!NT_SUCCESS(status))
 		{
+			g_bUnloading = TRUE;
+			g_bAllModuleInitOk = FALSE;
 			UnInitData();
 			FltUnregisterFilter(gFilterHandle);
+		}
+		else
+		{
+			InitCommunication(gFilterHandle);
+			g_bAllModuleInitOk = TRUE;
 		}
 	}
 	
@@ -512,6 +520,9 @@ Returns the final status of this operation.
 
 	PAGED_CODE();
 
+	g_bUnloading = TRUE;
+	g_bAllModuleInitOk = FALSE;
+
 	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 		("PassThrough!PtUnload: Entered\n"));
 	if (gFilterHandle)
@@ -520,6 +531,7 @@ Returns the final status of this operation.
 	}
 
 	UnInitData();
+	UnInitCommunication();
 
 	return STATUS_SUCCESS;
 }

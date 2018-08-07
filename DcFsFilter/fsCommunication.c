@@ -2,10 +2,14 @@
 #include "fsData.h"
 #include <ntifs.h>
 #include <wdm.h>
+#include "userkernel.h"
+#include "Head.h"
+#include "EncFile.h"
 
 #define PortName  L"\\HuatuDriverPort"
 
 PFLT_PORT g_FltPort = NULL;
+PFLT_PORT g_FltClientPort = NULL;
 
 //NTKERNELAPI UCHAR * PsGetProcessImageFileName(__in PEPROCESS Process);
 
@@ -63,6 +67,7 @@ NTSTATUS FLTAPI ConnectNotify(
 	
 	__try
 	{
+		g_FltClientPort = ClientPort;
 		ProcessID = PsGetCurrentProcessId();
 		if (NULL == ProcessID)
 		{
@@ -95,15 +100,82 @@ NTSTATUS FLTAPI ConnectNotify(
 
 VOID FLTAPI DisConnectNotify(__in_opt PVOID ConnectionCookie)
 {
-
+	g_FltClientPort = NULL;
 }
 
 NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBufferLength) PVOID InputBuffer, __in ULONG InputBufferLength, __out_bcount_part_opt(OutputBufferLength, *ReturnOutputBufferLength) PVOID OutputBuffer, __in ULONG OutputBufferLength, __out PULONG ReturnOutputBufferLength)
 {
-	NTSTATUS Status = STATUS_SUCCESS;
+	NTSTATUS			ntStatus = STATUS_UNSUCCESSFUL;
+
+	ESafeCommandType	cmdType;
+	PSystemApi32Use		pSyatem = { 0 };
+	PDRV_DATA DrvData = GetDrvData();
+
+	UNREFERENCED_PARAMETER(PortCookie);
+	UNREFERENCED_PARAMETER(InputBufferLength);
+	UNREFERENCED_PARAMETER(OutputBuffer);
+	UNREFERENCED_PARAMETER(OutputBufferLength);
+	UNREFERENCED_PARAMETER(ReturnOutputBufferLength);
 
 
-	return Status;
+	__try
+	{
+		if (!g_FltPort || !g_FltClientPort)
+		{
+			DbgPrint("comm parameter error");
+			__leave;
+		}
+
+		cmdType = ((PCommandMsg)InputBuffer)->CommandType;
+		switch (cmdType)
+		{
+		case eSetSystemUse:
+		{
+			pSyatem = (PSystemApi32Use)(((PCommandMsg)InputBuffer)->MsgInfo);
+
+			KeEnterCriticalRegion();
+
+			if (!strlen(DrvData->szbtKey))
+			{
+				RtlCopyMemory(&DrvData->SystemUser, pSyatem, sizeof(SystemApi32Use));
+				RtlCopyMemory(DrvData->szbtKey, pSyatem->Key, KEY_LEN);
+
+				if (strlen(DrvData->szbtKey))
+				{
+					//if (CheckDebugFlag(DEBUG_FLAG_PRINT_DOGID_AND_KEY))
+					{
+						DbgPrint("[DogID] %d - 0x%x", DrvData->SystemUser.DogID);
+						DbgPrint("[Key] %hs", DrvData->szbtKey);
+					}
+
+					g_bSafeDataReady = TRUE;
+				}
+				else
+					DbgPrint("DogID and Key error");
+			}
+			else
+				DbgPrint("DogID and Key already set");
+
+			KeLeaveCriticalRegion();
+
+			ntStatus = STATUS_SUCCESS;
+			break;
+		}
+		case eSetProcAuthentic:
+			break;
+		default:
+		{
+			DbgPrint("cmdType error. cmdType(%d)", cmdType);
+			__leave;
+		}
+		}
+	}
+	__finally
+	{
+		;
+	}
+
+	return ntStatus;
 }
 
 VOID UnInitCommunication()
