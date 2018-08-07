@@ -255,7 +255,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="Crypto.cpp" />
+    <ClCompile Include="Crypto.c" />
     <ClCompile Include="dcFsFilter.c" />
     <ClCompile Include="EncFile.c" />
     <ClCompile Include="fsCleanup.c" />

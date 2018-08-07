@@ -6,8 +6,6 @@
 #include "Head.h"
 #include "EncFile.h"
 
-#define PortName  L"\\HuatuDriverPort"
-
 PFLT_PORT g_FltPort = NULL;
 PFLT_PORT g_FltClientPort = NULL;
 

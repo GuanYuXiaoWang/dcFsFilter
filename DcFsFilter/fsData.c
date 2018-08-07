@@ -81,7 +81,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			0 == stricmp("notepad++.exe", ProcessName) ||
 			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe
 		{
-			DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
+			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 		}
 		else
 		{
@@ -104,6 +104,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
+		//排除特定类型的文件，如dll/lib/exe/等（读配置文件或注册表）
+		//.ini|.dll|.exe|.sys|.lib|.log|.db|-journal|-wal|.xml|.cpp|.c|.h|.hpp|.acf|.idl|.pdb|.idb|.manifest|.obj|.rsp|.pch|.vmem|.vmsn|.ipdb|Cookies|.dmp|.cache|.dat|.chs|.db-shm|.db-wal|.cab|.P2P|.mem|.bin|.cupf|.suo|.fdb|.lck
+
+
+
+		//过滤包含特定类型的文件??
 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
@@ -394,7 +400,7 @@ BOOLEAN InsertFcbList(PDEFFCB *Fcb)
 		pFileFcb->uType = LAYER_NTC_FCB;
 		FsRtlEnterFileSystem();
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
-		bAcquireResource = FALSE;
+		bAcquireResource = TRUE;
 		InsertTailList(&g_FcbEncryptFileList, &pFileFcb->listEntry);
 		bRet = TRUE;
 	}
@@ -1870,7 +1876,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L"1.um"};
+	WCHAR wszName[5] = {L".um"};
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
@@ -1902,7 +1908,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 			}
 		}
 
-		if (ProcessName && (0 == stricmp("FileIRP1.exe", ProcessName) || 
+		if (ProcessName && (0 == stricmp("FileIRP.exe", ProcessName) || 
 			0 == stricmp("notepad++.exe", ProcessName)))
 		{
 			bTrue = TRUE;

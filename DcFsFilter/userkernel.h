@@ -14,7 +14,6 @@
 #define PolicyFileName L"\\systemroot\\system32\\ZCSafe.db"
 
 
-
 #define USERKERNEL_BYTE char
 
 #define PUSERKERNEL_BYTE char*
