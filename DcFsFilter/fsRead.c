@@ -48,7 +48,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 #ifdef TEST
 	KdBreakPoint();
 #endif
+
 	DbgPrint("PtPreRead......\n");
+	
+	//KdBreakPoint();
+
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
 	{
@@ -137,7 +141,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	BOOLEAN bSynchronousIo = FALSE;
 	BOOLEAN bNonCachedIo = FALSE;
 	BOOLEAN bNonCachedIoPending = FALSE;
-	BOOLEAN bScbAcquired = FALSE;
+	BOOLEAN bFcbAcquired = FALSE;
 	BOOLEAN bFOResourceAcquired = FALSE;
 	BOOLEAN bFcbResourceAcquired = FALSE;
 	BOOLEAN bPagingIoResourceAcquired = FALSE;
@@ -274,7 +278,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				}
 			}
 		}
-		bScbAcquired = TRUE;
+		bFcbAcquired = TRUE;
 
 		if (!bPagingIo)
 		{
@@ -526,7 +530,7 @@ try_exit:NOTHING;
 			{
 				ExReleaseResourceLite(Fcb->Resource);
 			}
-			if (bScbAcquired)
+			if (bFcbAcquired)
 			{
 				if (bPagingIo)
 				{
@@ -539,9 +543,12 @@ try_exit:NOTHING;
 				}
 			}
 		}
-		if (bPagingIoResourceAcquired)
+		else
 		{
-			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+			if (bPagingIoResourceAcquired)
+			{
+				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+			}
 		}
 
 		if (volCtx != NULL)

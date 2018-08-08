@@ -25,7 +25,9 @@ NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
 BOOLEAN g_bUnloading = FALSE;
 BOOLEAN g_bAllModuleInitOk = FALSE;
 BOOLEAN g_bSafeDataReady = FALSE;
-
+PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
+ERESOURCE g_FcbResource;
+LIST_ENTRY g_FcbEncryptFileList;
 
 ULONG g_OsMajorVersion = 0;
 ULONG g_OsMinorVersion = 0;
@@ -79,7 +81,10 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
 			0 == stricmp("notepad++.exe", ProcessName) ||
-			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe
+			0 == stricmp("word.exe", ProcessName) ||
+			0 == stricmp("winword.exe", ProcessName) ||
+			0 == stricmp("excel.exe", ProcessName) ||
+			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe 
 		{
 			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 		}
@@ -105,18 +110,19 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		//排除特定类型的文件，如dll/lib/exe/等（读配置文件或注册表）
-		//.ini|.dll|.exe|.sys|.lib|.log|.db|-journal|-wal|.xml|.cpp|.c|.h|.hpp|.acf|.idl|.pdb|.idb|.manifest|.obj|.rsp|.pch|.vmem|.vmsn|.ipdb|Cookies|.dmp|.cache|.dat|.chs|.db-shm|.db-wal|.cab|.P2P|.mem|.bin|.cupf|.suo|.fdb|.lck
-
-
-
-		//过滤包含特定类型的文件??
-		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
-			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+		if (IsFilterFileByExt(szExName, length))
 		{
 			__leave;
 		}
+
+		//过滤包含特定类型的文件??
+// 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
+// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+// 		{
+// 			__leave;
+// 		}
 #ifdef TEST
 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
 		{
@@ -1062,6 +1068,9 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 	ULONG FileType = 0;
 	ByteOffset.QuadPart = 0;
 
+	IrpContext->createInfo.bEnFile = FALSE;
+	IrpContext->createInfo.bWriteHeader = FALSE;
+
 	FileObject = IrpContext->createInfo.pStreamObject;
 	pFileHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fhl');
 	if (NULL == pFileHeader)
@@ -1084,11 +1093,6 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 				//IrpContext->createInfo.bDecrementHeader = TRUE;
 			}
 		}
-	}
-	else
-	{
-		IrpContext->createInfo.bEnFile = FALSE;
-		IrpContext->createInfo.bWriteHeader = FALSE;
 	}
 	
 	//获取文件的访问权限
@@ -2429,6 +2433,70 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 	{
 		KeLeaveCriticalRegion();
 	}
+
+	return bRet;
+}
+
+BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
+{
+	//.ini|.dll|.exe|.sys|.lib|.log|.db|-journal|-wal|.xml|.cpp|.c|.h|.hpp|.acf|.idl|.pdb|.idb|.manifest|.obj|.rsp|.pch|.vmem|.vmsn|.ipdb|Cookies|.dmp|.cache|.dat|.chs|.db-shm|.db-wal|.cab|.P2P|.mem|.bin|.cupf|.suo|.fdb|.lck
+	BOOLEAN bRet = FALSE;
+	USHORT usLength = Length / sizeof(WCHAR);
+	__try
+	{
+		
+		switch (usLength)
+		{
+		case 0:
+		case 1:
+			break;
+		case 2:
+			if (0 == _wcsnicmp(pwszExtName, L"pf", 2) ||
+				0 == _wcsnicmp(pwszExtName, L"db", 2))
+			{
+				bRet = TRUE;
+			}
+			break;
+		case 3:
+			if ((0 == _wcsnicmp(pwszExtName, L"dll", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"exe", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"sys", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"lib", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"pdb", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"acf", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"idb", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"obj", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"rsp", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"pch", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"chs", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"bin", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"suo", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"fdb", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"lck", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"mem", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"dat", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"cab", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"dmp", 3)) || 
+				(0 == _wcsnicmp(pwszExtName, L"pch", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"tmp", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"mui", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"p2p", 3)) )
+			{
+				bRet = TRUE;
+			}
+			break;
+		case  4:
+			break;
+
+		default:
+			break;
+		}
+	}
+	__finally
+	{
+
+	}
+	
 
 	return bRet;
 }

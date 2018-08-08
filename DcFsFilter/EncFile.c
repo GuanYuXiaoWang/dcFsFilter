@@ -3,6 +3,8 @@
 #include "EncFlagData.h"
 #include "Crypto.h"
 #include "Head.h"
+#include <wdm.h>
+#include <ntifs.h>
 
 NPAGED_LOOKASIDE_LIST	g_Npaged4KBList;
 NPAGED_LOOKASIDE_LIST	g_Npaged64KBList;

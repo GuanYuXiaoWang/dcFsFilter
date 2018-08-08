@@ -34,9 +34,9 @@ typedef struct tagENCRYPT_FILE_FCB
 	ULONG uType;
 }ENCRYPT_FILE_FCB, *PENCRYPT_FILE_FCB;
 
-PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
-ERESOURCE g_FcbResource;
-LIST_ENTRY g_FcbEncryptFileList;
+extern PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
+extern ERESOURCE g_FcbResource;
+extern LIST_ENTRY g_FcbEncryptFileList;
 
 extern DYNAMIC_FUNCTION_POINTERS g_DYNAMIC_FUNCTION_POINTERS;
 extern LARGE_INTEGER  Li0;
@@ -133,6 +133,7 @@ extern "C" {
 
 	NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass);
 	BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType);
+	BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length);
 #ifdef __cplusplus
 }
 #endif
