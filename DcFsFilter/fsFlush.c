@@ -16,7 +16,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	KdBreakPoint();
 	__try
 	{
 		bTopLevelIrp = IsTopLevelIRP(Data);
@@ -84,6 +83,10 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 	{
 		__try
 		{
+			if (!CcIsFileCached(FileObject))
+			{
+				break;
+			}
 			bAcquiredPagingResource = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
 			SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 			CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);

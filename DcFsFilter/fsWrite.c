@@ -10,7 +10,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	BOOLEAN bTopLevel = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	BOOLEAN bModifyWriter = FALSE;
-	LARGE_INTEGER FlushValidSize;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -21,10 +20,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 		KdBreakPoint();
 	}
-	if (FltObjects->FileObject->SectionObjectPointer)
-	{
-		FlushValidSize = CcGetFlushedValidData(FltObjects->FileObject->SectionObjectPointer, FALSE);
-	}
+
 
 #endif
 
@@ -232,7 +228,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		return FLT_PREOP_COMPLETE;
 	}
 	//如果一个非加密文件收到了写请求转变他成为加密文件
-	if (!bPagingIo && !Fcb->bEnFile && BooleanFlagOn(Fcb->FileAcessType, FILE_ACCESS_PROCESS_RW))
+	if (!bPagingIo && !Fcb->bEnFile&& BooleanFlagOn(Fcb->FileAcessType, FILE_ACCESS_PROCESS_RW))
 	{
 		Status = FsTransformFileToEncrypted(Data, FltObjects, Fcb, Ccb);
 		if (!NT_SUCCESS(Status))
@@ -623,7 +619,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		{
 			bExtendingValidData = TRUE;
 #ifndef CHANGE_TOP_IRP
-			FsExtendingValidDataSetFile(FltObjects, Fcb, Ccb);
+			//FsExtendingValidDataSetFile(FltObjects, Fcb, Ccb);
 #endif
 		}
 		else
@@ -644,8 +640,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			PMDL newMdl = NULL;
 			ULONG_PTR RetBytes = 0;
 			ULONG SectorSize = volCtx->ulSectorSize;
-
-			//KdBreakPoint();
 
 			SystemBuffer = FsMapUserBuffer(Data);
 			//修正大小变成扇区整数倍
@@ -690,7 +684,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 
 			RtlZeroMemory(newBuf, WriteLen);
-
 			RtlCopyMemory(newBuf, SystemBuffer, ByteCount);
 
 			bFOResourceAcquired = ExAcquireResourceSharedLite(Ccb->StreamFileInfo.pFO_Resource, TRUE);
@@ -703,6 +696,21 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			if (Fcb->bEnFile)
 			{
+				if (!Fcb->bWriteHead)
+				{
+					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, volCtx->ulSectorSize, Fcb);
+					if (NT_SUCCESS(Status))
+					{
+						Fcb->bWriteHead = TRUE;
+						Fcb->bAddHeaderLength = TRUE;
+						SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+						SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
+					}
+					else
+					{
+						DbgPrint("write file header failed(0x%x)...\n", Status);
+					}
+				}
 				//RealWriteLen = (ULONG)ROUND_TO_SIZE(RealWriteLen,CRYPT_UNIT);
 				//TODO：加密newBuf
 				EncBuf(newBuf, ByteCount, Fcb->szFileHead);
@@ -812,6 +820,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				{
 					try_return(bPostIrp = TRUE);
 				}
+				FileObject->CurrentByteOffset.QuadPart += ((ULONG)StartByte.QuadPart + ByteCount);
 				Data->IoStatus.Status = STATUS_SUCCESS;
 				Data->IoStatus.Information = (ULONG)ByteCount;
 				try_return(Status = STATUS_SUCCESS);
@@ -824,6 +833,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					(ULONG)ByteCount,
 					&Iopb->Parameters.Write.MdlAddress,
 					&Data->IoStatus);
+				FileObject->CurrentByteOffset.QuadPart += ((ULONG)StartByte.QuadPart + ByteCount);
 				Status = Data->IoStatus.Status;
 				try_return(Status);
 			}
@@ -983,54 +993,41 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext, __in PVOID SystemBuffer, __in LARGE_INTEGER ByteOffset, __in ULONG ByteCount, __in PULONG_PTR RetBytes)
 {
 	NTSTATUS Status;
-	PFLT_CALLBACK_DATA RetNewCallbackData = NULL;
-
+	PFLT_CALLBACK_DATA NewData = NULL;
 	PFILE_OBJECT FileObject = IrpContext->FileObject;
-
 	BOOLEAN Wait = BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
-
 	ULONG IrpFlags = IRP_WRITE_OPERATION;
 
 #ifndef USE_CACHE_READWRITE
 	SetFlag(IrpFlags, IRP_NOCACHE);
 #endif
 
-	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &RetNewCallbackData);
-
+	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))
 	{
 #ifdef CHANGE_TOP_IRP
-
 		PIRP TopLevelIrp = IoGetTopLevelIrp();
-
 		IoSetTopLevelIrp(NULL);
 #endif	
 
-		RetNewCallbackData->Iopb->MajorFunction = IRP_MJ_WRITE;
-
-		RetNewCallbackData->Iopb->Parameters.Write.ByteOffset = ByteOffset;
-		RetNewCallbackData->Iopb->Parameters.Write.Length = ByteCount;
-		RetNewCallbackData->Iopb->Parameters.Write.WriteBuffer = SystemBuffer;
-
-		//RetNewCallbackData->Iopb->Parameters.Write.MdlAddress = IrpContext->X70FsdIoContext->SwapMdl;
-
-		RetNewCallbackData->Iopb->TargetFileObject = FileObject;
-		/*SetFlag( RetNewCallbackData->Iopb->IrpFlags, IRP_WRITE_OPERATION );*/
-		SetFlag(RetNewCallbackData->Iopb->IrpFlags, IrpFlags);
+		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
+		NewData->Iopb->Parameters.Write.ByteOffset = ByteOffset;
+		NewData->Iopb->Parameters.Write.Length = ByteCount;
+		NewData->Iopb->Parameters.Write.WriteBuffer = SystemBuffer;
+		NewData->Iopb->TargetFileObject = FileObject;
+		SetFlag(NewData->Iopb->IrpFlags, IrpFlags);
 
 		if (Wait)
 		{
-			SetFlag(RetNewCallbackData->Iopb->IrpFlags, IRP_SYNCHRONOUS_API);
-			FltPerformSynchronousIo(RetNewCallbackData);
+			SetFlag(NewData->Iopb->IrpFlags, IRP_SYNCHRONOUS_API);
+			FltPerformSynchronousIo(NewData);
 
-			Status = RetNewCallbackData->IoStatus.Status;
-			*RetBytes = RetNewCallbackData->IoStatus.Information;
-
+			Status = NewData->IoStatus.Status;
+			*RetBytes = NewData->IoStatus.Information;
 		}
 		else
 		{
-
-			Status = FltPerformAsynchronousIo(RetNewCallbackData, FsWriteFileAsyncCompletionRoutine, IrpContext->pIoContext);
+			Status = FltPerformAsynchronousIo(NewData, FsWriteFileAsyncCompletionRoutine, IrpContext->pIoContext);
 		}
 
 #ifdef	CHANGE_TOP_IRP			
@@ -1038,9 +1035,9 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 #endif
 	}
 
-	if (RetNewCallbackData != NULL && Wait)
+	if (NewData != NULL && Wait)
 	{
-		FltFreeCallbackData(RetNewCallbackData);
+		FltFreeCallbackData(NewData);
 	}
 
 	return Status;
@@ -1206,4 +1203,65 @@ FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForModWrite(__inout PFLT_CALLBACK_DATA D
 	UNREFERENCED_PARAMETER(Flags);
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in ULONG SectorSize, __in PDEFFCB Fcb)
+{
+	NTSTATUS Status;
+	PFLT_CALLBACK_DATA NewData = NULL;
+	ULONG WriteLength = ENCRYPT_HEAD_LENGTH;
+	PUCHAR NewBuf = NULL;
+	PUCHAR pHeader = NULL;
+	ULONG ulCryptTpe = 0;
+	
+	if (strlen(Fcb->szOrgFileHead) <= 0)
+	{
+		RtlZeroMemory(Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
+		CreateFileHead(Fcb->szFileHead);
+	}
+
+	NewBuf = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, WriteLength, "wn");
+	if (NULL == NewBuf)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+
+	RtlZeroMemory(NewBuf, WriteLength);
+	RtlCopyMemory(NewBuf, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
+	EncryptFileHead(NewBuf);
+
+	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
+	if (NT_SUCCESS(Status))
+	{
+#ifdef CHANGE_TOP_IRP
+		PIRP TopLevelIrp = IoGetTopLevelIrp();
+		IoSetTopLevelIrp(NULL);
+#endif	
+
+		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
+		NewData->Iopb->MinorFunction = IRP_MN_NORMAL;
+		NewData->Iopb->Parameters.Write.ByteOffset.QuadPart = 0;
+		NewData->Iopb->Parameters.Write.Length = ENCRYPT_HEAD_LENGTH;
+		NewData->Iopb->Parameters.Write.WriteBuffer = NewBuf;
+
+		NewData->Iopb->TargetFileObject = FileObject;
+		NewData->Iopb->IrpFlags = IRP_WRITE_OPERATION | IRP_NOCACHE | IRP_SYNCHRONOUS_API;
+		FltPerformSynchronousIo(NewData);
+		Status = NewData->IoStatus.Status;
+
+#ifdef	CHANGE_TOP_IRP			
+		IoSetTopLevelIrp(TopLevelIrp);
+#endif
+	}
+
+	if (NewData != NULL)
+	{
+		FltFreeCallbackData(NewData);
+	}
+	if (NewBuf != NULL)
+	{
+		FltFreePoolAlignedWithTag(FltObjects->Instance, NewBuf, "wn");
+	}
+
+	return Status;
 }

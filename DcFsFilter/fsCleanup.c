@@ -17,29 +17,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	if (IsTest(Data, FltObjects, "PtPreCleanup"))
 	{
 		KdBreakPoint();
-		PFSRTL_COMMON_FCB_HEADER Fcb = FltObjects->FileObject->FsContext;
-		IO_STATUS_BLOCK IoStatus;
-		if (FltObjects->FileObject->SectionObjectPointer)
+		PFSRTL_COMMON_FCB_HEADER Header = FltObjects->FileObject->FsContext;
+		if (NULL != Header)
 		{
-			FlushValidSize = CcGetFlushedValidData(FltObjects->FileObject->SectionObjectPointer, FALSE);
-			if (FileObject->SectionObjectPointer->DataSectionObject != NULL &&
-				FileObject->SectionObjectPointer->ImageSectionObject == NULL &&
-				MmCanFileBeTruncated(FileObject->SectionObjectPointer, NULL))
-			{
-				ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
-				ExAcquireResourceExclusiveLite(Fcb->PagingIoResource, TRUE);
-				CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, &IoStatus);
-				if (NT_SUCCESS(IoStatus.Status))
-				{
-					bPure = CcPurgeCacheSection(FileObject->SectionObjectPointer, NULL, 0, 0);
-				}
-				ExReleaseResourceLite(Fcb->Resource);
-				ExReleaseResourceLite(Fcb->PagingIoResource);
-				bPure = CcUninitializeCacheMap(FileObject, &Fcb->FileSize, NULL);
-			}
+			DbgPrint("File Size=%d, vaildata size=%d....\n", Header->FileSize.QuadPart, Header->ValidDataLength.QuadPart);
 		}
 	}
-	
 #endif
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -184,6 +167,28 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				bAcquireFcb = FALSE;
 			}
 
+			if (!Fcb->bWriteHead)
+			{
+				Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, 52, Fcb);
+				if (NT_SUCCESS(Status))
+				{
+					Fcb->bWriteHead = TRUE;
+					Fcb->bAddHeaderLength = TRUE;
+					SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+					SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
+				}
+				else
+				{
+					DbgPrint("write file header failed(0x%x)...\n", Status);
+				}
+			}
+
+			if (Fcb->bAddHeaderLength)
+			{
+				Fcb->bAddHeaderLength = FALSE;
+				Fcb->Header.FileSize.QuadPart += ENCRYPT_HEAD_LENGTH;
+			}
+
 			if (FlagOn(FileObject->Flags, FO_FILE_SIZE_CHANGED))
 			{
 				FILE_END_OF_FILE_INFORMATION FileSize;
@@ -198,6 +203,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			FsFreeCcb(Ccb);
 			Fcb->DestCacheObject = NULL;
 			Fcb->CcFileObject = NULL;
+			Fcb->bAddHeaderLength = FALSE;
 		}
 		else if (&Fcb->OpenCount > 1)
 		{

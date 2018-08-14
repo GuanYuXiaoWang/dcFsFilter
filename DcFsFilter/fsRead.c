@@ -50,8 +50,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 #endif
 
 	DbgPrint("PtPreRead......\n");
-	
-	//KdBreakPoint();
 
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
@@ -327,8 +325,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			}
 		}
 
-		FileSize.QuadPart = Fcb->Header.FileSize.QuadPart;
-		ValidDataLength.QuadPart = Fcb->Header.ValidDataLength.QuadPart;
+		FileSize.QuadPart = Fcb->Header.FileSize.QuadPart - Fcb->FileHeaderLength;
+		ValidDataLength.QuadPart = Fcb->Header.ValidDataLength.QuadPart - Fcb->FileHeaderLength;
 
 		if (StartByte >= FileSize.QuadPart)
 		{
@@ -360,7 +358,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			ULONG_PTR ZeroOffset = 0;
 			ULONG_PTR ZeroLength = 0;
-			
+
 			SystemBuffer = FsMapUserBuffer(Data);
 			if (ByteRange.QuadPart > ValidDataLength.QuadPart)
 			{
@@ -524,7 +522,7 @@ try_exit:NOTHING;
 		{
 			if (bFOResourceAcquired)
 			{
-				ExReleaseResource(Ccb->StreamFileInfo.pFO_Resource);
+				ExReleaseResourceLite(Ccb->StreamFileInfo.pFO_Resource);
 			}
 			if (bFcbResourceAcquired)
 			{

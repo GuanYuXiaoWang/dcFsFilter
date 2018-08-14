@@ -210,8 +210,10 @@ typedef struct tagDEFFCB
 	//当非可惜进程要求写的时候，判断为false，那么返回 说明这个文件正在编辑，以只读方式打开？？？
 	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
+	BOOLEAN			bAddHeaderLength;
 	WCHAR			wszFile[128];
 	UCHAR			szFileHead[ENCRYPT_HEAD_LENGTH];
+	UCHAR			szOrgFileHead[ENCRYPT_HEAD_LENGTH];
 
 	PRKEVENT		OutstandingAsyncEvent;
 	ULONG			OutstandingAsyncWrites;
@@ -303,6 +305,7 @@ typedef struct tagDEF_CCB
 typedef struct tagCREATE_INFO
 {
 	UCHAR FileHeader[ENCRYPT_HEAD_LENGTH];
+	UCHAR OrgFileHeader[ENCRYPT_HEAD_LENGTH];
 	UNICODE_STRING strName;
 	HANDLE hStreamHanle;
 	PFILE_OBJECT pStreamObject;

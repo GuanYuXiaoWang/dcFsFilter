@@ -30,6 +30,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 #ifdef TEST
 	KdBreakPoint();
 #endif
+
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -185,6 +186,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	}
 	
 #endif
+	if (FileDispositionInformation == Data->Iopb->Parameters.SetFileInformation.FileInformationClass ||
+		FileRenameInformation == Data->Iopb->Parameters.SetFileInformation.FileInformationClass)
+	{
+		DbgPrint("PtPreSetInformation(%d)....=========\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
+	}
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -195,6 +201,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 #ifdef TEST
 	KdBreakPoint();
 #endif
+
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try

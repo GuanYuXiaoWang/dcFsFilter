@@ -81,10 +81,18 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
 			0 == stricmp("notepad++.exe", ProcessName) ||
+			/*office*/
 			0 == stricmp("word.exe", ProcessName) ||
 			0 == stricmp("winword.exe", ProcessName) ||
 			0 == stricmp("excel.exe", ProcessName) ||
-			0 == stricmp("wps.exe", ProcessName))//qu shi :NTRtScan.exe 
+			/*wps*/
+			0 == stricmp("wps.exe", ProcessName) ||
+			0 == stricmp("wpp.exe", ProcessName) ||
+			0 == stricmp("et.exe", ProcessName) ||
+			0 == stricmp("wpscenter.exe", ProcessName) ||
+			0 == stricmp("wpscloudlaunch.exe", ProcessName) ||
+			0 == stricmp("wpscloudsvr.exe", ProcessName) ||
+			0 == stricmp("wpsrenderer.exe", ProcessName))
 		{
 			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 		}
@@ -96,8 +104,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		//test
 // 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
 // 		{
-// 			DbgPrint("Read Length=0x%x, Offset=0x%x....\n", Data->Iopb->Parameters.Read.Length, Data->Iopb->Parameters.Read.ByteOffset);
-// 			KdBreakPoint();
+// 			*pProcType = 1;
 // 		}
 // 		
 //  		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
@@ -116,13 +123,17 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		}
 
 		//过滤包含特定类型的文件??
-// 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
-// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
-// 		{
-// 			__leave;
-// 		}
+		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xls", 3)) ||
+			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"ppt", 3)) ||
+			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xlsx", 4)) ||
+			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"pptx", 4)) ||
+			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+		{
+			__leave;
+		}
 #ifdef TEST
 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
 		{
@@ -1082,12 +1093,14 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 		RtlZeroMemory(pFileHeader, ENCRYPT_HEAD_LENGTH);
 		
 		Status = FltReadFile(FltObjects->Instance, FileObject, &ByteOffset, ENCRYPT_HEAD_LENGTH, pFileHeader,
-			FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET,
+			FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET | FLTFL_IO_OPERATION_NON_CACHED,
 			NULL, NULL, NULL);
 		if (NT_SUCCESS(Status))
 		{
 			if (IsEncryptedFileHead(pFileHeader, &FileType, IrpContext->createInfo.FileHeader))
 			{
+				RtlCopyMemory(IrpContext->createInfo.OrgFileHeader, pFileHeader, ENCRYPT_HEAD_LENGTH);
+
 				IrpContext->createInfo.bEnFile = TRUE;
 				IrpContext->createInfo.bWriteHeader = TRUE;
 				//IrpContext->createInfo.bDecrementHeader = TRUE;
@@ -1128,7 +1141,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 	NTSTATUS status = STATUS_SUCCESS;
 	OBJECT_ATTRIBUTES ob;
 	PFILE_OBJECT FileObject;
-	BOOLEAN bAdvancedHeader = FALSE;
 	ULONG ClusterSize = 0;
 	LARGE_INTEGER Temp;
 	ULONG Options = 0;
@@ -1147,7 +1159,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
 		
-		bAdvancedHeader = TRUE;
 		//todo::如果解密，需减去加密头的长度
  		if (IrpContext->createInfo.bDecrementHeader)
  		{
@@ -1212,12 +1223,24 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 			//SetFlag(Fcb->FcbState,SCB_STATE_DISABLE_LOCAL_BUFFERING);
 			//Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
 		}
+		//todo::受控进程只要打开了受控的文件，退出时就加密？？
 		Fcb->bEnFile = IrpContext->createInfo.bEnFile;
-		if (Fcb->bEnFile && FlagOn(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED))
+		Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
+		if (0 == IrpContext->createInfo.FileSize.QuadPart)
 		{
-			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
-			RtlCopyMemory(Fcb->szFileHead, IrpContext->createInfo.FileHeader, ENCRYPT_HEAD_LENGTH);
+			Fcb->bEnFile = TRUE;
+			Fcb->bWriteHead = FALSE;
 		}
+		if (Fcb->bEnFile)
+		{
+			if (FlagOn(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED))
+			{
+				RtlCopyMemory(Fcb->szFileHead, IrpContext->createInfo.FileHeader, ENCRYPT_HEAD_LENGTH);
+				RtlCopyMemory(Fcb->szOrgFileHead, IrpContext->createInfo.OrgFileHeader, ENCRYPT_HEAD_LENGTH);
+			}
+			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
+		}
+		
 		if (TRUE/*FLT_FILE_LOCK*/)
 		{
 			Fcb->FileLock = FltAllocateFileLock(NULL, NULL);
@@ -1360,6 +1383,10 @@ PDEFFCB FsCreateFcb()
 		if (NULL == Fcb->Header.PagingIoResource || NULL == Fcb->Resource)
 		{
 			ExFreeToNPagedLookasideList(&g_FcbLookasideList, Fcb);
+			if (Fcb->NtfsFcb)
+			{
+				ExFreeToNPagedLookasideList(&g_NTFSFCBLookasideList, Fcb->NtfsFcb);
+			}
 			return NULL;
 		}
 		if (Fcb->NtfsFcb)
@@ -1451,7 +1478,12 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	{
 		FsRtlUninitializeFileLock(Fcb->FileLock);
 	}
+	if (Fcb->NtfsFcb)
+	{
+		ExFreeToNPagedLookasideList(&g_NTFSFCBLookasideList, Fcb->NtfsFcb);
+	}
 	ExFreeToNPagedLookasideList(&g_FcbLookasideList, Fcb);
+	Fcb = NULL;
 	return TRUE;
 }
 
@@ -1853,6 +1885,12 @@ VOID FsFreeCcb(IN PDEF_CCB Ccb)
 		{
 			FltClose(Ccb->StreamFileInfo.hStreamHandle);
 		}
+		if (Ccb->StreamFileInfo.pFO_Resource)
+		{
+			ExDeleteResourceLite(Ccb->StreamFileInfo.pFO_Resource);
+			ExFreeToNPagedLookasideList(&g_EResourceLookasideList, Ccb->StreamFileInfo.pFO_Resource);
+		}	
+
 		ExFreeToNPagedLookasideList(&g_CcbLookasideList, Ccb);
 	}
 }
@@ -2212,7 +2250,7 @@ NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJ
 	PVOID pHeader = NULL;
 	LARGE_INTEGER ByteOffset;
 	ByteOffset.QuadPart = 0;
-	char szHeader[10] = {"zhouyang"};
+	PDEFFCB Fcb = FileObject->FsContext;
 	__try
 	{
 		pHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
@@ -2220,10 +2258,15 @@ NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJ
 		{
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
-		RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);
+		
+		//if (strlen(Fcb->szFileHead) <= 0)
+		{
+			CreateFileHead(Fcb->szFileHead);
+		}
 		//todo::填充文件头
-		//test
-		RtlCopyMemory(pHeader, szHeader, ENCRYPT_HEAD_LENGTH);
+		RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);	
+		RtlCopyMemory(pHeader, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
+		EncryptFileHead(pHeader);
 		//
 		Status = FltWriteFile(FltObjects->Instance,
 			FileObject,
@@ -2439,7 +2482,7 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 
 BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 {
-	//.ini|.dll|.exe|.sys|.lib|.log|.db|-journal|-wal|.xml|.cpp|.c|.h|.hpp|.acf|.idl|.pdb|.idb|.manifest|.obj|.rsp|.pch|.vmem|.vmsn|.ipdb|Cookies|.dmp|.cache|.dat|.chs|.db-shm|.db-wal|.cab|.P2P|.mem|.bin|.cupf|.suo|.fdb|.lck
+	//.dll|.exe|.sys|.lib|.log|.db|-journal|-wal|.xml|.cpp|.c|.h|.hpp|.acf|.idl|.pdb|.idb|.manifest|.obj|.rsp|.pch|.vmem|.vmsn|.ipdb|Cookies|.dmp|.cache|.dat|.chs|.db-shm|.db-wal|.cab|.P2P|.mem|.bin|.cupf|.suo|.fdb|.lck
 	BOOLEAN bRet = FALSE;
 	USHORT usLength = Length / sizeof(WCHAR);
 	__try
@@ -2452,6 +2495,9 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 			break;
 		case 2:
 			if (0 == _wcsnicmp(pwszExtName, L"pf", 2) ||
+				0 == _wcsnicmp(pwszExtName, L"qm", 2) ||
+				0 == _wcsnicmp(pwszExtName, L"so", 2) ||
+				0 == _wcsnicmp(pwszExtName, L"rb", 2) ||
 				0 == _wcsnicmp(pwszExtName, L"db", 2))
 			{
 				bRet = TRUE;
@@ -2480,6 +2526,11 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 				(0 == _wcsnicmp(pwszExtName, L"pch", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"tmp", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"mui", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"sdb", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"rbx", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"ttf", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"scr", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"plg", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"p2p", 3)) )
 			{
 				bRet = TRUE;

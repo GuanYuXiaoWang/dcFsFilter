@@ -78,6 +78,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	KdBreakPoint();
 #endif
 
+// 	if (1 == uProcType)
+// 	{
+// 		KdBreakPoint();
+// 	}
+
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
@@ -528,7 +533,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	BOOLEAN DeleteOnClose;
 	BOOLEAN NoIntermediateBuffering;
 	BOOLEAN TemporaryFile;
-	BOOLEAN bDirectory = FALSE;
 	BOOLEAN OpenRequiringOplock = FALSE;
 
 	BOOLEAN DecrementFcbOpenCount = FALSE;
@@ -564,6 +568,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	TemporaryFile = BooleanFlagOn(FileAttributes, FILE_ATTRIBUTE_TEMPORARY);
 
 	IrpContext->FltStatus = FLT_PREOP_COMPLETE;
+
+	//KdBreakPoint();
 
 	if (IrpContext->OriginatingData != NULL)
 	{
@@ -818,22 +824,44 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			FltObjects,
 			IrpContext);
 
-		if (!NT_SUCCESS(Status) || bDirectory)
+		if (!NT_SUCCESS(Status) || IrpContext->createInfo.Directory)
 		{
-			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 
 		Status = FsCreatedFileHeaderInfo(FltObjects, IrpContext);
 		if (!NT_SUCCESS(Status))
 		{
 			Data->IoStatus.Status = Status;
-			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
-		}
-		//TODO::非加密文件不过滤
-		if (!IrpContext->createInfo.bEnFile)
-		{
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
+		if (wcsstr(Fcb->wszFile, L"4.um"))
+		{
+			DbgPrint("4.um is EnFile(%d).....\n", IrpContext->createInfo.bEnFile);
+		}
+
+		//TODO::非加密文件不过滤
+		//test：原来是加密的，后来被删除了或者直接写，目前是一个新的，那么加密一下（应该监控文件的状态，比如，删除、重命名、修改等，如果删除了，应把Fcb里的状态置零）
+		if (Fcb->bEnFile && !IrpContext->createInfo.bEnFile)
+ 		{
+			//需要重新写入加密头信息
+			Fcb->bWriteHead = FALSE;
+			ClearFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
+			//try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+		}
+		else if (IrpContext->createInfo.bEnFile)
+		{
+			Fcb->bEnFile = IrpContext->createInfo.bEnFile;
+			Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
+		}
+		
+		if (0 == IrpContext->createInfo.FileSize.QuadPart)
+		{
+			Fcb->bEnFile = TRUE;
+			Fcb->bWriteHead = FALSE;
+		}
+
 		if (IrpContext->createInfo.FileAccess == FILE_NO_ACCESS)
 		{
 			Status = STATUS_ACCESS_DENIED;
@@ -851,6 +879,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		if (!Fcb->bEnFile && IrpContext->createInfo.bEnFile)
 		{
 			Fcb->bEnFile = IrpContext->createInfo.bEnFile;
+			Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
 			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 			SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
 		}
@@ -925,7 +954,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 		FileObject->FsContext2 = Ccb;
 
-		//SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
+		SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
 
 		if (CreateDisposition == FILE_SUPERSEDE ||
 			CreateDisposition == FILE_OVERWRITE ||
@@ -1096,9 +1125,14 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		}
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
 		Status = FsGetFileStandardInfo(Data, FltObjects, IrpContext);//这里还不能用FltObject中的文件对象
-		if (!NT_SUCCESS(Status) || bDirectory)
+		if (IrpContext->createInfo.Directory)
 		{
-			try_return(IrpContext->FltStatus = (bDirectory ? FLT_PREOP_SUCCESS_NO_CALLBACK : FLT_PREOP_COMPLETE));
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+		}
+		if (!NT_SUCCESS(Status))
+		{
+			DbgPrint("FsGetFileStandardInfo failed(0x%x)...\n", Status);
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 
 		Status = FsCreatedFileHeaderInfo(FltObjects, IrpContext);
@@ -1109,10 +1143,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//TODO::非加密文件不过滤
-		if (!IrpContext->createInfo.bEnFile)
-		{
-			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
-		}
+// 		if (!IrpContext->createInfo.bEnFile)
+// 		{
+// 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+// 		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
@@ -1157,7 +1191,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
 			FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 			FileObject->FsContext2 = Ccb;
-		//	SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
+			SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
 
 			IoSetShareAccess(DesiredAccess, ShareAccess, FileObject, &Fcb->ShareAccess);
 
