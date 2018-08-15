@@ -12,6 +12,7 @@
 #include "fsClose.h"
 #include "head.h"
 #include "EncFile.h"
+#include "regMgr.h"
 
 NPAGED_LOOKASIDE_LIST  g_IrpContextLookasideList;
 NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
@@ -78,62 +79,64 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
+
 		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
-		if (0 == stricmp("FileIRP.exe", ProcessName) ||
-			0 == stricmp("notepad++.exe", ProcessName) ||
-			/*office*/
-			0 == stricmp("word.exe", ProcessName) ||
-			0 == stricmp("winword.exe", ProcessName) ||
-			0 == stricmp("excel.exe", ProcessName) ||
-			/*wps*/
-			0 == stricmp("wps.exe", ProcessName) ||
-			0 == stricmp("wpp.exe", ProcessName) ||
-			0 == stricmp("et.exe", ProcessName) ||
-			0 == stricmp("wpscenter.exe", ProcessName) ||
-			0 == stricmp("wpscloudlaunch.exe", ProcessName) ||
-			0 == stricmp("wpscloudsvr.exe", ProcessName) ||
-			0 == stricmp("wpsrenderer.exe", ProcessName))
-		{
-			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
-		}
-		else
+		if (!IsControlProcess(ProcessName))
 		{
 			__leave;
 		}
-		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-		//test
-// 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
+
+// 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
+// 			0 == stricmp("notepad++.exe", ProcessName) ||
+// 			/*office*/
+// 			0 == stricmp("word.exe", ProcessName) ||
+// 			0 == stricmp("winword.exe", ProcessName) ||
+// 			0 == stricmp("excel.exe", ProcessName) ||
+// 			/*wps*/
+// 			0 == stricmp("wps.exe", ProcessName) ||
+// 			0 == stricmp("wpp.exe", ProcessName) ||
+// 			0 == stricmp("et.exe", ProcessName))
 // 		{
-// 			*pProcType = 1;
+// 			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
 // 		}
-// 		
-//  		if (!(0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE) || 0 == RtlCompareUnicodeString(&(FileInfo->Name), &stringTest, TRUE)))
-//  		{
-//  			__leave;
-//  		}
+// 		else
+// 		{
+// 			__leave;
+// 		}
+
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
 		{
 			__leave;
 		}
 		//排除特定类型的文件，如dll/lib/exe/等（读配置文件或注册表）
-		if (IsFilterFileByExt(szExName, length))
+// 		if (IsFilterFileByExt(szExName, length))
+// 		{
+// 			__leave;
+// 		}
+		if (IsFilterFileType(szExName, length))
 		{
 			__leave;
 		}
 
+		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
+
 		//过滤包含特定类型的文件??
-		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xls", 3)) ||
-			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"ppt", 3)) ||
-			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xlsx", 4)) ||
-			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"pptx", 4)) ||
-			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+		if (!IsControlFileType(szExName, length))
 		{
 			__leave;
 		}
+// 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xls", 3)) ||
+// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"ppt", 3)) ||
+// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xlsx", 4)) ||
+// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"pptx", 4)) ||
+// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
+// 		{
+// 			__leave;
+// 		}
 #ifdef TEST
 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
 		{
@@ -193,6 +196,8 @@ VOID InitData()
 
 	InitializeListHead(&g_FcbEncryptFileList);
 	KeInitializeSpinLock(&g_GeneralSpinLock);
+	ExInitializeResourceLite(&g_FcbResource);
+	InitReg();
 }
 
 VOID UnInitData()
@@ -202,6 +207,8 @@ VOID UnInitData()
 	ExDeleteNPagedLookasideList(&g_EResourceLookasideList);
 	ExDeleteNPagedLookasideList(&g_IrpContextLookasideList);
 	ExDeleteNPagedLookasideList(&g_IoContextLookasideList);
+	ExDeleteResourceLite(&g_FcbResource);
+	UnInitReg();
 }
 
 PERESOURCE FsdAllocateResource()
@@ -1226,11 +1233,11 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		//todo::受控进程只要打开了受控的文件，退出时就加密？？
 		Fcb->bEnFile = IrpContext->createInfo.bEnFile;
 		Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
-		if (0 == IrpContext->createInfo.FileSize.QuadPart)
-		{
-			Fcb->bEnFile = TRUE;
-			Fcb->bWriteHead = FALSE;
-		}
+// 		if (0 == IrpContext->createInfo.FileSize.QuadPart)
+// 		{
+// 			Fcb->bEnFile = TRUE;
+// 			Fcb->bWriteHead = FALSE;
+// 		}
 		if (Fcb->bEnFile)
 		{
 			if (FlagOn(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED))
@@ -2491,6 +2498,8 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 		switch (usLength)
 		{
 		case 0:
+			bRet = TRUE;
+			break;
 		case 1:
 			break;
 		case 2:
@@ -2523,7 +2532,6 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 				(0 == _wcsnicmp(pwszExtName, L"dat", 3)) || 
 				(0 == _wcsnicmp(pwszExtName, L"cab", 3)) || 
 				(0 == _wcsnicmp(pwszExtName, L"dmp", 3)) || 
-				(0 == _wcsnicmp(pwszExtName, L"pch", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"tmp", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"mui", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"sdb", 3)) ||
@@ -2531,6 +2539,7 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 				(0 == _wcsnicmp(pwszExtName, L"ttf", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"scr", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"plg", 3)) ||
+				(0 == _wcsnicmp(pwszExtName, L"ini", 3)) ||
 				(0 == _wcsnicmp(pwszExtName, L"p2p", 3)) )
 			{
 				bRet = TRUE;

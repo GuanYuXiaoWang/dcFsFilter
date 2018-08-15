@@ -167,7 +167,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				bAcquireFcb = FALSE;
 			}
 
-			if (!Fcb->bWriteHead)
+			if (/*!Fcb->bWriteHead*/FALSE)
 			{
 				Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, 52, Fcb);
 				if (NT_SUCCESS(Status))

@@ -136,6 +136,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 		
 	}
 #endif
+	PAGED_CODE();
+
 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
 	{
 		DbgPrint("PtPreOperationNetworkQueryOpen......\n");
@@ -814,7 +816,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			else
 			{
 				Data->IoStatus.Status = Status;
-				try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
+				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
 		}
 
@@ -856,11 +858,11 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
 		}
 		
-		if (0 == IrpContext->createInfo.FileSize.QuadPart)
-		{
-			Fcb->bEnFile = TRUE;
-			Fcb->bWriteHead = FALSE;
-		}
+// 		if (0 == IrpContext->createInfo.FileSize.QuadPart)
+// 		{
+// 			Fcb->bEnFile = TRUE;
+// 			Fcb->bWriteHead = FALSE;
+// 		}
 
 		if (IrpContext->createInfo.FileAccess == FILE_NO_ACCESS)
 		{
@@ -1143,10 +1145,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//TODO::非加密文件不过滤
-// 		if (!IrpContext->createInfo.bEnFile)
-// 		{
-// 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
-// 		}
+//  		if (!IrpContext->createInfo.bEnFile)
+//  		{
+//  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+//  		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{

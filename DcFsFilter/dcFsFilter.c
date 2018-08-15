@@ -470,11 +470,12 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 	NTSTATUS status = STATUS_SUCCESS;
 
 	UNREFERENCED_PARAMETER(pRegistryPath);
+	
+	InitData();
 
 	status = FltRegisterFilter(pDeviceObject, &FilterRegistration, &gFilterHandle);
 	if (NT_SUCCESS(status))
 	{
-		InitData();
 		status = FltStartFiltering(gFilterHandle);
 		if (!NT_SUCCESS(status))
 		{
@@ -488,6 +489,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 			InitCommunication(gFilterHandle);
 			g_bAllModuleInitOk = TRUE;
 		}
+	}
+	else
+	{
+		UnInitData();
 	}
 	
 	return status;
