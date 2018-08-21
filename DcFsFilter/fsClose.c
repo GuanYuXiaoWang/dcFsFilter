@@ -40,10 +40,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			{
 				__leave;
 			}
-
+			DbgPrint("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount);
 			if (0 == Fcb->OpenCount)
 			{
-
 			}
 		}
 		__finally

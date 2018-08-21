@@ -1,7 +1,7 @@
 
 #include "Head.h"
 
-DRV_DATA g_SafeData;
+DRV_DATA g_SafeData = {0};
 
 void FileFlag_XOR(UCHAR *p, int Len)
 {

@@ -35,7 +35,14 @@ typedef enum tagCREATE_ACCESS_TYPE
 #ifndef ENCRYPT_HEAD_LENGTH
 #define ENCRYPT_HEAD_LENGTH 1024
 #endif
-#define ENCRYPTION_HEADER_KEY "zhouyang"
+
+#define SUPPORT_OPEN_COUNT_MAX 100
+
+typedef struct tagFILE_OPEN_INFO
+{
+	PVOID FileObject;
+	HANDLE FileHandle;
+}FILE_OPEN_INFO, *PFILE_OPEN_INFO;
 
 typedef struct tagDEF_IO_CONTEXT
 {
@@ -155,6 +162,22 @@ typedef struct tagDISKDIROBEJECT
 	BOOLEAN			bRoot;
 }DISKDIROBEJECT, *PDISKDIROBEJECT;
 
+typedef struct tagSTREAM_FILE_INFO
+{
+	PFILE_OBJECT StreamObject;
+	PERESOURCE pFO_Resource;
+	HANDLE hStreamHandle;
+	FAST_MUTEX FileObjectMutex;
+}STREAM_FILE_INFO;
+
+typedef struct tagDEF_CCB
+{
+	ULONG ProcType;
+	ULONG FileAccess;
+	ULONG CcbState;
+	STREAM_FILE_INFO StreamFileInfo;
+	UCHAR TypeOfOpen;
+}DEF_CCB, *PDEF_CCB;
 
 typedef struct tagDEFFCB
 {
@@ -227,8 +250,10 @@ typedef struct tagDEFFCB
 	ULONG FileAcessType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
-	ULONG ProcessID;
+	PVOID Ccb;
 	PKEVENT MoveFileEvent;
+	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
+	ULONG FileAllOpenCount;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -284,23 +309,6 @@ typedef struct _tagPROCESSINFO
 	BOOLEAN			bAllCreateExeFile;
 	ULONG			nEncryptTypes;
 }PROCESSINFO, *PPROCESSINFO;
-
-typedef struct tagSTREAM_FILE_INFO
-{
-	PFILE_OBJECT StreamObject;
-	PERESOURCE pFO_Resource;
-	HANDLE hStreamHandle;
-	FAST_MUTEX FileObjectMutex;
-}STREAM_FILE_INFO;
-
-typedef struct tagDEF_CCB
-{
-	ULONG ProcType;
-	ULONG FileAccess;
-	ULONG CcbState;
-	STREAM_FILE_INFO StreamFileInfo;
-	UCHAR TypeOfOpen;	
-}DEF_CCB, *PDEF_CCB;
 
 typedef struct tagCREATE_INFO
 {
@@ -383,7 +391,7 @@ typedef struct tagIRP_CONTEXT
 	//
 	//  Originating Device (required for workque algorithms)
 	//
-	PFLT_RELATED_OBJECTS FltObjects;
+	FLT_RELATED_OBJECTS FltObjects;
 	PFILE_OBJECT   Fileobject;
 
 	CREATE_INFO createInfo;

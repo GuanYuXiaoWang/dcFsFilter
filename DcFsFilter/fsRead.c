@@ -71,6 +71,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 			}
 			else
 			{
+				DbgPrint("read MinorFunction=%d...\n", Data->Iopb->MinorFunction);
 				FltStatus = FsCommonRead(Data, FltObjects, IrpContext);
 			}
 		}
@@ -152,7 +153,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 	if (NULL == FltObjects)
 	{
-		FltObjects = IrpContext->FltObjects;
+		FltObjects = &IrpContext->FltObjects;
 	}
 	if (FltObjects != NULL)
 	{
@@ -172,6 +173,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	bPagingIo = BooleanFlagOn(Iopb->IrpFlags, IRP_PAGING_IO);
 	bNonCachedIo = BooleanFlagOn(Iopb->IrpFlags, IRP_NOCACHE);
 	bSynchronousIo = BooleanFlagOn(FileObject->Flags, FO_SYNCHRONOUS_IO);
+	
+	//KdBreakPoint();
 
 	if (FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 	{
@@ -232,10 +235,13 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			{
 				try_return(bPostIrp = TRUE);
 			}
-			ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE);		
-			CcFlushCache(FileObject->SectionObjectPointer, (PLARGE_INTEGER)&StartByte, (ULONG)ByteCount, &Data->IoStatus);
-			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
-			Status = Data->IoStatus.Status;
+			if (ExAcquireResourceSharedLite(Fcb->Header.PagingIoResource, TRUE))
+			{
+				CcFlushCache(FileObject->SectionObjectPointer, (PLARGE_INTEGER)&StartByte, (ULONG)ByteCount, &Data->IoStatus);
+				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+				Status = Data->IoStatus.Status;
+			}
+			
 			if (!NT_SUCCESS(Status))
 			{
 				try_return(Status);
@@ -482,14 +488,12 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 					}
 					DbgPrint("CcCopyRead:%s...\n", SystemBuffer);
 					
-					FileObject->CurrentByteOffset.QuadPart += (StartByte + ByteCount);
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}
 				else
 				{
 					CcMdlRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, &Iopb->Parameters.Read.MdlAddress, &Data->IoStatus);
-					FileObject->CurrentByteOffset.QuadPart += (StartByte + ByteCount);
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}
@@ -503,6 +507,7 @@ try_exit:NOTHING;
 				ActualBytesRead = (ULONG)Data->IoStatus.Information;
 				if (bSynchronousIo && !bPagingIo)
 				{
+					FileObject->CurrentByteOffset.QuadPart = (StartByte + ActualBytesRead);
 					SetFlag(FileObject->Flags, FO_FILE_FAST_IO_READ);
 				}
 			}
@@ -514,6 +519,10 @@ try_exit:NOTHING;
 					FltStatus = FLT_PREOP_PENDING;
 				}
 			}
+		}
+		if (!NT_SUCCESS(Status))
+		{
+			DbgPrint("read failed(0x%x)...\n", Status);
 		}
 	}
 	__finally

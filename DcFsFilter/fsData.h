@@ -91,6 +91,7 @@ extern "C" {
 	PDEF_CCB FsCreateCcb();
 	VOID FsFreeCcb(IN PDEF_CCB Ccb);
 	PERESOURCE FsAllocateResource();
+	void FsFreeResource(PERESOURCE Resource);
 
 	VOID NetFileSetCacheProperty(IN PFILE_OBJECT FileObject, IN ACCESS_MASK DesiredAccess);
 	NTSTATUS FsGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data,

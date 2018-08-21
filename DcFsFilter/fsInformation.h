@@ -71,6 +71,6 @@ BOOLEAN FsIsIoRangeValid(__in LARGE_INTEGER Start, __in ULONG Length);
 
 NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
 
-
+NTSTATUS FsSetPositionInfo(__in PFLT_CALLBACK_DATA Data, __in PFILE_OBJECT FileObject);
 
 #endif

@@ -199,7 +199,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	ByteRange.QuadPart = StartByte.QuadPart + (LONGLONG)ByteCount;
 	if (NULL == FltObjects)
 	{
-		FltObjects = IrpContext->FltObjects;
+		FltObjects = &IrpContext->FltObjects;
 	}
 	if (NULL != FltObjects)
 	{
@@ -220,7 +220,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	{
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_NETWORK_FILE);
 	}
-
+	//KdBreakPoint();
 	if (0 == ByteCount)
 	{
 		Data->IoStatus.Status = STATUS_SUCCESS;
@@ -313,6 +313,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			if (!NT_SUCCESS(Data->IoStatus.Status))
 			{
 				ExReleaseResourceLite(Header->PagingIoResource);
+				bPagingIoResourceAcquired = FALSE;
 				try_return(Status = Data->IoStatus.Status);
 			}
 
@@ -323,6 +324,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			if (bPagingIoResourceAcquired)
 			{
 				ExReleaseResourceLite(Header->PagingIoResource);
+				bPagingIoResourceAcquired = FALSE;
 			}
 			bFcbCanDemoteToShared = TRUE;
 		}
@@ -820,7 +822,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				{
 					try_return(bPostIrp = TRUE);
 				}
-				FileObject->CurrentByteOffset.QuadPart += ((ULONG)StartByte.QuadPart + ByteCount);
 				Data->IoStatus.Status = STATUS_SUCCESS;
 				Data->IoStatus.Information = (ULONG)ByteCount;
 				try_return(Status = STATUS_SUCCESS);
@@ -833,7 +834,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					(ULONG)ByteCount,
 					&Iopb->Parameters.Write.MdlAddress,
 					&Data->IoStatus);
-				FileObject->CurrentByteOffset.QuadPart += ((ULONG)StartByte.QuadPart + ByteCount);
 				Status = Data->IoStatus.Status;
 				try_return(Status);
 			}
@@ -899,7 +899,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 						}
 						if (Fcb->Header.PagingIoResource != NULL)
 						{
-							//DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 							ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 						}
 					}

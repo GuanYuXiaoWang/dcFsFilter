@@ -26,7 +26,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PreQueryInformation......\n");
+	DbgPrint("PreQueryInformation, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass);
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -42,8 +42,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 				FsRaiseStatus(IrpContext, STATUS_INSUFFICIENT_RESOURCES);
 			}
 			ntStatus = FsCommonQueryInformation(Data, FltObjects, IrpContext);
+
 			if (!NT_SUCCESS(ntStatus))
 			{
+				DbgPrint("FsCommonQueryInformation failed(0x%x)...\n", ntStatus);
 				Data->IoStatus.Status = ntStatus;
 				Data->IoStatus.Information = 0;
 			}
@@ -89,6 +91,8 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 	PFILE_BASIC_INFORMATION FileBasicInfo = NULL;
 	PFILE_STANDARD_INFORMATION FileStandardInfo = NULL;
 	PFILE_ALL_INFORMATION FileAllInfo = NULL;
+	PFILE_NETWORK_OPEN_INFORMATION FileNetInfo = NULL;
+	PFILE_POSITION_INFORMATION FilePositionInfo = NULL;
 	PDEFFCB Fcb = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
 	PVOID pFileInfoBuffer = Data->Iopb->Parameters.QueryFileInformation.InfoBuffer;
@@ -154,6 +158,37 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 
+		case FileNetworkOpenInformation:
+			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
+			{
+				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				try_return(ntStatus);
+			}
+			length = sizeof(FILE_NETWORK_OPEN_INFORMATION);
+			FileNetInfo = (PFILE_NETWORK_OPEN_INFORMATION)pFileInfoBuffer;
+			FileNetInfo->AllocationSize.QuadPart = Fcb->Header.AllocationSize.QuadPart;
+			FileNetInfo->ChangeTime.QuadPart = Fcb->LastChangeTime;
+			FileNetInfo->CreationTime.QuadPart = Fcb->CreationTime;
+			FileNetInfo->EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
+			FileNetInfo->LastAccessTime.QuadPart = Fcb->LastAccessTime;
+			FileNetInfo->LastWriteTime.QuadPart = Fcb->LastChangeTime;
+			FileNetInfo->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+			if (FlagOn(Fcb->FcbState, FCB_STATE_TEMPORARY))
+			{
+				SetFlag(FileNetInfo->FileAttributes, FILE_ATTRIBUTE_TEMPORARY);
+			}
+			break;
+		case FilePositionInformation:
+			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_POSITION_INFORMATION))
+			{
+				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_POSITION_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				try_return(ntStatus);
+			}
+			length = sizeof(FILE_POSITION_INFORMATION);
+			FilePositionInfo = (PFILE_POSITION_INFORMATION)pFileInfoBuffer;
+			FilePositionInfo->CurrentByteOffset.QuadPart = FltObjects->FileObject->CurrentByteOffset.QuadPart;
+			break;
+
 		default:
 			ntStatus = STATUS_INVALID_PARAMETER;
 			break;
@@ -186,11 +221,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	}
 	
 #endif
-	if (FileDispositionInformation == Data->Iopb->Parameters.SetFileInformation.FileInformationClass ||
-		FileRenameInformation == Data->Iopb->Parameters.SetFileInformation.FileInformationClass)
-	{
-		DbgPrint("PtPreSetInformation(%d)....=========\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
-	}
+
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -458,10 +489,26 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			Status = FsSetBasicInfo(Data, IrpContext, Fcb);
 			break;
 		case FileDispositionInformation:
+		{
+			FILE_DISPOSITION_INFORMATION FileDisPosition;
+			FileDisPosition.DeleteFile = TRUE;
+			Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, &FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
+			if (NT_SUCCESS(Status))
+			{
+				SetFlag(FileObject->Flags, FO_DELETE_ON_CLOSE);
+				SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+			}
+			else
+			{
+				DbgPrint("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status);
+			}
+			
+		}
 			break;
 		case FileRenameInformation:
 			break;
 		case FilePositionInformation:
+			Status = FsSetPositionInfo(Data, FileObject);
 			break;
 		case FileAllocationInformation:
 			Status = FsSetAllocationInfo(Data, IrpContext, FileObject, Fcb, Ccb);
@@ -827,5 +874,35 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 	}
 
 
+	return Status;
+}
+
+NTSTATUS FsSetPositionInfo(__in PFLT_CALLBACK_DATA Data, __in PFILE_OBJECT FileObject)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	PDEVICE_OBJECT DeviceObject = NULL;
+	PFILE_POSITION_INFORMATION Buffer = NULL;
+
+	if (Data->Iopb->TargetFileObject != NULL)
+	{
+		DeviceObject = Data->Iopb->TargetFileObject->DeviceObject;
+	}
+	Buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+	//
+	//  Check if the file does not use intermediate buffering.  If it does
+	//  not use intermediate buffering then the new position we're supplied
+	//  must be aligned properly for the device
+	//
+	if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
+	{
+		if (Buffer != NULL && DeviceObject != NULL && (Buffer->CurrentByteOffset.LowPart & DeviceObject->AlignmentRequirement) != 0)
+		{
+			return STATUS_INVALID_PARAMETER;
+		}
+	}
+	if (Buffer != NULL)
+	{
+		FileObject->CurrentByteOffset = Buffer->CurrentByteOffset;
+	}
 	return Status;
 }
