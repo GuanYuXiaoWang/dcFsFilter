@@ -319,7 +319,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			}
 			try_return(FltStatus = IrpContext->FltStatus);
 		}
-try_exit:NOTHING;
+	try_exit:NOTHING;
 		if (IrpContext->createInfo.bReissueIo)
 		{
 			FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -327,6 +327,13 @@ try_exit:NOTHING;
 		else
 		{
 			Data->IoStatus.Information = IrpContext->createInfo.Information;
+		}
+		
+		pFcb = FltObjects->FileObject->FsContext;
+		pCcb = FltObjects->FileObject->FsContext2;
+		if (NT_SUCCESS(Status) && pFcb != NULL)
+		{
+			DbgPrint("FileSize=0x%x(%d)...\n", pFcb->Header.FileSize.QuadPart, pFcb->Header.FileSize.QuadPart);
 		}
 	}
 	__finally
@@ -1152,10 +1159,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//TODO::非加密文件不过滤
-//  		if (!IrpContext->createInfo.bEnFile)
-//  		{
-//  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
-//  		}
+ 		if (!IrpContext->createInfo.bEnFile)
+ 		{
+ 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+ 		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
@@ -1279,7 +1286,6 @@ NTSTATUS CreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	FileAttributes = Iopb->Parameters.Create.FileAttributes;
 	ShareAccess = Iopb->Parameters.Create.ShareAccess;
 	EaLength = Iopb->Parameters.Create.EaLength;
-	DbgPrint("File Share Acess=%d, tmp file=%d....\n", ShareAccess, FileAttributes & FILE_ATTRIBUTE_TEMPORARY);
 	if (bNetWork)
 	{
 		//SetFlag (ShareAccess ,FILE_SHARE_READ); 

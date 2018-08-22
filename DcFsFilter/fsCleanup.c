@@ -145,8 +145,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					{
 						ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
 						ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
-						CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
-						bPureCache = CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, 0);
+ 						CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
+ 						bPureCache = CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, 0);
 					}
 					__finally
 					{
@@ -166,7 +166,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
 					}
 				}
-
+				SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 				if (bAcquireFcb)
 				{
 					ExReleaseResourceLite(Fcb->Resource);

@@ -505,10 +505,16 @@ try_exit:NOTHING;
 			if (!bPostIrp)
 			{
 				ActualBytesRead = (ULONG)Data->IoStatus.Information;
-				if (bSynchronousIo && !bPagingIo)
+				if (!bPagingIo)
 				{
-					FileObject->CurrentByteOffset.QuadPart = (StartByte + ActualBytesRead);
-					SetFlag(FileObject->Flags, FO_FILE_FAST_IO_READ);
+					if (bSynchronousIo)
+					{
+						FileObject->CurrentByteOffset.QuadPart = StartByte + ActualBytesRead;
+					}
+					if (NT_SUCCESS(Status))
+					{
+						SetFlag(FileObject->Flags, FO_FILE_FAST_IO_READ);
+					}
 				}
 			}
 			else
@@ -525,7 +531,12 @@ try_exit:NOTHING;
 			DbgPrint("read failed(0x%x)...\n", Status);
 		}
 	}
-	__finally
+	__except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		NTSTATUS ExceptionCode = GetExceptionCode();
+		DbgPrint("exception=0x%x...\n", ExceptionCode);
+	}
+//	__finally
 	{
 		if (!bNonCachedIoPending)
 		{
@@ -541,7 +552,6 @@ try_exit:NOTHING;
 			{
 				if (bPagingIo)
 				{
-					DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				}
 				else
@@ -572,14 +582,14 @@ try_exit:NOTHING;
 			Data->IoStatus.Status = Status;
 			FltStatus = FLT_PREOP_COMPLETE;
 		}
-		if (AbnormalTermination())
-		{
-			DbgPrint("CcFileObject = %x ,StreamObject = %x,Flags = %x, \n", Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Data->Iopb->IrpFlags);
-		}
-		if (!bPostIrp  && !AbnormalTermination())
-		{
-			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
-		}
+// 		if (AbnormalTermination())
+// 		{
+// 			DbgPrint("CcFileObject = %x ,StreamObject = %x,Flags = %x, Error=0x%x, \n", Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Data->Iopb->IrpFlags, GetExceptionCode());
+// 		}
+// 		if (!bPostIrp  && !AbnormalTermination())
+// 		{
+// 			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
+// 		}
 	}
 	return FltStatus;
 }

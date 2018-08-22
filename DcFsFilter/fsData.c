@@ -120,13 +120,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 
-		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-
 		//过滤包含特定类型的文件??
 		if (!IsControlFileType(szExName, length))
 		{
 			__leave;
 		}
+		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
 // 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
 // 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
 // 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||

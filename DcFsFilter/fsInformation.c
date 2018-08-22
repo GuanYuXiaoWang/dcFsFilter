@@ -633,7 +633,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 			//  Check here if we will be decreasing file size and synchonize with
 			//  paging IO.
 			//
-			if (Fcb->Header.FileSize.QuadPart > NewAllocationSize)
+			if (Fcb->Header.FileSize.QuadPart > (NewAllocationSize + (Fcb->bEnFile ? Fcb->FileHeaderLength : 0)))
 			{
 				if (!MmCanFileBeTruncated(FileObject->SectionObjectPointer,
 					&Buffer->AllocationSize))
@@ -717,7 +717,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 		{
 			try_return(Status = STATUS_INVALID_DEVICE_REQUEST);
 		}
-		NewFileSize = Buffer->EndOfFile.LowPart;
+		NewFileSize = Fcb->bEnFile ? Buffer->EndOfFile.LowPart + Fcb->FileHeaderLength : Buffer->EndOfFile.LowPart;
 		if (FCB_LOOKUP_ALLOCATIONSIZE_HINT == Fcb->Header.AllocationSize.QuadPart)
 		{
 			FsLookupFileAllocationSize(IrpContext, Fcb, Ccb);
