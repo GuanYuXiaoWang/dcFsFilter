@@ -1,11 +1,13 @@
 #include "regMgr.h"
 #include <wdm.h>
-
+#include "Head.h"
 
 #define DRIVER_LOAD_REG_PATH L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\services\\DcFsFilter"
 #define CONTROL_PROCESS_NAME L"ControlProcessName"
 #define CONTROL_FILE_TYPE L"ControlFileType"
 #define FILTER_FILE_TYPE L"FilterFileType"
+#define DOG_ID_NAME L"DogId"
+#define FILE_KEY_NAME L"Key"
 
 NPAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
 
@@ -76,6 +78,8 @@ void InitReg()
 		{
 			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strFFT.Buffer, ntStatus, __LINE__);
 		}
+		RtlZeroMemory(pKeyInfo, length);
+		ntStatus = InitDogKeyInfo(hKey, KeyValuePartialInformation, pKeyInfo, length);
 	}
 	__finally
 	{
@@ -182,6 +186,65 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 	}
 	return ntStatus;
 }
+
+NTSTATUS InitDogKeyInfo(__in HANDLE KeyHandle,
+	__in KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+	__inout PKEY_VALUE_PARTIAL_INFORMATION KeyValueInformation,
+	__in ULONG Length)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	UNICODE_STRING strDog;
+	UNICODE_STRING strKey;
+	UNICODE_STRING strTmp;
+	ANSI_STRING ansiStrTmp;
+	WCHAR * pwstrKey = NULL;
+	ULONG RetLength = 0;
+	PDRV_DATA pData = GetDrvData();
+
+	__try
+	{
+		if (NULL == pData)
+		{
+			__leave;
+		}
+		RtlInitUnicodeString(&strDog, DOG_ID_NAME);
+		RtlInitUnicodeString(&strKey, FILE_KEY_NAME);
+		ntStatus = ZwQueryValueKey(KeyHandle, &strDog, KeyValueInformationClass, KeyValueInformation, Length, &RetLength);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			DbgPrint("Query dog id failed(0x%x)...\n", ntStatus);
+			__leave;
+		}
+		pData->SystemUser.DogID = *((ULONG *)(KeyValueInformation->Data));
+		ntStatus = ZwQueryValueKey(KeyHandle, &strKey, KeyValueInformationClass, KeyValueInformation, Length, &RetLength);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			DbgPrint("Query key failed(0x%x)...\n", ntStatus);
+			__leave;
+		}
+		pwstrKey = ExAllocatePoolWithTag(NonPagedPool, KeyValueInformation->DataLength, 'skey');
+		if (NULL == pwstrKey)
+		{
+			__leave;
+		}
+		RtlZeroMemory(pwstrKey, KeyValueInformation->DataLength);
+		RtlCopyMemory(pwstrKey, (WCHAR*)KeyValueInformation->Data, KeyValueInformation->DataLength);
+		RtlInitUnicodeString(&strTmp, pwstrKey);
+		RtlUnicodeStringToAnsiString(&ansiStrTmp, &strTmp, TRUE);
+		RtlCopyMemory(pData->szbtKey, ansiStrTmp.Buffer, ansiStrTmp.Length);
+		DbgPrint("DogId=%d, key=%s...\n", pData->SystemUser.DogID, pData->szbtKey);
+	}
+	__finally
+	{
+		if (pwstrKey != NULL)
+		{
+			ExFreePoolWithTag(pwstrKey, 'skey');
+			RtlFreeAnsiString(&ansiStrTmp);
+		}
+	}
+	return ntStatus;
+}
+
 
 NTSTATUS FilterDeleteList(__in PLIST_ENTRY pListEntry)
 {

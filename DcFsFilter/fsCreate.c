@@ -21,7 +21,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 #ifdef TEST
 	if (IsTest(Data, FltObjects, "PtPreCreate"))
 	{
-		KdBreakPoint();
+		//KdBreakPoint();
 	}
 #endif
 
@@ -316,6 +316,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			{
 				DbgPrint("CreateFileByNonExistFcb failed(0x%x), fltStatus=%d...\n", Status, IrpContext->FltStatus);
 				IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
+				bPostIrp = FALSE;
 			}
 			try_return(FltStatus = IrpContext->FltStatus);
 		}
@@ -382,7 +383,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			}
 		}
 
-		Data->IoStatus.Status = FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status;
+		Data->IoStatus.Status = (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status);
 		Data->IoStatus.Information = 0;
 
 		if (!bPostIrp && !AbnormalTermination())
@@ -634,7 +635,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				IrpContext,
 				FsOplockComplete,
 				FsPrePostIrp);
-
 			if (FLT_PREOP_PENDING == FltOplockStatus)
 			{
 				Status = STATUS_PENDING;
@@ -646,15 +646,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			{
 				try_return(Status = OrgData->IoStatus.Status);
 			}
-
 		}
 		if (CreateDisposition == FILE_CREATE && Fcb->OpenCount != 0)
 		{
 			Status = STATUS_OBJECT_NAME_COLLISION;
 			try_return(Status);
 		}
-		else if (CreateDisposition == FILE_OVERWRITE ||
-			CreateDisposition == FILE_OVERWRITE_IF)
+		else if (CreateDisposition == FILE_OVERWRITE || CreateDisposition == FILE_OVERWRITE_IF)
 		{
 			SetFlag(AddedAccess, (FILE_WRITE_DATA | FILE_WRITE_EA | FILE_WRITE_ATTRIBUTES) & (~DesiredAccess));
 			SetFlag(DesiredAccess, FILE_WRITE_ATTRIBUTES | FILE_WRITE_EA | FILE_WRITE_DATA);
@@ -665,48 +663,47 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			SetFlag(DesiredAccess, DELETE);
 		}
 
-		if (!NT_SUCCESS(Status = IoCheckShareAccess(DesiredAccess,
-			ShareAccess,
-			FileObject,
-			&Fcb->ShareAccess,
-			FALSE)))
-		{
-			if (IsWin7OrLater())
-			{
-				if ((Status == STATUS_SHARING_VIOLATION) &&
-					!FlagOn(OrgData->Iopb->Parameters.Create.Options, FILE_COMPLETE_IF_OPLOCKED))
-				{
-					FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH(&Fcb->Oplock,
-						OrgData,
-						0,
-						IrpContext,
-						FsOplockComplete,
-						FsPrePostIrp);
-
-					if (FltOplockStatus == FLT_PREOP_PENDING) 
-					{
-						Status = STATUS_PENDING;
-						IrpContext->FltStatus = FLT_PREOP_PENDING;
-						IrpContext->createInfo.bOplockPostIrp = TRUE;
-						try_return(Status);
-					}
-					if (FltOplockStatus == FLT_PREOP_COMPLETE)
-					{
-						try_return(Status = OrgData->IoStatus.Status);
-					}
-					else
-					{
-						try_return(Status = STATUS_SHARING_VIOLATION);
-					}
-				}
-			}
-			try_return(Status);
-		}
+// 		if (!NT_SUCCESS(Status = IoCheckShareAccess(DesiredAccess,
+// 			ShareAccess,
+// 			FileObject,
+// 			&Fcb->ShareAccess,
+// 			FALSE)))
+// 		{
+// 			if (IsWin7OrLater())
+// 			{
+// 				if ((Status == STATUS_SHARING_VIOLATION) &&
+// 					!FlagOn(OrgData->Iopb->Parameters.Create.Options, FILE_COMPLETE_IF_OPLOCKED))
+// 				{
+// 					FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH(&Fcb->Oplock,
+// 						OrgData,
+// 						0,
+// 						IrpContext,
+// 						FsOplockComplete,
+// 						FsPrePostIrp);
+// 
+// 					if (FltOplockStatus == FLT_PREOP_PENDING) 
+// 					{
+// 						Status = STATUS_PENDING;
+// 						IrpContext->FltStatus = FLT_PREOP_PENDING;
+// 						IrpContext->createInfo.bOplockPostIrp = TRUE;
+// 						try_return(Status);
+// 					}
+// 					if (FltOplockStatus == FLT_PREOP_COMPLETE)
+// 					{
+// 						try_return(Status = OrgData->IoStatus.Status);
+// 					}
+// 					else
+// 					{
+// 						try_return(Status = STATUS_SHARING_VIOLATION);
+// 					}
+// 				}
+// 			}
+// 			try_return(Status);
+// 		}
 		if (IsWin7OrLater())
 		{
 			if (Fcb->OpenCount != 0)
 			{
-
 				FltOplockStatus = FltCheckOplock(&Fcb->Oplock,
 					OrgData,
 					IrpContext,
@@ -727,7 +724,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 			if (OpenRequiringOplock)
 			{
-
 				FltOplockStatus = FltOplockFsctrl(&Fcb->Oplock,
 					OrgData,
 					Fcb->OpenCount);
@@ -948,6 +944,27 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Fcb->Directory = IrpContext->createInfo.Directory;
 // 		Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
 // 		Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+		if (NULL == Fcb->CcFileObject)
+		{
+			UNICODE_STRING unicodeString;
+			IO_STATUS_BLOCK IoStatus;
+			OBJECT_ATTRIBUTES ob;
+			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
+			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+			Status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
+				NULL, FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_OPEN, Options, NULL, 0, 0);
+			if (!NT_SUCCESS(Status))
+			{
+				try_return(Status);
+			}
+			Status = ObReferenceObjectByHandle(Fcb->CcFileHandle, 0, *IoFileObjectType, KernelMode, &Fcb->CcFileObject, NULL);
+			if (!NT_SUCCESS(Status))
+			{
+				FltClose(Fcb->CcFileHandle);
+				Fcb->CcFileHandle = NULL;
+				try_return(Status);
+			}
+		}
 
 		Ccb = Fcb->Ccb ? Fcb->Ccb : FsCreateCcb();
 		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
@@ -1001,10 +1018,11 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 					NetFileSetCacheProperty(FileObject, DesiredAccess);
 				}
 
-				if (DesiredAccess != PreDesiredAccess)
+				if (/*DesiredAccess != PreDesiredAccess*/AddedAccess)
 				{
-					DesiredAccess = PreDesiredAccess;
-					Status = IoCheckShareAccess(
+					ClearFlag(DesiredAccess, AddedAccess);
+					//DesiredAccess = PreDesiredAccess;
+					NTSTATUS Status = IoCheckShareAccess(
 						DesiredAccess,
 						ShareAccess,
 						FileObject,

@@ -43,6 +43,19 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			DbgPrint("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount);
 			if (0 == Fcb->OpenCount)
 			{
+// 				if (Fcb->CcFileObject)
+// 				{
+// 					ObDereferenceObject(Fcb->CcFileObject);
+// 					Fcb->CcFileObject = NULL;
+// 				}
+// 				if (Fcb->CcFileHandle)
+// 				{
+// 					FltClose(Fcb->CcFileHandle);
+// 					Fcb->CcFileHandle = NULL;
+// 				}
+				FsFreeCcb(Ccb);
+				FltObjects->FileObject->FsContext2 = NULL;
+				Fcb->Ccb = NULL;
 			}
 		}
 		__finally

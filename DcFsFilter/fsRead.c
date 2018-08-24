@@ -176,7 +176,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	
 	//KdBreakPoint();
 
-	if (FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+	if (Ccb != NULL && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 	{
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_NETWORK_FILE);
 	}
@@ -229,7 +229,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	__try
 	{
 		//文件有一个缓存，并且是非缓存的I0,并且不是分页io 这个时候刷新缓存,分页io是vmm缺页调用的，这个时候不能刷新缓存数据
-		if ((bNonCachedIo ||  FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) && !bPagingIo && (FileObject->SectionObjectPointer->DataSectionObject != NULL))
+		if ((bNonCachedIo ||  (Ccb != NULL && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))) && !bPagingIo && (FileObject->SectionObjectPointer->DataSectionObject != NULL))
 		{
 			if (!FsAcquireExclusiveFcb(IrpContext, Fcb))
 			{
@@ -339,7 +339,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			Data->IoStatus.Status = 0;
 			try_return(Status = STATUS_END_OF_FILE);
 		}
-		if (NULL == Fcb->CcFileObject && NULL == Ccb->StreamFileInfo.StreamObject)
+		if (NULL == Fcb->CcFileObject && Ccb != NULL && NULL == Ccb->StreamFileInfo.StreamObject)
 		{
 			try_return(Status = STATUS_FILE_DELETED);
 		}
@@ -394,11 +394,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
 			}
 			RtlZeroMemory(newBuf, readLen);
-			if (ExAcquireResourceSharedLite(Ccb->StreamFileInfo.pFO_Resource, TRUE))
+			if (Ccb && ExAcquireResourceSharedLite(Ccb->StreamFileInfo.pFO_Resource, TRUE))
 			{
 				bFOResourceAcquired = TRUE;
+				IrpContext->pIoContext->Wait.Async.FO_Resource = Ccb->StreamFileInfo.pFO_Resource;
 			}
-			IrpContext->pIoContext->Wait.Async.FO_Resource = Ccb->StreamFileInfo.pFO_Resource;
 			if (ExAcquireResourceSharedLite(Fcb->Resource, TRUE))
 			{
 				bFcbResourceAcquired = TRUE;
@@ -407,7 +407,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
-			IrpContext->Fileobject = BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject;
+			IrpContext->Fileobject = ((Ccb != NULL && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject);
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
@@ -456,7 +456,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		}
 		else
 		{
-			if (FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 			{
 				//网络文件暂不处理，如果用于加解密，必须处理
 			}
@@ -533,8 +533,10 @@ try_exit:NOTHING;
 	}
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
-		NTSTATUS ExceptionCode = GetExceptionCode();
-		DbgPrint("exception=0x%x...\n", ExceptionCode);
+		Status = GetExceptionCode();
+		Data->IoStatus.Status = Status;
+		FltStatus = FLT_PREOP_COMPLETE;
+		DbgPrint("exception=0x%x...\n", Status);
 	}
 //	__finally
 	{
@@ -586,10 +588,10 @@ try_exit:NOTHING;
 // 		{
 // 			DbgPrint("CcFileObject = %x ,StreamObject = %x,Flags = %x, Error=0x%x, \n", Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Data->Iopb->IrpFlags, GetExceptionCode());
 // 		}
-// 		if (!bPostIrp  && !AbnormalTermination())
-// 		{
-// 			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
-// 		}
+		if (!bPostIrp  /*&& !AbnormalTermination()*/)
+		{
+			FsCompleteRequest(&IrpContext, &Data, Data->IoStatus.Status, FALSE);
+		}
 	}
 	return FltStatus;
 }

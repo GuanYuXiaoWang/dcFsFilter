@@ -102,7 +102,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	__try
 	{
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		DbgPrint("clean:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount);
+		DbgPrint("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart);
 		if (1 == Fcb->OpenCount)
 		{
 			for (i = 0; i < Fcb->FileAllOpenCount; i++)
@@ -173,7 +173,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					bAcquireFcb = FALSE;
 				}
 
-				if (/*!Fcb->bWriteHead*/FALSE)
+				if (/*Fcb->bEnFile && !Fcb->bWriteHead*/FALSE)
 				{
 					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, 52, Fcb);
 					if (NT_SUCCESS(Status))
@@ -199,6 +199,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				{
 					FILE_END_OF_FILE_INFORMATION FileSize;
 					FileSize.EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
+					DbgPrint("clean:file size =%d...\n", FileSize.EndOfFile.LowPart);
 					Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, &FileSize, sizeof(FILE_END_OF_FILE_INFORMATION), FileEndOfFileInformation);
 					if (!NT_SUCCESS(Status))
 					{
@@ -209,11 +210,12 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 
 				RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
 				Fcb->FileAllOpenCount = 0;
-				FsFreeCcb(Ccb);
+				//FsFreeCcb(Ccb);
 				Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
-				FileObject->FsContext2 = NULL;
-				Fcb->Ccb = NULL;
+				Fcb->DestCacheObject = NULL;
+				//FileObject->FsContext2 = NULL;
+				//Fcb->Ccb = NULL;
 				IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 			}
 		}

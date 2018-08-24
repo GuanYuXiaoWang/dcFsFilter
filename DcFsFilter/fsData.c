@@ -936,7 +936,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 					FsCommonCleanup(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_LOCK_CONTROL:
-
+					FsCommonLockControl(Data, NULL, IrpContext);
 					break;
 				case IRP_MJ_QUERY_SECURITY:
 
@@ -1929,7 +1929,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L".um"};
+	WCHAR wszName[5] = {L"1.ppt"};
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
@@ -1960,12 +1960,17 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 				}
 			}
 		}
+		if (ProcessName && 0 != stricmp("wpp.exe", ProcessName))
+		{
+			DbgPrint("funtionName=%s, process name=%s...\n", FunctionName, ProcessName);
+			bTrue = TRUE;
+		}
 
-		if (ProcessName && (0 == stricmp("FileIRP.exe", ProcessName) || 
+		if (ProcessName && (0 == stricmp("wpp.exe", ProcessName) || 
 			0 == stricmp("notepad++.exe", ProcessName)))
 		{
 			bTrue = TRUE;
-			DbgPrint("funtionName=%s(0x%x), File Name=%S...\n", FunctionName, FileObject->FileName.Buffer ? FileObject->FileName.Buffer : L"none");
+			DbgPrint("funtionName=%s, File Name=%S...\n", FunctionName, FileObject->FileName.Buffer ? FileObject->FileName.Buffer : L"none");
 		}
 	}
 	__finally

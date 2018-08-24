@@ -216,8 +216,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 #ifdef TEST
 	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
 	{
-		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-		KdBreakPoint();
+		DbgPrint("(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
 	}
 	
 #endif
@@ -365,6 +364,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
+	DbgPrint("PtPreAcquireForSection....\n");
+
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb && Fcb->Header.PagingIoResource)
 	{
@@ -398,7 +399,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+	DbgPrint("PtPreReleaseForSection....\n");
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb && Fcb->Header.PagingIoResource)
 	{
@@ -764,22 +765,6 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 				Fcb->Header.ValidDataLength.QuadPart = InitialValidDataLength;
 				ExReleaseFastMutex(Fcb->Header.FastMutex);
 			}
-			//跟新文件大小、修改时间等信息:参考ntfs源码
-			//SetFileSize.UpdateStandardInformation
-			CC_FILE_SIZES CcFileSize = {0};
-			CcFileSize.AllocationSize.QuadPart = Fcb->Header.AllocationSize.QuadPart;
-			CcFileSize.FileSize.QuadPart = InitialValidDataLength;
-			CcFileSize.ValidDataLength.QuadPart = InitialValidDataLength;
-			SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
-			if (CcIsFileCached(FileObject))
-			{
-				//  We want to checkpoint the transaction if there is one active.		
-				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&CcFileSize);
-			}
-// 			if (FlagOn(Fcb->FcbState, FCB_STATE_UPDATE_STD_INFO))
-// 			{
-// 			}
-
 		}
 		else
 		{

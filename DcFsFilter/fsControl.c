@@ -116,32 +116,44 @@ FLT_PREOP_CALLBACK_STATUS PtPreLockControl(__inout PFLT_CALLBACK_DATA Data, __in
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
+	DbgPrint("PtPreLockControl....\n");
 	bTopLevelIrp = FsIsIrpTopLevel(Data);
-
-	do 
+	if (FLT_IS_IRP_OPERATION(Data))
 	{
-		__try
+		do
 		{
-			if (NULL == IrpContext)
+			__try
 			{
-				IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
+				if (NULL == IrpContext)
+				{
+					IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
+				}
+				FltStatus = FsCommonLockControl(Data, FltObjects, IrpContext);
+				Status = IrpContext->ExceptionStatus;
+				break;
 			}
-			FltStatus = FsCommonLockControl(Data, FltObjects, IrpContext);
-			Status = IrpContext->ExceptionStatus;
-			break;
-		}
-		__except (EXCEPTION_EXECUTE_HANDLER)
-		{
-			FsProcessException(&IrpContext, &Data, GetExceptionCode());
-			FltStatus = FLT_PREOP_COMPLETE;
-			break;
-		}
-	} while (Status == STATUS_CANT_WAIT || Status == STATUS_LOG_FILE_FULL);
+			__except (EXCEPTION_EXECUTE_HANDLER)
+			{
+				FsProcessException(&IrpContext, &Data, GetExceptionCode());
+				FltStatus = FLT_PREOP_COMPLETE;
+				break;
+			}
+		} while (Status == STATUS_CANT_WAIT || Status == STATUS_LOG_FILE_FULL);
+	}
+	else if (FLT_IS_FASTIO_OPERATION(Data))
+	{
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else
+	{
+		Data->IoStatus.Status = STATUS_UNSUCCESSFUL;
+		Data->IoStatus.Information = 0;
+		FltStatus = FLT_PREOP_COMPLETE;
+	}
 	
 	if (bTopLevelIrp)
 	{
 		IoSetTopLevelIrp(NULL);
-
 	}
 
 	FsRtlExitFileSystem();
@@ -164,24 +176,71 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	BOOLEAN bFcbAcquired = FALSE;
 	BOOLEAN bOplockPostIrp = FALSE;
+	PFLT_CALLBACK_DATA OrgData = NULL;
+
 	__try
 	{
+		if (NULL == Fcb || Fcb->OpenCount <= 1)
+		{
+			__leave;
+		}
+		if (IrpContext->OriginatingData != NULL)
+		{
+			OrgData = IrpContext->OriginatingData;
+		}
+		else
+		{
+			OrgData = Data;
+		}
+
+		bFcbAcquired = FsAcquireSharedFcb(IrpContext, Fcb);
 		if (NULL == Fcb->CcFileObject)
 		{
 			__leave;
 		}
 
-		FltStatus = FltCheckOplock(&Fcb->Oplock, Data, IrpContext, FsOplockComplete, NULL);
-		if (FLT_PREOP_COMPLETE == FltStatus)
+		if (FltCurrentBatchOplock(&Fcb->Oplock))
 		{
-			__leave;
+			DbgPrint("have file oplock...\n");
 		}
-		if (FLT_PREOP_PENDING == FltStatus)
+
+		if (IsWin7OrLater())
 		{
-			FltStatus = FLT_PREOP_PENDING;
-			bOplockPostIrp = TRUE;
-			__leave;
+			FltStatus = g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx(&Fcb->Oplock,
+				OrgData,
+				OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY,
+				IrpContext,
+				FsOplockComplete,
+				NULL);
 		}
+		else
+		{
+			FltStatus = FltCheckOplock(&Fcb->Oplock, OrgData, IrpContext, FsOplockComplete, NULL);
+		}
+
+		if (FltStatus == FLT_PREOP_PENDING)
+		{
+			IrpContext->FltStatus = FLT_PREOP_PENDING;
+			IrpContext->createInfo.bOplockPostIrp = TRUE;
+			try_return(NOTHING);
+		}
+		if (FltStatus == FLT_PREOP_COMPLETE)
+		{
+			try_return(NOTHING);
+		}
+
+	
+// 		FltStatus = FltCheckOplock(&Fcb->Oplock, Data, IrpContext, FsOplockComplete, NULL);
+// 		if (FLT_PREOP_COMPLETE == FltStatus)
+// 		{
+// 			__leave;
+// 		}
+// 		if (FLT_PREOP_PENDING == FltStatus)
+// 		{
+// 			FltStatus = FLT_PREOP_PENDING;
+// 			bOplockPostIrp = TRUE;
+// 			__leave;
+// 		}
 		ExAcquireFastMutex(Fcb->Header.FastMutex);
 		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
 		{
@@ -201,12 +260,17 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 		ExReleaseFastMutex(Fcb->Header.FastMutex);
 
 		FltStatus = FltProcessFileLock(Fcb->FileLock, Data, NULL);
+	try_exit:NOTHING;
 	}
 	__finally
 	{
 		if (!AbnormalTermination() && !bOplockPostIrp) {
 
 			FsCompleteRequest(&IrpContext, NULL, STATUS_SUCCESS, FALSE);
+		}
+		if (bFcbAcquired)
+		{
+			FsReleaseFcb(IrpContext, Fcb);
 		}
 	}
 

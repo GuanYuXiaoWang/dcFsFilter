@@ -655,10 +655,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			//WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen,CRYPT_UNIT); error
 
 			WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen, SectorSize);
-			if ((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
-
-				((WriteLen != (ULONG)ByteCount)
-				&& (StartByte.QuadPart + (LONGLONG)ByteCount < ValidDataLength.QuadPart)))
+			if (Fcb->DestCacheObject && ((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
+				((WriteLen != ByteCount) && (StartByte.QuadPart + (LONGLONG)ByteCount < ValidDataLength.QuadPart))))
 			{
 				try_return(Status = STATUS_NOT_IMPLEMENTED);
 			}
@@ -736,7 +734,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			IrpContext->pIoContext->ByteOffset.QuadPart = StartByte.QuadPart;
 			IrpContext->pIoContext->FltObjects = FltObjects;
 			IrpContext->pIoContext->Instance = FltObjects->Instance;
-			Status = FsRealWriteFile(FltObjects, IrpContext, newBuf, NewByteOffset, WriteLen, &RetBytes);
+			Status = FsRealWriteFile(FltObjects, IrpContext, newBuf, NewByteOffset, ByteCount, &RetBytes);
 
 			if (bWait)
 			{

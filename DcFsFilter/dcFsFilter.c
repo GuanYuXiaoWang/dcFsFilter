@@ -119,8 +119,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_LOCK_CONTROL,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreLockControl,
+	PtPostLockControl},
 
 	{ IRP_MJ_CLEANUP,
 	0,
@@ -605,6 +605,7 @@ The return value is the status of the operation.
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{
+		DbgPrint("PtPreOperationPassThrough:major=0x%x, minor=0x%x...\n", Data->Iopb->MajorFunction, Data->Iopb->MinorFunction);
 		if (FLT_IS_FASTIO_OPERATION(Data))
 		{
 			FltStatus = FLT_PREOP_DISALLOW_FASTIO;

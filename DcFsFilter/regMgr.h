@@ -30,6 +30,11 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 	__in ULONG Length,
 	__inout PLIST_ENTRY ListEntry);
 
+NTSTATUS InitDogKeyInfo(__in HANDLE KeyHandle, 
+	__in KEY_VALUE_INFORMATION_CLASS KeyValueInformationClass,
+	__inout PKEY_VALUE_PARTIAL_INFORMATION KeyValueInformation,
+	__in ULONG Length);
+
 void UnInitReg();
 
 NTSTATUS FilterDeleteList(__in PLIST_ENTRY pListEntry);
