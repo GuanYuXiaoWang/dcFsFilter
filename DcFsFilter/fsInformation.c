@@ -97,10 +97,24 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
 	PVOID pFileInfoBuffer = Data->Iopb->Parameters.QueryFileInformation.InfoBuffer;
 	ULONG length = 0;
+	PFILE_OBJECT FileObject = NULL;
 
 	//查询信息，是否需要独占FCB资源？？？
 	__try
 	{
+		if (NULL == FltObjects)
+		{
+			FltObjects = &IrpContext->FltObjects;
+		}
+		if (FltObjects != NULL)
+		{
+			FileObject = FltObjects->FileObject;
+		}
+		else
+		{
+			FileObject = Data->Iopb->TargetFileObject;
+		}
+
 		Fcb = FltObjects->FileObject->FsContext;
 		if (NULL == Fcb)
 		{
@@ -187,6 +201,9 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			length = sizeof(FILE_POSITION_INFORMATION);
 			FilePositionInfo = (PFILE_POSITION_INFORMATION)pFileInfoBuffer;
 			FilePositionInfo->CurrentByteOffset.QuadPart = FltObjects->FileObject->CurrentByteOffset.QuadPart;
+			break;
+		case FileStandardLinkInformation:
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, FileObject, pFileInfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, FileInfoClass, &length);
 			break;
 
 		default:

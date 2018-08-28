@@ -3,6 +3,7 @@
 #include "fsData.h"
 #include "volumeContext.h"
 #include "Crypto.h"
+#include "Head.h"
 
 FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
@@ -212,7 +213,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	Fcb = FileObject->FsContext;
 	Ccb = FileObject->FsContext2;
 
-	if (NULL == Fcb || NULL == Ccb || BooleanFlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
+	if (NULL == Fcb || NULL == Ccb/* || BooleanFlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE)*/)
 	{
 		Data->IoStatus.Status = STATUS_SUCCESS;
 		Data->IoStatus.Information = 0;

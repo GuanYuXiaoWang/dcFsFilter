@@ -49,7 +49,7 @@ NTSTATUS  CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data,
 								__in PDEF_IRP_CONTEXT IrpContext
 								);
 
-NTSTATUS CreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, 
+NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, 
 							__in PCFLT_RELATED_OBJECTS FltObjects,
 							__in PUNICODE_STRING FileName,
 							__out PHANDLE phFile,

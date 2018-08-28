@@ -64,6 +64,7 @@ extern "C" {
 	BOOLEAN IsTopLevelIRP(IN PFLT_CALLBACK_DATA Data);
 	BOOLEAN GetVersion();
 	BOOLEAN IsWin7OrLater();
+	BOOLEAN IsVistaOrLater();
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);
@@ -135,6 +136,7 @@ extern "C" {
 	NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass);
 	BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType);
 	BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length);
+	NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb);
 #ifdef __cplusplus
 }
 #endif

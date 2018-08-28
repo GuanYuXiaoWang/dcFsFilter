@@ -37,14 +37,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 			if (NULL == IrpContext)
 			{
 				FsRaiseStatus(IrpContext, STATUS_INSUFFICIENT_RESOURCES);
+				__leave;
 			}
-			ntStatus = FsControl(Data, FltObjects, (PVOID)&IrpContext);
+			ntStatus = FsControl(Data, FltObjects, IrpContext);
 			if (!NT_SUCCESS(ntStatus))
 			{
 				Data->IoStatus.Status = ntStatus;
 				Data->IoStatus.Information = 0;
 			}
-			FltStatus = FLT_PREOP_COMPLETE;
 		}
 		__finally
 		{
@@ -80,20 +80,23 @@ FLT_POSTOP_CALLBACK_STATUS PtPostFileSystemControl(__inout PFLT_CALLBACK_DATA Da
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-NTSTATUS FsControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+NTSTATUS FsControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
-
+	
 	switch (Iopb->MinorFunction)
 	{
 	case IRP_MN_USER_FS_REQUEST:
+		ntStatus = FsUserRequestControl(Data, FltObjects, IrpContext);
 		break;
 	case IRP_MN_MOUNT_VOLUME:
 		break;
+
+	default:
+		ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+		break;
 	}
-
-
 	
 	return ntStatus;
 }
@@ -275,4 +278,91 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 	}
 
 	return FltStatus;
+}
+
+NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	ULONG ControlCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
+	ULONG OutBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength;
+	PFILE_OBJECTID_BUFFER pBuf = Data->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer;
+	PFILE_OBJECT FileObject = NULL;
+	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
+	if (NULL == FltObjects)
+	{
+		FltObjects = &IrpContext->FltObjects;
+	}
+	if (FltObjects != NULL)
+	{
+		FileObject = FltObjects->FileObject;
+	}
+	else
+	{
+		FileObject = Data->Iopb->TargetFileObject;
+	}
+	Fcb = FileObject->FsContext;
+	Ccb = FileObject->FsContext2;
+	if (FSCTL_CREATE_OR_GET_OBJECT_ID == ControlCode)
+	{
+		if (OutBufferLength > 0)
+		{
+			ControlCode = FSCTL_GET_OBJECT_ID;
+		}
+		else
+		{
+			ControlCode = FSCTL_SET_OBJECT_ID;
+		}
+	}
+
+	switch (ControlCode)
+	{
+	case FSCTL_GET_OBJECT_ID:
+	//case FSCTL_CREATE_OR_GET_OBJECT_ID:
+	{
+		RtlCopyMemory(&pBuf->ObjectId, &Fcb->FileObjectIdInfo.ObjectId, 16);
+		RtlCopyMemory(&pBuf->ExtendedInfo, &Fcb->FileObjectIdInfo.ExtendedInfo, 48);
+		Data->IoStatus.Information = 64;
+	}
+		break;
+	case FSCTL_SET_OBJECT_ID:
+		ntStatus = STATUS_INVALID_PARAMETER;
+		break;
+
+	default:
+		ntStatus = STATUS_INVALID_PARAMETER;
+		break;
+	}
+	
+	return ntStatus;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+	PAGED_CODE();
+
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+
+	DbgPrint("PtPreDirectoryControl....\n");
+
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostDirectoryControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
 }

@@ -254,6 +254,7 @@ typedef struct tagDEFFCB
 	PKEVENT MoveFileEvent;
 	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
 	ULONG FileAllOpenCount;
+	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -459,6 +460,19 @@ NTSTATUS
 __inout PRTL_OSVERSIONINFOW VersionInformation
 );
 
+typedef NTSTATUS
+(*fltQueryDirectoryFile)(
+__in PFLT_INSTANCE Instance,
+__in PFILE_OBJECT FileObject,
+__out_bcount(Length) PVOID FileInformation,
+__in ULONG Length,
+__in FILE_INFORMATION_CLASS FileInformationClass,
+__in BOOLEAN ReturnSingleEntry,
+__in_opt PUNICODE_STRING FileName,
+__in BOOLEAN RestartScan,
+__out_opt PULONG LengthReturned
+);
+
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
 {
 	fltCheckOplockEx CheckOplockEx;
@@ -466,6 +480,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fMmDoesFileHaveUserWritableReferences pMmDoesFileHaveUserWritableReferences;
 	fsRtlChangeBackingFileObject pFsRtlChangeBackingFileObject;
 	fsGetVersion pGetVersion;
+	fltQueryDirectoryFile  QueryDirectoryFile;
 }DYNAMIC_FUNCTION_POINTERS;
 
 #define NAMED_PIPE_PREFIX                "\\\\.\\Pipe"

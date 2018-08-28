@@ -94,8 +94,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_DIRECTORY_CONTROL,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreDirectoryControl,
+	PtPostDirectoryControl },
 
 	{ IRP_MJ_FILE_SYSTEM_CONTROL,
 	0,

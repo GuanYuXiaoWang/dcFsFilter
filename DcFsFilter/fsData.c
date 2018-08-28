@@ -13,6 +13,7 @@
 #include "head.h"
 #include "EncFile.h"
 #include "regMgr.h"
+#include "fsControl.h"
 
 NPAGED_LOOKASIDE_LIST  g_IrpContextLookasideList;
 NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
@@ -179,6 +180,7 @@ VOID InitData()
 
 	g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx = (fltCheckOplockEx)FltGetRoutineAddress("FltCheckOplockEx");
 	g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH = (fltOplockBreakH)FltGetRoutineAddress("FltOplockBreakH");
+	g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile = (fltQueryDirectoryFile)FltGetRoutineAddress("FltQueryDirectoryFile");
 
 	RtlInitUnicodeString(&RoutineString, L"MmDoesFileHaveUserWritableReferences");
 	g_DYNAMIC_FUNCTION_POINTERS.pMmDoesFileHaveUserWritableReferences = (fMmDoesFileHaveUserWritableReferences)MmGetSystemRoutineAddress(&RoutineString);
@@ -395,6 +397,19 @@ BOOLEAN GetVersion()
 }
 
 BOOLEAN IsWin7OrLater()
+{
+	if (0 == g_OsMajorVersion)
+	{
+		GetVersion();
+	}
+	if (g_OsMajorVersion >= 6 && g_OsMinorVersion >=1)
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOLEAN IsVistaOrLater()
 {
 	if (0 == g_OsMajorVersion)
 	{
@@ -2568,4 +2583,70 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 	
 
 	return bRet;
+}
+
+NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	FILE_OBJECTID_BUFFER FileObjectIdInfo = { 0 };
+	ULONG Length = sizeof(FILE_OBJECTID_BUFFER);
+	PVOID pBuf = &FileObjectIdInfo;
+
+// 	if (/*IsVistaOrLater()*/FALSE)
+// 	{
+// 		ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile(FltObjects->Instance, Fcb->CcFileObject, &FileObjectIdInfo, sizeof(FILE_OBJECTID_INFORMATION), FileObjectIdInformation, TRUE, &strFile, TRUE, &RetLength);
+// 		if (NT_SUCCESS(ntStatus))
+// 		{
+// 			RtlCopyMemory(&Fcb->FileObjectIdInfo, &FileObjectIdInfo, sizeof(FILE_FS_OBJECTID_INFORMATION));
+// 		}
+// 
+// 	}
+	PFLT_CALLBACK_DATA NewData = NULL;
+	ntStatus = FltAllocateCallbackData(FltObjects->Instance, Fcb->CcFileObject, &NewData);
+	if (NT_SUCCESS(ntStatus))
+	{
+		NewData->Iopb->MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL;
+		NewData->Iopb->MinorFunction = IRP_MN_USER_FS_REQUEST;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer = pBuf;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.OutputBufferLength = Length;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.InputBufferLength = 0;
+
+		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Common.InputBufferLength = 0;
+		NewData->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength = Length;
+
+		NewData->Iopb->Parameters.FileSystemControl.Direct.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.InputBufferLength = 0;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.InputSystemBuffer = pBuf;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBufferLength = Length;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputMdlAddress = NULL;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBuffer = &FileObjectIdInfo;
+			
+		NewData->Iopb->Parameters.FileSystemControl.Neither.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength = 0;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBuffer = pBuf;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength = Length;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer = pBuf;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress = NULL;
+			
+		NewData->Iopb->TargetFileObject = Fcb->CcFileObject;
+		NewData->Iopb->IrpFlags = Data->Iopb->IrpFlags | IRP_SYNCHRONOUS_API;
+		FltPerformSynchronousIo(NewData);
+		ntStatus = NewData->IoStatus.Status;
+		if (NT_SUCCESS(ntStatus))
+		{
+			RtlCopyMemory(Fcb->FileObjectIdInfo.ObjectId, FileObjectIdInfo.ObjectId, 16);
+			RtlCopyMemory(Fcb->FileObjectIdInfo.ExtendedInfo, FileObjectIdInfo.ExtendedInfo, 48);
+		}
+		else
+		{
+			DbgPrint("Get Object Id failed(0x%x)....\n", ntStatus);
+		}
+	}
+	if (NULL != NewData)
+	{
+		FltFreeCallbackData(NewData);
+	}
+	return ntStatus;
 }
