@@ -73,7 +73,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		return FLT_PREOP_COMPLETE;
 	}
 
-	DbgPrint("PtPreCreate......\n");
+	DbgPrint("PtPreCreate begin......\n");
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -113,6 +113,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	}
 
 	FsRtlExitFileSystem();
+	DbgPrint("PtPreCreate end......\n");
 	return FltStatus;
 }
 
@@ -1178,10 +1179,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//TODO::非加密文件不过滤
- 		if (!IrpContext->createInfo.bEnFile)
- 		{
- 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
- 		}
+//  		if (!IrpContext->createInfo.bEnFile)
+//  		{
+//  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+//  		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
@@ -1253,8 +1254,9 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				FileObject->Flags |= FO_CACHE_SUPPORTED;
 			}
 			Fcb->Ccb = FileObject->FsContext2;
+			FsGetFileObjectIdInfo(Data, FltObjects, IrpContext->createInfo.pStreamObject, Fcb);
 		}
-		FsGetFileObjectIdInfo(Data, FltObjects, IrpContext->createInfo.pStreamObject, Fcb);
+		
 	try_exit: NOTHING;
 	}
 	__finally

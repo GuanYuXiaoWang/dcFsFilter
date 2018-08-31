@@ -49,7 +49,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	KdBreakPoint();
 #endif
 
-	DbgPrint("PtPreRead......\n");
+	DbgPrint("PtPreRead begin......\n");
 
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
@@ -96,6 +96,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 		IoSetTopLevelIrp(NULL);
 	}
 	FsRtlExitFileSystem();
+	DbgPrint("PtPreRead end......\n");
 	return FltStatus;
 }
 

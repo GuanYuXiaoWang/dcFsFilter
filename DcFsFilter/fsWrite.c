@@ -35,7 +35,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 #ifdef TEST
 	KdBreakPoint();
 #endif
-	DbgPrint("PtPreWrite......\n");
+	DbgPrint("PtPreWrite begin......\n");
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -85,6 +85,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FltStatus = FLT_PREOP_COMPLETE;
 	}
 	FsRtlExitFileSystem();
+	DbgPrint("PtPreWrite end......\n");
 	return FltStatus;
 }
 

@@ -1201,6 +1201,7 @@ typedef DCB *PDCB;
 #define FCB_STATE_NOTIFY_RESIZE_STREAM   (0x00001000)
 #define FCB_STATE_FILE_CHANGED			 (0x00002000)
 #define FCB_STATE_FILEHEADER_WRITED      (0x00004000)
+#define FCB_STATE_REAME_INFO			 (0x00008000)
 
 //
 //  Copies of the dirent's FAT_DIRENT_NT_BYTE_* flags for

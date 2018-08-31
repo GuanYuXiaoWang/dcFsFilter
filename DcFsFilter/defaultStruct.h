@@ -234,7 +234,7 @@ typedef struct tagDEFFCB
 	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
 	BOOLEAN			bAddHeaderLength;
-	WCHAR			wszFile[128];
+	WCHAR			wszFile[MAX_PATH];
 	UCHAR			szFileHead[ENCRYPT_HEAD_LENGTH];
 	UCHAR			szOrgFileHead[ENCRYPT_HEAD_LENGTH];
 

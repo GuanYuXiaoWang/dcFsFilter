@@ -84,13 +84,13 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_QUERY_VOLUME_INFORMATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreQueryVolumeInformation,
+	PtPostQueryVolumeInformation },
 
 	{ IRP_MJ_SET_VOLUME_INFORMATION,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreSetVolumeInformation,
+	PtPostSetVolumeInformation },
 
 	{ IRP_MJ_DIRECTORY_CONTROL,
 	0,
@@ -134,13 +134,13 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_QUERY_SECURITY,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreQuerySecurity,
+	PtPostQuerySecurity },
 
 	{ IRP_MJ_SET_SECURITY,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreSetSecurity,
+	PtPostSetSecurity },
 
 	{ IRP_MJ_QUERY_QUOTA,
 	0,

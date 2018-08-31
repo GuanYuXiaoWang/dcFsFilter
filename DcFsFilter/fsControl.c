@@ -26,7 +26,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	DbgPrint("PtPreFileSystemControl......\n");
+	DbgPrint("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode);
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{

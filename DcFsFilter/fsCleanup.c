@@ -122,15 +122,15 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			//  delete operation really deletes the file but
 			//  keeps the Fcb around for close to do away with.
 			//
-			if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
-			{
-				//todo:delete opereation
-				FsFreeCcb(Ccb);
-				FsFreeFcb(Fcb, NULL);
-				FileObject->FsContext = NULL;
-				FileObject->FsContext2 = NULL;
-			}
-			else
+// 			if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+// 			{
+// 				//todo:delete opereation
+// 				FsFreeCcb(Ccb);
+// 				FsFreeFcb(Fcb, NULL);
+// 				FileObject->FsContext = NULL;
+// 				FileObject->FsContext2 = NULL;
+// 			}
+// 			else
 			{
 				bAcquireFcb = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
 

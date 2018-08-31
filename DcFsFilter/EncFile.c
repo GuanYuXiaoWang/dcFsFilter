@@ -179,6 +179,7 @@ LOOP_RET:
 	if (pBuf)
 		ExFreeToNPagedLookasideList(&g_Npaged64KBList, pBuf);
 
+
 	if (p4KBuf)
 	{
 		ExFreeToNPagedLookasideList(&g_Npaged4KBList, p4KBuf);

@@ -2160,7 +2160,7 @@ NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				break;
 			}
 			//todo::¼ÓÃÜÄÚÈÝ
-
+			EncBuf(pBuffer, ENCRYPT_HEAD_LENGTH, Fcb->szFileHead);
 			//
 			Status = FltWriteFile(FltObjects->Instance, 
 								FileObject, 
@@ -2609,21 +2609,21 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 		NewData->Iopb->MinorFunction = IRP_MN_USER_FS_REQUEST;
 		NewData->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer = pBuf;
 		NewData->Iopb->Parameters.FileSystemControl.Buffered.OutputBufferLength = Length;
-		NewData->Iopb->Parameters.FileSystemControl.Buffered.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.FsControlCode = FSCTL_GET_OBJECT_ID;
 		NewData->Iopb->Parameters.FileSystemControl.Buffered.InputBufferLength = 0;
 
-		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = FSCTL_GET_OBJECT_ID;
 		NewData->Iopb->Parameters.FileSystemControl.Common.InputBufferLength = 0;
 		NewData->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength = Length;
 
-		NewData->Iopb->Parameters.FileSystemControl.Direct.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.FsControlCode = FSCTL_GET_OBJECT_ID;
 		NewData->Iopb->Parameters.FileSystemControl.Direct.InputBufferLength = 0;
 		NewData->Iopb->Parameters.FileSystemControl.Direct.InputSystemBuffer = pBuf;
 		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBufferLength = Length;
 		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputMdlAddress = NULL;
-		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBuffer = &FileObjectIdInfo;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBuffer = pBuf;
 			
-		NewData->Iopb->Parameters.FileSystemControl.Neither.FsControlCode = FSCTL_CREATE_OR_GET_OBJECT_ID;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.FsControlCode = FSCTL_GET_OBJECT_ID;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength = 0;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBuffer = pBuf;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength = Length;
@@ -2645,6 +2645,35 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 		}
 	}
 	if (NULL != NewData)
+	{
+		FltFreeCallbackData(NewData);
+	}
+	return ntStatus;
+}
+
+NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	ULONG Length = 0;
+	PFLT_CALLBACK_DATA NewData = NULL;
+	ntStatus = FltAllocateCallbackData(FltObjects->Instance, Fcb->CcFileObject, &NewData);
+	if (NT_SUCCESS(ntStatus))
+	{
+		NewData->Iopb->MajorFunction = IRP_MJ_QUERY_SECURITY;
+		NewData->Iopb->MinorFunction = IRP_MN_NORMAL;
+
+		NewData->Iopb->Parameters.QuerySecurity.Length = Data->Iopb->Parameters.QuerySecurity.Length;
+		NewData->Iopb->Parameters.QuerySecurity.MdlAddress = Data->Iopb->Parameters.QuerySecurity.MdlAddress;
+		NewData->Iopb->Parameters.QuerySecurity.SecurityBuffer = Data->Iopb->Parameters.QuerySecurity.SecurityBuffer;
+		NewData->Iopb->Parameters.QuerySecurity.SecurityInformation = Data->Iopb->Parameters.QuerySecurity.SecurityInformation;
+
+		NewData->Iopb->IrpFlags = IRP_SYNCHRONOUS_API;
+		FltPerformSynchronousIo(NewData);
+		ntStatus = NewData->IoStatus.Status;
+		Data->IoStatus.Information = NewData->IoStatus.Information;
+		Data->IoStatus.Status = ntStatus;
+	}
+	if (NewData != NULL)
 	{
 		FltFreeCallbackData(NewData);
 	}

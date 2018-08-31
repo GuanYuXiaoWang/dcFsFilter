@@ -26,7 +26,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PreQueryInformation, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass);
+	DbgPrint("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass);
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -72,6 +72,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	}
 	
 	FsRtlExitFileSystem();
+	DbgPrint("PreQueryInformation end......\n");
 	return FltStatus;
 }
 
@@ -202,8 +203,10 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FilePositionInfo = (PFILE_POSITION_INFORMATION)pFileInfoBuffer;
 			FilePositionInfo->CurrentByteOffset.QuadPart = FltObjects->FileObject->CurrentByteOffset.QuadPart;
 			break;
-		case FileStandardLinkInformation:
-			ntStatus = FltQueryInformationFile(FltObjects->Instance, FileObject, pFileInfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, FileInfoClass, &length);
+		case FileStreamInformation:
+		case FileNameInformation:
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, 
+				Data->Iopb->Parameters.QueryFileInformation.Length, Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
 			break;
 
 		default:
@@ -244,7 +247,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetInformation(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
+	DbgPrint("PtPreSetInformation begin, (FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -288,7 +291,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	}
 
 	FsRtlExitFileSystem();
-
+	DbgPrint("PtPreSetInformation end......\n");
 	return FltStatus;
 }
 
@@ -524,6 +527,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		}
 			break;
 		case FileRenameInformation:
+			Status = FsRenameFileInfo(Data, FltObjects, Fcb, Ccb);
 			break;
 		case FilePositionInformation:
 			Status = FsSetPositionInfo(Data, FileObject);
@@ -612,7 +616,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 	PAGED_CODE();
 
 	Buffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
-	NewAllocationSize = Buffer->AllocationSize.QuadPart;
+	NewAllocationSize = Buffer->AllocationSize.LowPart;
 
 	//  Check that the new file allocation is legal
 	if (!FsIsIoRangeValid(Buffer->AllocationSize, 0))
@@ -754,7 +758,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 		if (Data->Iopb->Parameters.SetFileInformation.AdvanceOnly)
 		{
 			InitialValidDataLength = NewFileSize;
-			NewFileSize = Fcb->Header.FileSize.QuadPart;
+			NewFileSize = Fcb->Header.FileSize.LowPart;
 			//
 			//  We can always move the valid data length in the Scb up to valid data
 			//  on disk for this call back.  Otherwise we may lose data in a mapped
@@ -826,7 +830,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 				//  in which case we need to extend the allocation to match the
 				//  new file size.
 				//
-				InitialValidDataLength = Fcb->Header.ValidDataLength.QuadPart;
+				InitialValidDataLength = Fcb->Header.ValidDataLength.LowPart;
 				if (NewFileSize < InitialValidDataLength)
 				{
 					Fcb->Header.ValidDataLength.QuadPart = InitialValidDataLength = NewFileSize;
@@ -907,4 +911,399 @@ NTSTATUS FsSetPositionInfo(__in PFLT_CALLBACK_DATA Data, __in PFILE_OBJECT FileO
 		FileObject->CurrentByteOffset = Buffer->CurrentByteOffset;
 	}
 	return Status;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	BOOLEAN bTopLevelIrp = FALSE;
+	BOOLEAN bAcquireResource = FALSE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+	ULONG RetLength = 0;
+
+	PAGED_CODE();
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data));
+
+	Fcb = FltObjects->FileObject->FsContext;
+	if (FLT_IS_IRP_OPERATION(Data))
+	{
+		__try
+		{
+			bTopLevelIrp = IsTopLevelIRP(Data);
+			//bAcquireResource = ExAcquireResourceShared(Fcb->Resource, TRUE);
+			ntStatus = FsGetFileSecurityInfo(Data, FltObjects, Fcb);
+
+			if (!NT_SUCCESS(ntStatus))
+			{
+				DbgPrint("FltQuerySecurityObject failed(0x%x)...\n", ntStatus);
+			}
+		}
+		__finally
+		{
+			if (bAcquireResource)
+			{
+				ExReleaseResourceLite(Fcb->Resource);
+			}
+			if (bTopLevelIrp)
+			{
+				IoSetTopLevelIrp(NULL);
+			}
+		}
+	}
+	else if (FLT_IS_FASTIO_OPERATION(Data))
+	{
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else
+	{
+		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Data->IoStatus.Information = 0;
+	}
+	DbgPrint("PtPreQuerySecurity over....\n");
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	BOOLEAN bTopLevelIrp = FALSE;
+	BOOLEAN bAcquireResource = FALSE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
+	PAGED_CODE();
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreSetSecurity....\n");
+
+	Fcb = FltObjects->FileObject->FsContext;
+	if (FLT_IS_IRP_OPERATION(Data))
+	{
+		__try
+		{
+			bTopLevelIrp = IsTopLevelIRP(Data);
+			bAcquireResource = ExAcquireResourceShared(Fcb->Resource, TRUE);
+			ntStatus = FltSetSecurityObject(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetSecurity.SecurityInformation, Data->Iopb->Parameters.SetSecurity.SecurityDescriptor);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				DbgPrint("FltSetSecurityObject failed(0x%x)...\n", ntStatus);
+				__leave;
+			}
+		}
+		__finally
+		{
+			Data->IoStatus.Status = ntStatus;
+			if (bAcquireResource)
+			{
+				ExReleaseResourceLite(Fcb->Resource);
+			}
+			if (bTopLevelIrp)
+			{
+				IoSetTopLevelIrp(NULL);
+			}
+		}
+	}
+	else if (FLT_IS_FASTIO_OPERATION(Data))
+	{
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else
+	{
+		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Data->IoStatus.Information = 0;
+	}
+	DbgPrint("PtPreSetSecurity over....\n");
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	BOOLEAN bTopLevelIrp = FALSE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+	PAGED_CODE();
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreQueryVolumeInformation....\n");
+	Fcb = FltObjects->FileObject->FsContext;
+	if (FLT_IS_IRP_OPERATION(Data))
+	{
+		__try
+		{
+			bTopLevelIrp = IsTopLevelIRP(Data);
+			ntStatus = FltQueryVolumeInformation(FltObjects->Instance, &Data->IoStatus, Data->Iopb->Parameters.QueryVolumeInformation.VolumeBuffer, 
+				Data->Iopb->Parameters.QueryVolumeInformation.Length, Data->Iopb->Parameters.QueryVolumeInformation.FsInformationClass);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				DbgPrint("FltQueryVolumeInformation failed(0x%x)...\n", ntStatus);
+			}
+		}
+		__finally
+		{
+			Data->IoStatus.Status = ntStatus;
+			if (bTopLevelIrp)
+			{
+				IoSetTopLevelIrp(NULL);
+			}
+		}
+	}
+	else if (FLT_IS_FASTIO_OPERATION(Data))
+	{
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else
+	{
+		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Data->IoStatus.Information = 0;
+	}
+
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostQueryVolumeInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	BOOLEAN bTopLevelIrp = FALSE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
+	PAGED_CODE();
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	DbgPrint("PtPreSetVolumeInformation....\n");
+
+	Fcb = FltObjects->FileObject->FsContext;
+	if (FLT_IS_IRP_OPERATION(Data))
+	{
+		__try
+		{
+			bTopLevelIrp = IsTopLevelIRP(Data);
+			ntStatus = FltSetVolumeInformation(FltObjects->Instance, &Data->IoStatus, Data->Iopb->Parameters.SetVolumeInformation.VolumeBuffer, 
+				Data->Iopb->Parameters.SetVolumeInformation.Length, Data->Iopb->Parameters.SetVolumeInformation.FsInformationClass);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				DbgPrint("FltSetVolumeInformation failed(0x%x)...\n", ntStatus);
+			}
+		}
+		__finally
+		{
+			Data->IoStatus.Status = ntStatus;
+			if (bTopLevelIrp)
+			{
+				IoSetTopLevelIrp(NULL);
+			}
+		}
+	}
+	else if (FLT_IS_FASTIO_OPERATION(Data))
+	{
+		FltStatus = FLT_PREOP_DISALLOW_FASTIO;
+	}
+	else
+	{
+		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+		Data->IoStatus.Information = 0;
+	}
+
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostSetVolumeInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+BOOLEAN GetVolDevNameByQueryObj(__in UNICODE_STRING * pSymName, __out UNICODE_STRING * pDevName, __out PULONG ReturnLength)
+{
+	BOOLEAN				bRet = FALSE;
+	OBJECT_ATTRIBUTES	Oa = { 0 };
+	NTSTATUS			ntStatus = STATUS_UNSUCCESSFUL;
+	HANDLE				Handle = NULL;
+
+	__try
+	{
+		if (!pSymName || !pDevName)
+		{
+			__leave;
+		}
+
+		InitializeObjectAttributes(
+			&Oa,
+			pSymName,
+			OBJ_CASE_INSENSITIVE,
+			NULL,
+			NULL
+			);
+
+		ntStatus = ZwOpenSymbolicLinkObject(
+			&Handle,
+			GENERIC_READ,
+			&Oa
+			);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		ntStatus = ZwQuerySymbolicLinkObject(
+			Handle,
+			pDevName,
+			ReturnLength
+			);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			DbgPrint("[%s]ZwQuerySymbolicLinkObject failed(0x%x)...\n", __FUNCTION__, ntStatus);
+			__leave;
+		}
+
+		bRet = TRUE;
+	}
+	__finally
+	{
+		if (Handle)
+		{
+			ZwClose(Handle);
+			Handle = NULL;
+		}
+	}
+
+	return bRet;
+}
+
+NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
+{
+	PFLT_CALLBACK_DATA NewData = NULL;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PFILE_OBJECT FileObject = Fcb->CcFileObject;
+	PFILE_RENAME_INFORMATION FileRenameInfo = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+	IO_STATUS_BLOCK IoStatus = {0};
+	WCHAR * pFileName = NULL;
+	ULONG Length = 0;
+	WCHAR wszDosName[32] = { 0 };
+	WCHAR wszNtName[MAX_PATH] = { 0 };
+	UNICODE_STRING strDosName;
+	UNICODE_STRING strNtName;
+
+
+	__try
+	{
+		if (CcIsFileCached(FileObject))
+		{
+			CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, &IoStatus);
+			if (!NT_SUCCESS(IoStatus.Status))
+			{
+				DbgPrint("[%s]CcFlushCache failed(0x%x)...\n", __FUNCTION__, IoStatus.Status);
+			}
+		}
+		ntStatus = FltSetInformationFile(FltObjects->Instance, FileObject, Data->Iopb->Parameters.SetFileInformation.InfoBuffer,
+			Data->Iopb->Parameters.SetFileInformation.Length, Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			DbgPrint("FltSetInformationFile failed(0x%x)...\n", ntStatus);
+			__leave;
+		}
+		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);//是否要保留部分信息？？
+		//更新fcb，更新相关文件信息（已打开文件的相关关闭）或设置Flag，close时判断处理
+		//完整路径\??\c:\1.doc
+		RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
+		RtlInitUnicodeString(&strDosName, wszDosName);
+		strNtName.Buffer = wszNtName;
+		strNtName.Length = MAX_PATH;
+		strNtName.MaximumLength = MAX_PATH;
+		if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+		{
+			try_return(NOTHING);
+		}
+		if (0 == Length)
+		{
+			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+			__leave;
+		}
+		pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, Length + sizeof(WCHAR), 'refn');
+		if (NULL == pFileName)
+		{
+			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);//close时清除该fcb
+			__leave;
+		}
+		strNtName.Buffer = pFileName;
+		strNtName.Length = MAX_PATH;
+		strNtName.MaximumLength = MAX_PATH;
+		if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+		{
+			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+			__leave;
+		}
+	try_exit:NOTHING;
+		
+		RtlZeroMemory(Fcb->wszFile, MAX_PATH);
+		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
+		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
+		
+		//如果是未受控的文件类型？？解密？？
+	}
+	__finally
+	{
+		if (pFileName != NULL)
+		{
+			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileName, 'refn');
+		}
+	}
+	return ntStatus;
 }
