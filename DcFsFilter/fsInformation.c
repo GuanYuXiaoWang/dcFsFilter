@@ -95,6 +95,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 	PFILE_NETWORK_OPEN_INFORMATION FileNetInfo = NULL;
 	PFILE_POSITION_INFORMATION FilePositionInfo = NULL;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
 	PVOID pFileInfoBuffer = Data->Iopb->Parameters.QueryFileInformation.InfoBuffer;
 	ULONG length = 0;
@@ -116,7 +117,8 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileObject = Data->Iopb->TargetFileObject;
 		}
 
-		Fcb = FltObjects->FileObject->FsContext;
+		Fcb = FileObject->FsContext;
+		Ccb = FileObject->FsContext2;
 		if (NULL == Fcb)
 		{
 			DbgPrint("QueryInformation:Fcb is not exit!\n");
@@ -184,10 +186,10 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileNetInfo->AllocationSize.QuadPart = Fcb->Header.AllocationSize.QuadPart;
 			FileNetInfo->ChangeTime.QuadPart = Fcb->LastChangeTime;
 			FileNetInfo->CreationTime.QuadPart = Fcb->CreationTime;
-			FileNetInfo->EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
+			FileNetInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			FileNetInfo->LastAccessTime.QuadPart = Fcb->LastAccessTime;
 			FileNetInfo->LastWriteTime.QuadPart = Fcb->LastChangeTime;
-			FileNetInfo->FileAttributes = FILE_ATTRIBUTE_NORMAL;
+			FileNetInfo->FileAttributes = Fcb->Attribute;
 			if (FlagOn(Fcb->FcbState, FCB_STATE_TEMPORARY))
 			{
 				SetFlag(FileNetInfo->FileAttributes, FILE_ATTRIBUTE_TEMPORARY);
@@ -203,10 +205,17 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FilePositionInfo = (PFILE_POSITION_INFORMATION)pFileInfoBuffer;
 			FilePositionInfo->CurrentByteOffset.QuadPart = FltObjects->FileObject->CurrentByteOffset.QuadPart;
 			break;
+		case FileAttributeTagInformation:
 		case FileStreamInformation:
 		case FileNameInformation:
-			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, 
-				Data->Iopb->Parameters.QueryFileInformation.Length, Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
+		case FileEaInformation:
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject, 
+				Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, 
+				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				DbgPrint("FltQueryInformationFile failed(0x%x)...\n", ntStatus);
+			}
 			break;
 
 		default:
@@ -450,13 +459,24 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	BOOLEAN bPagingIo = FALSE;
 	FLT_PREOP_CALLBACK_STATUS FltOplockStatus;
 	BOOLEAN bLazyWriterCallback = FALSE;
-
-	FileObject = FltObjects->FileObject;
-	Fcb = FileObject->FsContext;
-	Ccb = FileObject->FsContext2;
+	
 	FileInfoClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
 	bPagingIo = BooleanFlagOn(Data->Iopb->IrpFlags, IRP_PAGING_IO);
 
+	if (NULL == FltObjects)
+	{
+		FltObjects = &IrpContext->FltObjects;
+	}
+	if (FltObjects != NULL)
+	{
+		FileObject = FltObjects->FileObject;
+	}
+	else
+	{
+		FileObject = Data->Iopb->TargetFileObject;
+	}
+	Fcb = FileObject->FsContext;
+	Ccb = FileObject->FsContext2;
 	__try
 	{
 		if (FileEndOfFileInformation == FileInfoClass)
@@ -495,7 +515,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			ExReleaseFastMutex(Fcb->Header.FastMutex);
 		}
 	
-		bFcbAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
+		bFcbAcquired = ExAcquireResourceShared(Fcb->Resource, TRUE);
 		if (!bFcbAcquired)
 		{
 			Status = FsPostRequest(Data, IrpContext);
@@ -513,7 +533,8 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		{
 			FILE_DISPOSITION_INFORMATION FileDisPosition;
 			FileDisPosition.DeleteFile = TRUE;
-			Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, &FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
+			Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, 
+				&FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
 			if (NT_SUCCESS(Status))
 			{
 				SetFlag(FileObject->Flags, FO_DELETE_ON_CLOSE);
@@ -552,7 +573,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	{
 		if (bFcbAcquired)
 		{
-			FsReleaseFcb(IrpContext, Fcb);
+			ExReleaseResource(Fcb->Resource);
 		}
 		if (!AbnormalTermination() && Status != STATUS_PENDING)
 		{
@@ -1055,6 +1076,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 	BOOLEAN bTopLevelIrp = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
+	PFLT_CALLBACK_DATA NewData = NULL;
+	ULONG Retlength = 0;
+	PDEVICE_OBJECT DeviceObject = NULL;
+	PFILE_FS_VOLUME_INFORMATION VolumeInfo = Data->Iopb->Parameters.QueryVolumeInformation.VolumeBuffer;
+	FS_INFORMATION_CLASS FsClass = Data->Iopb->Parameters.QueryVolumeInformation.FsInformationClass;
+	ULONG Length = Data->Iopb->Parameters.QueryVolumeInformation.Length;
+
 	PAGED_CODE();
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -1063,22 +1092,38 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	DbgPrint("PtPreQueryVolumeInformation....\n");
-	Fcb = FltObjects->FileObject->FsContext;
+
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
 		{
+			Fcb = FltObjects->FileObject->FsContext;
+			Ccb = FltObjects->FileObject->FsContext2;
 			bTopLevelIrp = IsTopLevelIRP(Data);
-			ntStatus = FltQueryVolumeInformation(FltObjects->Instance, &Data->IoStatus, Data->Iopb->Parameters.QueryVolumeInformation.VolumeBuffer, 
-				Data->Iopb->Parameters.QueryVolumeInformation.Length, Data->Iopb->Parameters.QueryVolumeInformation.FsInformationClass);
-			if (!NT_SUCCESS(ntStatus))
+			if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 			{
-				DbgPrint("FltQueryVolumeInformation failed(0x%x)...\n", ntStatus);
+				ntStatus = FltQueryVolumeInformation(FltObjects->Instance, &Data->IoStatus, VolumeInfo, Length, FsClass);
+				__leave;
 			}
+			if (FileFsVolumeInformation == FsClass)
+			{
+				VolumeInfo->VolumeCreationTime.QuadPart = Fcb->Vpb.VolumeCreationTime.QuadPart;
+				VolumeInfo->VolumeSerialNumber = Fcb->Vpb.VolumeSerialNumber;
+				VolumeInfo->VolumeLabelLength = Fcb->Vpb.VolumeLabelLength;
+				VolumeInfo->SupportsObjects = Fcb->Vpb.SupportsObjects;
+				RtlCopyMemory(VolumeInfo->VolumeLabel, Fcb->Vpb.VolumeLabel, VolumeInfo->VolumeLabelLength);
+			}
+			else
+			{
+				ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, Fcb->CcFileObject, VolumeInfo, Data->Iopb->Parameters.QueryVolumeInformation.Length, 
+					FsClass, Retlength);
+			}
+			Data->IoStatus.Information = Retlength;
 		}
 		__finally
 		{
 			Data->IoStatus.Status = ntStatus;
+			
 			if (bTopLevelIrp)
 			{
 				IoSetTopLevelIrp(NULL);

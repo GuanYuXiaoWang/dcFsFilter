@@ -210,7 +210,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>_AMD64_;AMD64;STD_CALL;WIN32=100;_WIN32_WINNT=_WIN32_WINNT_LONGHORN;_WIN32_IE=_WIN32_WINNT_LONGHORN;NTDDI_VERSION=NTDDI_LONGHORN;BINARY_COMPATIBLE=0;UNICODE;DBG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_AMD64_;AMD64;STD_CALL;WIN32=100;_WIN32_WINNT=_WIN32_WINNT_LONGHORN;_WIN32_IE=_WIN32_WINNT_LONGHORN;NTDDI_VERSION=NTDDI_LONGHORN;BINARY_COMPATIBLE=0;UNICODE;DBG;USE_CACHE_READWRITE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>F:\WinDDK\7600.16385.1\inc\ddk;F:\WinDDK\7600.16385.1\inc\crt;F:\WinDDK\7600.16385.1\inc\api</AdditionalIncludeDirectories>
       <CallingConvention>StdCall</CallingConvention>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>

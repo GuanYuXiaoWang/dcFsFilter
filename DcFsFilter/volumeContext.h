@@ -34,6 +34,16 @@ extern "C"
 	NTSTATUS SetVolumeContext(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFLT_VOLUME_PROPERTIES pVolumePro, __in PFLT_VOLUME pFltVolume);
 	VOID VolumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType);
 
+	FLT_PREOP_CALLBACK_STATUS PtPreVolumeMount(__inout PFLT_CALLBACK_DATA Data,
+		__in PCFLT_RELATED_OBJECTS FltObjects,
+		__deref_out_opt PVOID *CompletionContext);
+
+
+	FLT_POSTOP_CALLBACK_STATUS PtPostVolumeMount(__inout PFLT_CALLBACK_DATA Data,
+		__in PCFLT_RELATED_OBJECTS FltObjects,
+		__in_opt PVOID CompletionContext,
+		__in FLT_POST_OPERATION_FLAGS Flags);
+
 #ifdef __cplusplus
 }
 #endif

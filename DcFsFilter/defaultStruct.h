@@ -36,7 +36,7 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define ENCRYPT_HEAD_LENGTH 1024
 #endif
 
-#define SUPPORT_OPEN_COUNT_MAX 100
+#define SUPPORT_OPEN_COUNT_MAX 32
 
 typedef struct tagFILE_OPEN_INFO
 {
@@ -179,6 +179,17 @@ typedef struct tagDEF_CCB
 	UCHAR TypeOfOpen;
 }DEF_CCB, *PDEF_CCB;
 
+#define VOLUME_LABEL_MAX_LENGTH 32
+
+typedef struct tagDEF_VPB
+{
+	LARGE_INTEGER VolumeCreationTime;
+	ULONG VolumeSerialNumber;
+	ULONG VolumeLabelLength;
+	BOOLEAN SupportsObjects;
+	WCHAR VolumeLabel[VOLUME_LABEL_MAX_LENGTH];
+}DEF_VPB, *PDEF_VPB;
+
 typedef struct tagDEFFCB
 {
 	FSRTL_ADVANCED_FCB_HEADER	Header;
@@ -255,6 +266,7 @@ typedef struct tagDEFFCB
 	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
 	ULONG FileAllOpenCount;
 	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
+	DEF_VPB Vpb;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
@@ -340,6 +352,7 @@ typedef struct tagCREATE_INFO
 
 	PDEFFCB pFcb;
 	PDEF_CCB pCcb;
+	DEF_VPB Vpb;
 
 	BOOLEAN bReissueIo;
 	BOOLEAN bOplockPostIrp;

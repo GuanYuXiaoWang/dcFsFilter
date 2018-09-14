@@ -55,7 +55,8 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data,
 							__out PHANDLE phFile,
 							__out PFILE_OBJECT * pFileObject,
 							__out PIO_STATUS_BLOCK IoStatus,
-							__in BOOLEAN bNetWork
+							__in BOOLEAN bNetWork,
+							__inout PDEF_VPB Vpb
 							);
 #ifdef __cplusplus
 }

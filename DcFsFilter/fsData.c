@@ -620,7 +620,6 @@ RetryFcbExclusive:
 			(ExGetSharedWaiterCount(Fcb->Header.Resource) != 0) ||
 			(ExGetExclusiveWaiterCount(Fcb->Header.Resource) != 0)))
 		{
-
 			KeWaitForSingleObject(Fcb->OutstandingAsyncEvent,
 				Executive,
 				KernelMode,
@@ -704,7 +703,6 @@ RetryFcbShared:
 				(PLARGE_INTEGER)NULL);
 
 			FsReleaseFcb(IrpContext, Fcb);
-
 			goto RetryFcbShared;
 		}
 
@@ -1099,9 +1097,9 @@ NTSTATUS FsGetFileStandardInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 }
 
 
-NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_IRP_CONTEXT IrpContext)
+NTSTATUS FsGetFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_IRP_CONTEXT IrpContext)
 {
-	NTSTATUS Status = STATUS_SUCCESS;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFILE_OBJECT FileObject = NULL;
 	LARGE_INTEGER ByteOffset = {0};
 	FILE_BASIC_INFORMATION FileInfo = {0};
@@ -1122,10 +1120,10 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 	{
 		RtlZeroMemory(pFileHeader, ENCRYPT_HEAD_LENGTH);
 		
-		Status = FltReadFile(FltObjects->Instance, FileObject, &ByteOffset, ENCRYPT_HEAD_LENGTH, pFileHeader,
+		ntStatus = FltReadFile(FltObjects->Instance, FileObject, &ByteOffset, ENCRYPT_HEAD_LENGTH, pFileHeader,
 			FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET | FLTFL_IO_OPERATION_NON_CACHED,
 			NULL, NULL, NULL);
-		if (NT_SUCCESS(Status))
+		if (NT_SUCCESS(ntStatus))
 		{
 			if (IsEncryptedFileHead(pFileHeader, &FileType, IrpContext->createInfo.FileHeader))
 			{
@@ -1136,13 +1134,53 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 				//IrpContext->createInfo.bDecrementHeader = TRUE;
 			}
 		}
+		else if (IrpContext->createInfo.bNetWork)//wps、office等访问局域网共享文件，create文件时，如果DesiredAccess缺少READ_CONTROL和SYNCHRONIZE，就无法读文件
+		{
+			//重新创建获取文件头信息
+			OBJECT_ATTRIBUTES ob = { 0 };
+			IO_STATUS_BLOCK IoStatus = { 0 };
+			HANDLE hFile = NULL;
+			PFILE_OBJECT pFileObject = NULL;
+			InitializeObjectAttributes(&ob, &IrpContext->createInfo.nameInfo->Name, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+			ntStatus = FltCreateFile(FltObjects->Filter, FltObjects->Instance,
+				&hFile,
+				FILE_GENERIC_READ,
+				&ob,
+				&IoStatus,
+				NULL,
+				FILE_ATTRIBUTE_NORMAL,
+				0, FILE_OPEN, FILE_NON_DIRECTORY_FILE | FILE_SYNCHRONOUS_IO_NONALERT, NULL, 0, 0
+				);
+			if (NT_SUCCESS(ntStatus))
+			{
+				ntStatus = ObReferenceObjectByHandle(hFile, 0, *IoFileObjectType, KernelMode, &pFileObject, NULL);
+				if (NT_SUCCESS(ntStatus))
+				{
+					ntStatus = FltReadFile(FltObjects->Instance, pFileObject, &ByteOffset, ENCRYPT_HEAD_LENGTH, pFileHeader,
+						FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET | FLTFL_IO_OPERATION_NON_CACHED,
+						NULL, NULL, NULL);
+					if (NT_SUCCESS(ntStatus))
+					{
+						if (IsEncryptedFileHead(pFileHeader, &FileType, IrpContext->createInfo.FileHeader))
+						{
+							RtlCopyMemory(IrpContext->createInfo.OrgFileHeader, pFileHeader, ENCRYPT_HEAD_LENGTH);
+
+							IrpContext->createInfo.bEnFile = TRUE;
+							IrpContext->createInfo.bWriteHeader = TRUE;
+						}
+					}
+					ObDereferenceObject(pFileObject);
+				}
+				FltClose(hFile);
+			}
+		}
 	}
 	
 	//获取文件的访问权限
-	if (NT_SUCCESS(Status))
+	if (NT_SUCCESS(ntStatus))
 	{
-		Status = FltQueryInformationFile(FltObjects->Instance, FileObject, &FileInfo, sizeof(FILE_BASIC_INFORMATION), FileBasicInformation, NULL);
-		if (NT_SUCCESS(Status))
+		ntStatus = FltQueryInformationFile(FltObjects->Instance, FileObject, &FileInfo, sizeof(FILE_BASIC_INFORMATION), FileBasicInformation, NULL);
+		if (NT_SUCCESS(ntStatus))
 		{
 			if (FlagOn(FileInfo.FileAttributes, FILE_ATTRIBUTE_READONLY))
 			{
@@ -1161,7 +1199,7 @@ NTSTATUS FsCreatedFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout 
 		FltFreePoolAlignedWithTag(FltObjects->Instance, pFileHeader, 'fhl');
 		pFileHeader = NULL;
 	}
-	return Status;
+	return ntStatus;
 }
 
 NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
@@ -1238,8 +1276,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
-		//Fcb->OpenCount = IrpContext->createInfo.pStreamObject ? 1 : 0;
-		//Fcb->OpenHandleCount = IrpContext->createInfo.hStreamHanle ? 1 : 0;
 
 		FltInitializeOplock(&Fcb->Oplock);
 		Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
@@ -1320,13 +1356,35 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 				FltClose(Fcb->CcFileHandle);
 				Fcb->CcFileHandle = NULL;
 				try_return(status);
-			}		
-//  			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
-//  			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+			}
 		}
 		else
 		{
-			Fcb->CcFileObject = NULL;
+			/*
+			Options = FILE_NON_DIRECTORY_FILE;
+#ifdef USE_CACHE_READWRITE
+			SetFlag(Options, FILE_WRITE_THROUGH);//直接写入
+#endif
+			UNICODE_STRING unicodeString;
+			IO_STATUS_BLOCK IoStatus;
+			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
+			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+			status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
+				NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
+			if (!NT_SUCCESS(status))
+			{
+				try_return(status);
+			}
+			status = ObReferenceObjectByHandle(Fcb->CcFileHandle, 0, *IoFileObjectType, KernelMode, &Fcb->CcFileObject, NULL);
+			if (!NT_SUCCESS(status))
+			{
+				FltClose(Fcb->CcFileHandle);
+				Fcb->CcFileHandle = NULL;
+				try_return(status);
+			}
+			*/
+			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
 		}
 		Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileObject = IrpContext->createInfo.pStreamObject;
 		Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileHandle = IrpContext->createInfo.hStreamHanle;
@@ -1944,7 +2002,7 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L"1.ppt"};
+	WCHAR wszName[5] = {L"1.um"};
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
@@ -1975,14 +2033,9 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 				}
 			}
 		}
-		if (ProcessName && 0 != stricmp("wpp.exe", ProcessName))
-		{
-			DbgPrint("funtionName=%s, process name=%s...\n", FunctionName, ProcessName);
-			bTrue = TRUE;
-		}
 
 		if (ProcessName && (0 == stricmp("wpp.exe", ProcessName) || 
-			0 == stricmp("notepad++.exe", ProcessName)))
+			0 == stricmp("FileIRP.exe", ProcessName)))
 		{
 			bTrue = TRUE;
 			DbgPrint("funtionName=%s, File Name=%S...\n", FunctionName, FileObject->FileName.Buffer ? FileObject->FileName.Buffer : L"none");
@@ -2602,7 +2655,7 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 // 
 // 	}
 	PFLT_CALLBACK_DATA NewData = NULL;
-	ntStatus = FltAllocateCallbackData(FltObjects->Instance, Fcb->CcFileObject, &NewData);
+	ntStatus = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(ntStatus))
 	{
 		NewData->Iopb->MajorFunction = IRP_MJ_FILE_SYSTEM_CONTROL;
@@ -2630,7 +2683,7 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer = pBuf;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress = NULL;
 			
-		NewData->Iopb->TargetFileObject = Fcb->CcFileObject;
+		NewData->Iopb->TargetFileObject = FileObject;
 		NewData->Iopb->IrpFlags = Data->Iopb->IrpFlags | IRP_SYNCHRONOUS_API;
 		FltPerformSynchronousIo(NewData);
 		ntStatus = NewData->IoStatus.Status;
@@ -2668,6 +2721,7 @@ NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 		NewData->Iopb->Parameters.QuerySecurity.SecurityInformation = Data->Iopb->Parameters.QuerySecurity.SecurityInformation;
 
 		NewData->Iopb->IrpFlags = IRP_SYNCHRONOUS_API;
+		NewData->Iopb->TargetFileObject = Fcb->CcFileObject;
 		FltPerformSynchronousIo(NewData);
 		ntStatus = NewData->IoStatus.Status;
 		Data->IoStatus.Information = NewData->IoStatus.Information;

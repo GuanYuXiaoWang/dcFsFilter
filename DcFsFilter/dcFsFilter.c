@@ -332,10 +332,10 @@ STATUS_FLT_DO_NOT_ATTACH - do not attach
 			__leave;
 		}
 		//success
-		if ((FLT_FSTYPE_NTFS != VolumeFilesystemType && FLT_FSTYPE_FAT != VolumeFilesystemType && 
+		if (/*(FLT_FSTYPE_NTFS != VolumeFilesystemType && FLT_FSTYPE_FAT != VolumeFilesystemType && 
 			FLT_FSTYPE_CDFS != VolumeFilesystemType && FLT_FSTYPE_UDFS != VolumeFilesystemType &&
 			FLT_FSTYPE_NFS != VolumeFilesystemType && FLT_FSTYPE_EXFAT != VolumeFilesystemType) ||
-			FILE_DEVICE_DISK_FILE_SYSTEM != pVolumeProperties->DeviceType ||
+			FILE_DEVICE_DISK_FILE_SYSTEM != pVolumeProperties->DeviceType ||*/
 			IsShadowCopyType(&pVolumeProperties->RealDeviceName))
 		{
 			status = STATUS_FLT_DO_NOT_ATTACH;

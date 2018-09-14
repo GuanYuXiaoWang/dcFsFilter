@@ -8,8 +8,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	PLARGE_INTEGER TruncateSize = NULL;
-	LARGE_INTEGER LocalTruncateSize;
 	BOOLEAN bAcquire = FALSE;
+	int i = 0;
 
 	PAGED_CODE();
 #ifdef TEST
@@ -43,6 +43,24 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			DbgPrint("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount);
 			if (0 == Fcb->OpenCount)
 			{
+				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+				{
+					for (i = 0; i < Fcb->FileAllOpenCount; i++)
+					{
+						if (Fcb->FileAllOpenInfo[i].FileObject)
+						{
+							ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
+						}
+						if (Fcb->FileAllOpenInfo[i].FileHandle)
+						{
+							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
+						}
+					}
+					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
+					Fcb->FileAllOpenCount = 0;
+					Fcb->CcFileObject = NULL;
+					Fcb->CcFileHandle = NULL;
+				}
 				if (FlagOn(Fcb->FcbState, FCB_STATE_REAME_INFO))
 				{
 					if (Fcb->CcFileObject)
@@ -60,7 +78,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
-
 
 				FsFreeCcb(Ccb);
 				FltObjects->FileObject->FsContext2 = NULL;

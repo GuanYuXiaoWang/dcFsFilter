@@ -340,6 +340,13 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
+	BOOLEAN bTopIrp = FALSE;
+	FILE_INFORMATION_CLASS FileClass;
+	ULONG RetLength = 0;
+
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -350,8 +357,45 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FileClass = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileInformationClass;
+	DbgPrint("PtPreDirectoryControl, file class=%d....\n", FileClass);
 
-	DbgPrint("PtPreDirectoryControl....\n");
+	__try
+	{
+		bTopIrp = IsTopLevelIRP(Data);
+		Fcb = FltObjects->FileObject->FsContext;
+		Ccb = FltObjects->FileObject->FsContext2;
+		if (FileBothDirectoryInformation == FileClass ||
+			FileDirectoryInformation == FileClass ||
+			FileFullDirectoryInformation == FileClass ||
+			FileIdBothDirectoryInformation == FileClass ||
+			FileIdFullDirectoryInformation == FileClass ||
+			FileNamesInformation == FileClass ||
+			FileObjectIdInformation == FileClass ||
+			FileReparsePointInformation == FileClass)
+		{
+			if (g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile)
+			{
+				ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.DirectoryBuffer,
+					Data->Iopb->Parameters.DirectoryControl.QueryDirectory.Length, FileClass, TRUE, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileName, TRUE, &RetLength);
+			}
+			else
+			{
+				ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+			}
+// 			ntStatus = FltQueryDirectoryFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.DirectoryBuffer,
+// 				Data->Iopb->Parameters.DirectoryControl.QueryDirectory.Length, FileClass, TRUE, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileName, TRUE, &RetLength);
+		}
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+		Data->IoStatus.Information = RetLength;
+		if (bTopIrp)
+		{
+			IoSetTopLevelIrp(NULL);
+		}
+	}
 
 	FsRtlExitFileSystem();
 	return FltStatus;

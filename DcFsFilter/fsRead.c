@@ -23,7 +23,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	NTSTATUS Status = STATUS_SUCCESS;
 	ULONG ProcessType = 0;
-	LARGE_INTEGER FlushValidSize;
 
 	PAGED_CODE();
 
@@ -31,10 +30,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	if (IsTest(Data, FltObjects, "PtPreRead"))
 	{
 		KdBreakPoint();
-	}
-	if (FltObjects->FileObject->SectionObjectPointer)
-	{
-		FlushValidSize = CcGetFlushedValidData(FltObjects->FileObject->SectionObjectPointer, FALSE);
 	}
 	
 #endif
@@ -230,7 +225,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	__try
 	{
 		//文件有一个缓存，并且是非缓存的I0,并且不是分页io 这个时候刷新缓存,分页io是vmm缺页调用的，这个时候不能刷新缓存数据
-		if ((bNonCachedIo ||  (Ccb != NULL && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))) && !bPagingIo && (FileObject->SectionObjectPointer->DataSectionObject != NULL))
+		if ((bNonCachedIo/* || (Ccb != NULL && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))*/) && !bPagingIo && (FileObject->SectionObjectPointer->DataSectionObject != NULL))
 		{
 			if (!FsAcquireExclusiveFcb(IrpContext, Fcb))
 			{
@@ -242,13 +237,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				Status = Data->IoStatus.Status;
 			}
-			
+			FsReleaseFcb(NULL, Fcb);
 			if (!NT_SUCCESS(Status))
 			{
 				try_return(Status);
 			}
-// 			ExAcquireResourceExclusive(Fcb->Header.PagingIoResource, TRUE);
-// 			ExReleaseResource(Fcb->Header.PagingIoResource);
 		}
 		if (!bPagingIo)
 		{
@@ -408,7 +401,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
-			IrpContext->Fileobject = ((Ccb != NULL && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject);
+			IrpContext->Fileobject = Fcb->CcFileObject/*((Ccb != NULL && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject)*/;
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
@@ -457,11 +450,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		}
 		else
 		{
-			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
-			{
-				//网络文件暂不处理，如果用于加解密，必须处理
-			}
-			else
+// 			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+// 			{
+// 				//网络文件暂不处理，如果用于加解密，必须处理
+// 			}
+// 			else
 			{
 				if (NULL == FileObject->PrivateCacheMap)
 				{
@@ -532,14 +525,7 @@ try_exit:NOTHING;
 			DbgPrint("read failed(0x%x)...\n", Status);
 		}
 	}
-	__except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		Status = GetExceptionCode();
-		Data->IoStatus.Status = Status;
-		FltStatus = FLT_PREOP_COMPLETE;
-		DbgPrint("exception=0x%x...\n", Status);
-	}
-//	__finally
+	__finally
 	{
 		if (!bNonCachedIoPending)
 		{
@@ -776,6 +762,7 @@ NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects, IN PDEF_IRP_CONTEXT
 	BOOLEAN bWait = BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 	ULONG IrpFlags = IRP_READ_OPERATION;
 	PIRP TopLevelIrp = NULL;
+	ULONG ReadLength = 0;
 
 #ifndef USE_CACHE_READWRITE
 	SetFlag(IrpFlags, IRP_NOCACHE);
