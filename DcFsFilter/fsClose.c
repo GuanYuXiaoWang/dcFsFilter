@@ -9,7 +9,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	PDEF_CCB Ccb = NULL;
 	PLARGE_INTEGER TruncateSize = NULL;
 	BOOLEAN bAcquire = FALSE;
-	int i = 0;
+	ULONG i = 0;
 
 	PAGED_CODE();
 #ifdef TEST

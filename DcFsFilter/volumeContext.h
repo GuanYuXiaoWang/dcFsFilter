@@ -19,7 +19,6 @@ typedef struct tagVOLUMECONTEXT
 {
 	ULONG ulSectorSize;
 	WSTRING strDeviceName;
-	PWSTRING strMetaDataList;
 	PERESOURCE pEresurce;
 	ULONG uDeviceType;
 	ULONG uSectorsPerAllocationUnit;

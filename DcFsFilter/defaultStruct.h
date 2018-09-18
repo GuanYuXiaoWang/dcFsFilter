@@ -190,6 +190,8 @@ typedef struct tagDEF_VPB
 	WCHAR VolumeLabel[VOLUME_LABEL_MAX_LENGTH];
 }DEF_VPB, *PDEF_VPB;
 
+#define FILE_PATH_LENGTH_MAX 512
+
 typedef struct tagDEFFCB
 {
 	FSRTL_ADVANCED_FCB_HEADER	Header;
@@ -217,7 +219,7 @@ typedef struct tagDEFFCB
 	UCHAR		Flags;
 
 	LONGLONG	CreationTime;                                          //  offset = 0x000
-	LONGLONG	LastModificationTime;                                  //  offset = 0x008
+	LONGLONG	LastWriteTime;                                  //  offset = 0x008
 	//
 	//  Last time any attribute was modified.
 	//
@@ -245,7 +247,7 @@ typedef struct tagDEFFCB
 	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
 	BOOLEAN			bAddHeaderLength;
-	WCHAR			wszFile[MAX_PATH];
+	WCHAR			wszFile[FILE_PATH_LENGTH_MAX];
 	UCHAR			szFileHead[ENCRYPT_HEAD_LENGTH];
 	UCHAR			szOrgFileHead[ENCRYPT_HEAD_LENGTH];
 
@@ -400,7 +402,7 @@ typedef struct tagIRP_CONTEXT
 	PIO_WORKITEM	WorkItem;
 
 	PFLT_CALLBACK_DATA OriginatingData;
-	ULONG_PTR ProcessId;
+	ERESOURCE_THREAD ProcessId;
 
 	//
 	//  Originating Device (required for workque algorithms)

@@ -10,6 +10,7 @@
 #include "fsWrite.h"
 #include "fsCleanup.h"
 #include "fsClose.h"
+#include "Crypto.h"
 #include "head.h"
 #include "EncFile.h"
 #include "regMgr.h"
@@ -56,7 +57,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	RtlInitUnicodeString(&unicodeString, L"\\Device\\HarddiskVolume1\\4.um");
 	RtlInitUnicodeString(&stringTest, L"\\Device\\HarddiskVolume1\\1.docx");
 	WCHAR szExName[32] = { 0 };
-	ULONG length = 0;
+	USHORT length = 0;
 
 	UNREFERENCED_PARAMETER(pProcType);
 
@@ -247,7 +248,7 @@ PDEF_IRP_CONTEXT FsCreateIrpContext(IN PFLT_CALLBACK_DATA Data, IN PCFLT_RELATED
 		pIrpContext->NodeTypeCode = LAYER_NTC_FCB;
 		pIrpContext->NodeByteSize = sizeof(DEF_IRP_CONTEXT);
 		pIrpContext->OriginatingData = Data;
-		pIrpContext->ProcessId = PsGetCurrentThread();
+		pIrpContext->ProcessId = ExGetCurrentResourceThread();
 		if (bWait)
 		{
 			SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
@@ -1272,7 +1273,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->CreationTime = IrpContext->createInfo.BaseInfo.CreationTime.QuadPart;
 		Fcb->CurrentLastAccess = IrpContext->createInfo.BaseInfo.ChangeTime.QuadPart;
 		Fcb->Attribute = IrpContext->createInfo.BaseInfo.FileAttributes;
-		Fcb->LastModificationTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
+		Fcb->LastWriteTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
@@ -1327,12 +1328,12 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->CacheType = CACHE_ALLOW;
 		Fcb->FileAcessType = IrpContext->createInfo.uProcType;
 		
-		if (IrpContext->createInfo.nameInfo->Name.Length < 128)
+		if (IrpContext->createInfo.nameInfo->Name.Length < FILE_PATH_LENGTH_MAX)
 		{
 			RtlCopyMemory(Fcb->wszFile, IrpContext->createInfo.nameInfo->Name.Buffer, IrpContext->createInfo.nameInfo->Name.Length);
 		}
 		else
-			RtlCopyMemory(Fcb->wszFile, IrpContext->createInfo.nameInfo->Name.Buffer, 127);
+			RtlCopyMemory(Fcb->wszFile, IrpContext->createInfo.nameInfo->Name.Buffer, FILE_PATH_LENGTH_MAX);
 
 		if (!IrpContext->createInfo.bNetWork)
 		{
@@ -1418,7 +1419,6 @@ try_exit:NOTHING;
 	{
 		if (AbnormalTermination() || !NT_SUCCESS(status))
 		{
-			status = STATUS_UNSUCCESSFUL;
 			FltUninitializeOplock(&Fcb->Oplock);
 			if (Fcb != NULL)
 			{
@@ -2056,10 +2056,10 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	return bTrue;
 }
 
-BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout LONG* nLength)
+BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout USHORT* nLength)
 {
 	PWCHAR pFileName = NULL;
-	LONG   nIndex = 0;
+	ULONG   nIndex = 0;
 	PWCHAR pTemp = FileExt;
 
 	if (FilePath == NULL)

@@ -1205,7 +1205,7 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 		CreateFileHead(Fcb->szFileHead);
 	}
 
-	NewBuf = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, WriteLength, "wn");
+	NewBuf = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, WriteLength, 'wn');
 	if (NULL == NewBuf)
 	{
 		return STATUS_INSUFFICIENT_RESOURCES;
@@ -1245,7 +1245,7 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 	}
 	if (NewBuf != NULL)
 	{
-		FltFreePoolAlignedWithTag(FltObjects->Instance, NewBuf, "wn");
+		FltFreePoolAlignedWithTag(FltObjects->Instance, NewBuf, 'wn');
 	}
 
 	return Status;

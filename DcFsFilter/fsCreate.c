@@ -386,7 +386,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		}
 
 		Data->IoStatus.Status = (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status);
-		Data->IoStatus.Information = 0;
+		Data->IoStatus.Information = (NT_SUCCESS(Data->IoStatus.Status) && FLT_PREOP_COMPLETE == FltStatus) ? FILE_OPENED : 0;
 
 		if (!bPostIrp && !AbnormalTermination())
 		{
@@ -582,7 +582,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	CreateDisposition = (Options >> 24) & 0x000000ff;
 	SecurityContext = Iopb->Parameters.Create.SecurityContext;
 	PreDesiredAccess = DesiredAccess;
-	int i = 0;
+	ULONG i = 0;
 	
 	DbgPrint("create:DesiredAccess:0x%x, ShareAccess:0x%x, Options=0x%x, CreateDisposition=0x%x...\n", DesiredAccess, ShareAccess, Options, CreateDisposition);
 
@@ -959,7 +959,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Fcb->CreationTime = IrpContext->createInfo.BaseInfo.CreationTime.QuadPart;
 		Fcb->CurrentLastAccess = IrpContext->createInfo.BaseInfo.ChangeTime.QuadPart;
 		Fcb->Attribute = IrpContext->createInfo.BaseInfo.FileAttributes;
-		Fcb->LastModificationTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
+		Fcb->LastWriteTime = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
+		Fcb->LastChangeTime = IrpContext->createInfo.BaseInfo.ChangeTime.QuadPart;
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
@@ -1347,7 +1348,7 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	EaLength = Iopb->Parameters.Create.EaLength;
 	if (bNetWork)
 	{
-		//todo::wps打开时缺少READ_CONTROL，SYNCHRONIZE导致无法读内容，但对于notepad读取txt文件时有共享问题
+		//todo::wps打开时缺少READ_CONTROL，SYNCHRONIZE导致无法读内容
 		
 		SetFlag(DesiredAccess, READ_CONTROL);//0x120089
 		SetFlag(DesiredAccess, SYNCHRONIZE);
@@ -1440,9 +1441,13 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 				Vpb->VolumeLabelLength = VolumeInfo->VolumeLabelLength > VOLUME_LABEL_MAX_LENGTH ? VOLUME_LABEL_MAX_LENGTH : VolumeInfo->VolumeLabelLength;
 				RtlCopyMemory(Vpb->VolumeLabel, VolumeInfo->VolumeLabel, Vpb->VolumeLabelLength);
 			}
+			else
+			{
+				DbgPrint("[%s]FltQueryVolumeInformationFile failed(0x%x)...\n", __FUNCTION__, ntStatus);
+			}
 		}
 	}
-	else 
+	else
 	{
 		DbgPrint("create false filename %ws \n", FileName->Buffer);
 	}

@@ -88,7 +88,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	PFILE_OBJECT FileObject = FltObjects->FileObject;
 	IO_STATUS_BLOCK IoStatus = { 0 };
 	BOOLEAN bPureCache = FALSE;
-	int i = 0;
+	ULONG i = 0;
 
 	Fcb = FileObject->FsContext;
 	Ccb = FileObject->FsContext2;

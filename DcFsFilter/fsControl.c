@@ -346,6 +346,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 	BOOLEAN bTopIrp = FALSE;
 	FILE_INFORMATION_CLASS FileClass;
 	ULONG RetLength = 0;
+	ULONG ProcessType = 0;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -376,7 +377,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 		{
 			if (g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile)
 			{
-				ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.DirectoryBuffer,
+				ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryDirectoryFile(FltObjects->Instance, FltObjects->FileObject, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.DirectoryBuffer,
 					Data->Iopb->Parameters.DirectoryControl.QueryDirectory.Length, FileClass, TRUE, Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileName, TRUE, &RetLength);
 			}
 			else

@@ -139,7 +139,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileBasicInfo->ChangeTime.QuadPart = Fcb->LastChangeTime;
 			FileBasicInfo->FileAttributes = Fcb->Attribute;
 			FileBasicInfo->LastAccessTime.QuadPart = Fcb->LastAccessTime;
-			FileBasicInfo->LastWriteTime.QuadPart = Fcb->LastChangeTime;
+			FileBasicInfo->LastWriteTime.QuadPart = Fcb->LastWriteTime;
 			break;
 		case FileAllInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_ALL_INFORMATION))
@@ -174,7 +174,6 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileStandardInfo->NumberOfLinks = Fcb->LinkCount;
 			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
-
 		case FileNetworkOpenInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
 			{
@@ -188,7 +187,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileNetInfo->CreationTime.QuadPart = Fcb->CreationTime;
 			FileNetInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			FileNetInfo->LastAccessTime.QuadPart = Fcb->LastAccessTime;
-			FileNetInfo->LastWriteTime.QuadPart = Fcb->LastChangeTime;
+			FileNetInfo->LastWriteTime.QuadPart = Fcb->LastWriteTime;
 			FileNetInfo->FileAttributes = Fcb->Attribute;
 			if (FlagOn(Fcb->FcbState, FCB_STATE_TEMPORARY))
 			{
@@ -609,7 +608,7 @@ NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT I
 	}
 	if (pBasic->LastWriteTime.QuadPart != 0)
 	{
-		Fcb->LastModificationTime = pBasic->LastWriteTime.QuadPart;
+		Fcb->LastWriteTime = pBasic->LastWriteTime.QuadPart;
 		Fcb->LastChangeTime = CurrentTime;
 		bTimeChanged = TRUE;
 	}
@@ -1112,11 +1111,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 				VolumeInfo->VolumeLabelLength = Fcb->Vpb.VolumeLabelLength;
 				VolumeInfo->SupportsObjects = Fcb->Vpb.SupportsObjects;
 				RtlCopyMemory(VolumeInfo->VolumeLabel, Fcb->Vpb.VolumeLabel, VolumeInfo->VolumeLabelLength);
+				Retlength = Length;
 			}
 			else
 			{
 				ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, Fcb->CcFileObject, VolumeInfo, Data->Iopb->Parameters.QueryVolumeInformation.Length, 
-					FsClass, Retlength);
+					FsClass, &Retlength);
 			}
 			Data->IoStatus.Information = Retlength;
 		}
@@ -1337,7 +1337,7 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 		}
 	try_exit:NOTHING;
 		
-		RtlZeroMemory(Fcb->wszFile, MAX_PATH);
+		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
 		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
 		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
 		

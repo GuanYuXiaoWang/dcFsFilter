@@ -25,7 +25,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			Status = FsCommonFlush(Data, FltObjects, IrpContext);
 			if (!NT_SUCCESS(Status))
 			{
-				Data->IoStatus.Status = STATUS_UNSUCCESSFUL;
+				Data->IoStatus.Status = Status;
 				Data->IoStatus.Information = 0;
 			}
 		}
@@ -67,7 +67,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 	IO_STATUS_BLOCK IoStatus;
 	PDEFFCB Fcb = NULL;
 	PFILE_OBJECT FileObject = NULL;
-	BOOLEAN bAcquiredPagingResource = FALSE;
+	BOOLEAN bAcquiredResource = FALSE;
 	
 	if (NULL == FltObjects)
 	{
@@ -87,7 +87,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			{
 				break;
 			}
-			bAcquiredPagingResource = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
+			bAcquiredResource = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
 			SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 			CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
 		}
@@ -96,7 +96,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			FsProcessException(&IrpContext, &Data, GetExceptionCode());
 			IoStatus.Status = STATUS_UNSUCCESSFUL;
 		}
-		if (bAcquiredPagingResource)
+		if (bAcquiredResource)
 		{
 			ExReleaseResourceLite(Fcb->Header.Resource);
 		}

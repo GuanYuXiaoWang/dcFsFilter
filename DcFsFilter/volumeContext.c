@@ -101,12 +101,7 @@ NTSTATUS SetVolumeContext(PCFLT_RELATED_OBJECTS FltObjects, PFLT_VOLUME_PROPERTI
 		FltIsVolumeWritable(FltObjects, &pVolumeContext->bWrite);
 		memset(pVolumeContext->strDeviceName.pwszName, 0, pVolumeContext->strDeviceName.ulLength);
 		memcpy(pVolumeContext->strDeviceName.pwszName, pVolumePro->RealDeviceName.Buffer, pVolumePro->RealDeviceName.Length);
-		pVolumeContext->strMetaDataList = (PWSTRING)ExAllocatePoolWithTag(NonPagedPool, sizeof(WSTRING)* METADATA_FILE_COUNT, VOLUME_CONTEXT_POOL_TAG);
-		if (NULL == pVolumeContext->strMetaDataList)
-		{
-			__leave;
-		}
-		initMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
+	
 		status = FltSetVolumeContext(pFltVolume, FLT_SET_CONTEXT_KEEP_IF_EXISTS, pVolumeContext, NULL);
 		if (!NT_SUCCESS(status))
 		{
@@ -120,11 +115,6 @@ NTSTATUS SetVolumeContext(PCFLT_RELATED_OBJECTS FltObjects, PFLT_VOLUME_PROPERTI
 	{
 		if (!NT_SUCCESS(status) && pVolumeContext)
 		{
-			if (pVolumeContext->strMetaDataList)
-			{
-				unInitMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
-			}
-			
 			if (pVolumeContext->strDeviceName.pwszName)
 			{
 				ExFreePoolWithTag(pVolumeContext->strDeviceName.pwszName, VOLUME_CONTEXT_POOL_TAG);
@@ -153,7 +143,6 @@ VOID VolumeCleanup(__in PFLT_CONTEXT Context, __in FLT_CONTEXT_TYPE ContextType)
 	{
 		if (pVolumeContext)
 		{
-			unInitMetadataFileList(pVolumeContext->strMetaDataList, METADATA_FILE_COUNT);
 			if (pVolumeContext->strDeviceName.pwszName)
 			{
 				ExFreePoolWithTag(pVolumeContext->strDeviceName.pwszName, VOLUME_CONTEXT_POOL_TAG);
