@@ -138,6 +138,10 @@ extern "C" {
 	BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length);
 	NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb);
 	NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb);
+
+	NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects);
+	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
+
 #ifdef __cplusplus
 }
 #endif

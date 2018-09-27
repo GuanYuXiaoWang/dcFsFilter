@@ -969,8 +969,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
  			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
 		}
- 		
-		if (NULL == Fcb->CcFileObject)
+		else if (NULL == Fcb->CcFileObject)
 		{
 			UNICODE_STRING unicodeString;
 			IO_STATUS_BLOCK IoStatus;

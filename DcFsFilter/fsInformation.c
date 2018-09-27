@@ -237,6 +237,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	BOOLEAN bTopLevelIrp = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
 	NTSTATUS ntStatus;
+	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -252,10 +253,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
+		FsFileInfoChangedNotify(Data, FltObjects);
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetInformation begin, (FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
+	DbgPrint("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass);
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -1281,11 +1283,10 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 	IO_STATUS_BLOCK IoStatus = {0};
 	WCHAR * pFileName = NULL;
 	ULONG Length = 0;
-	WCHAR wszDosName[32] = { 0 };
-	WCHAR wszNtName[MAX_PATH] = { 0 };
+	WCHAR wszDosName[32] = { 0 };//´ÅÅÌÂ·¾¶£¬C:¡¢D:µÈ
+	WCHAR wszNtName[FILE_PATH_LENGTH_MAX] = { 0 };
 	UNICODE_STRING strDosName;
 	UNICODE_STRING strNtName;
-
 
 	__try
 	{
@@ -1310,8 +1311,8 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 		RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
 		RtlInitUnicodeString(&strDosName, wszDosName);
 		strNtName.Buffer = wszNtName;
-		strNtName.Length = MAX_PATH;
-		strNtName.MaximumLength = MAX_PATH;
+		strNtName.Length = FILE_PATH_LENGTH_MAX;
+		strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
 		if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
 		{
 			try_return(NOTHING);
@@ -1328,8 +1329,8 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			__leave;
 		}
 		strNtName.Buffer = pFileName;
-		strNtName.Length = MAX_PATH;
-		strNtName.MaximumLength = MAX_PATH;
+		strNtName.Length = FILE_PATH_LENGTH_MAX;
+		strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
 		if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
 		{
 			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);

@@ -488,6 +488,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 		{
 			InitCommunication(gFilterHandle);
 			g_bAllModuleInitOk = TRUE;
+			DbgPrint("DriverEntry ok...\n");
 		}
 	}
 	else

@@ -152,7 +152,10 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 					DbgPrint("DogID and Key error");
 			}
 			else
+			{
 				DbgPrint("DogID and Key already set");
+				g_bSafeDataReady = TRUE;
+			}		
 
 			KeLeaveCriticalRegion();
 

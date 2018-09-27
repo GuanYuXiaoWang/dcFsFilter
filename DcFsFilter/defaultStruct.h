@@ -488,6 +488,15 @@ __in BOOLEAN RestartScan,
 __out_opt PULONG LengthReturned
 );
 
+typedef NTSTATUS (*fsQueryInformationProcess)(
+	__in          HANDLE ProcessHandle,
+	__in          PROCESSINFOCLASS ProcessInformationClass,
+	__out         PVOID ProcessInformation,
+	__in          ULONG ProcessInformationLength,
+	__out_opt     PULONG ReturnLength
+	);
+
+
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
 {
 	fltCheckOplockEx CheckOplockEx;
@@ -496,6 +505,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fsRtlChangeBackingFileObject pFsRtlChangeBackingFileObject;
 	fsGetVersion pGetVersion;
 	fltQueryDirectoryFile  QueryDirectoryFile;
+	fsQueryInformationProcess QueryInformationProcess;
 }DYNAMIC_FUNCTION_POINTERS;
 
 #define NAMED_PIPE_PREFIX                "\\\\.\\Pipe"

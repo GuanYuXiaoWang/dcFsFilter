@@ -44,7 +44,7 @@ LARGE_INTEGER  Li1 = { 1, 0 };
 KSPIN_LOCK g_GeneralSpinLock;
 
 NTKERNELAPI UCHAR * PsGetProcessImageFileName(__in PEPROCESS Process);
-
+#define PROCESS_NAME_LENGTH 32
 BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType)
 {
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
@@ -52,14 +52,17 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	PEPROCESS Process = NULL;
 	PUCHAR ProcessName;
 	BOOLEAN bFilter = FALSE;
-	UNICODE_STRING unicodeString;
-	UNICODE_STRING stringTest;
-	RtlInitUnicodeString(&unicodeString, L"\\Device\\HarddiskVolume1\\4.um");
-	RtlInitUnicodeString(&stringTest, L"\\Device\\HarddiskVolume1\\1.docx");
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
+	WCHAR szProcessName[PROCESS_NAME_LENGTH] = { 0 };
+	UNICODE_STRING strProcessName;
 
 	UNREFERENCED_PARAMETER(pProcType);
+
+	if (!CheckEnv(MINIFILTER_ENV_TYPE_SAFE_DATA))
+	{
+	//	return FALSE;
+	}
 
 	//先判断文件是否为加密文件，再判断访问进程是否为受控进程(可以不区分先后)
 
@@ -76,6 +79,20 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			*pStatus = STATUS_UNSUCCESSFUL;
 			__leave;
 		}
+		//test
+		RtlInitUnicodeString(&strProcessName, szProcessName);
+		strProcessName.Length = PROCESS_NAME_LENGTH * sizeof(WCHAR);
+		strProcessName.MaximumLength = PROCESS_NAME_LENGTH * sizeof(WCHAR);
+		*pStatus = FsGetProcessName(ProcessId, &strProcessName);
+		if (!NT_SUCCESS(*pStatus))
+		{
+			__leave;
+		}
+		if (!IsControlProcessEx(strProcessName.Buffer))
+		{
+			__leave;
+		}
+		/*
 		*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
 		if (!NT_SUCCESS(*pStatus))
 		{
@@ -83,29 +100,11 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		}
 
 		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
-
 		if (!IsControlProcess(ProcessName))
 		{
 			__leave;
 		}
-
-// 		if (0 == stricmp("FileIRP.exe", ProcessName) ||
-// 			0 == stricmp("notepad++.exe", ProcessName) ||
-// 			/*office*/
-// 			0 == stricmp("word.exe", ProcessName) ||
-// 			0 == stricmp("winword.exe", ProcessName) ||
-// 			0 == stricmp("excel.exe", ProcessName) ||
-// 			/*wps*/
-// 			0 == stricmp("wps.exe", ProcessName) ||
-// 			0 == stricmp("wpp.exe", ProcessName) ||
-// 			0 == stricmp("et.exe", ProcessName))
-// 		{
-// 			//DbgPrint("ProcessName=%s....\n", ProcessName ? ProcessName : "none");
-// 		}
-// 		else
-// 		{
-// 			__leave;
-// 		}
+		*/
 
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
@@ -113,10 +112,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		//排除特定类型的文件，如dll/lib/exe/等（读配置文件或注册表）
-// 		if (IsFilterFileByExt(szExName, length))
-// 		{
-// 			__leave;
-// 		}
 		if (IsFilterFileType(szExName, length))
 		{
 			__leave;
@@ -128,17 +123,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-// 		if (!((2 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"um", 2)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"txt", 3)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"doc", 3)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xls", 3)) ||
-// 			(3 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"ppt", 3)) ||
-// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"xlsx", 4)) ||
-// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"pptx", 4)) ||
-// 			(4 * sizeof(WCHAR) == length && 0 == _wcsnicmp(szExName, L"docx", 4))))
-// 		{
-// 			__leave;
-// 		}
 #ifdef TEST
 		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
 		{
@@ -191,6 +175,9 @@ VOID InitData()
 
 	RtlInitUnicodeString(&RoutineString, L"RtlGetVersion");
 	g_DYNAMIC_FUNCTION_POINTERS.pGetVersion = (fsGetVersion)MmGetSystemRoutineAddress(&RoutineString);
+
+	RtlInitUnicodeString(&RoutineString, L"ZwQueryInformationProcess");
+	g_DYNAMIC_FUNCTION_POINTERS.QueryInformationProcess = (fsQueryInformationProcess)MmGetSystemRoutineAddress(&RoutineString);
 
 	g_CacheManagerCallbacks.AcquireForLazyWrite = &FsAcquireFcbForLazyWrite;
 	g_CacheManagerCallbacks.ReleaseFromLazyWrite = &FsReleaseFcbFromLazyWrite;
@@ -2731,5 +2718,201 @@ NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 	{
 		FltFreeCallbackData(NewData);
 	}
+	return ntStatus;
+}
+
+NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
+	PFILE_RENAME_INFORMATION FileRenameInfo = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+	WCHAR * pFileName = NULL;
+	ULONG Length = 0;
+	WCHAR wszDosName[32] = { 0 };//磁盘路径，C:、D:等
+	WCHAR wszNtName[FILE_PATH_LENGTH_MAX] = { 0 };
+	UNICODE_STRING strDosName;
+	UNICODE_STRING strNtName;
+	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
+	BOOLEAN bFilter = FALSE;
+	WCHAR szExName[32] = { 0 };
+	USHORT length = 0;
+	PDEFFCB pFcb = NULL;
+
+	if (!CheckEnv(MINIFILTER_ENV_TYPE_SAFE_DATA))
+	{
+		return FALSE;
+	}
+	if (FileDispositionInformation != FileInfoClass && FileRenameInformation != FileInfoClass)
+	{
+		return ntStatus;
+	}
+	DbgPrint("FsFileInfoChangedNotify begin....\n");
+	
+	__try
+	{
+		if (FileRenameInformation == FileInfoClass)
+		{
+			RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
+			RtlInitUnicodeString(&strDosName, wszDosName);
+			strNtName.Buffer = wszNtName;
+			strNtName.Length = FILE_PATH_LENGTH_MAX;
+			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
+			if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+			{
+				__leave;
+			}
+			if (0 == Length)
+			{
+				__leave;
+			}
+			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, Length + sizeof(WCHAR), 'refn');
+			if (NULL == pFileName)
+			{
+				__leave;
+			}
+			RtlZeroMemory(pFileName, Length + sizeof(WCHAR));
+			strNtName.Buffer = pFileName;
+			strNtName.Length = FILE_PATH_LENGTH_MAX;
+			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
+			if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+			{
+				__leave;
+			}
+			//判断文件后缀名
+			if (!FsGetFileExtFromFileName(&strDosName, szExName, &length))
+			{
+				__leave;
+			}
+		}
+		else
+		{
+			ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			//判断文件后缀名
+			if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
+			{
+				__leave;
+			}
+			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, FileInfo->Name.Length + sizeof(WCHAR), 'refn');
+			if (NULL == pFileName)
+			{
+				__leave;
+			}
+			RtlZeroMemory(pFileName, FileInfo->Name.Length + sizeof(WCHAR));
+			RtlCopyMemory(pFileName, FileInfo->Name.Buffer, FileInfo->Name.Length);
+		}
+		//过滤包含特定类型的文件??
+		if (!IsControlFileType(szExName, length))
+		{
+			__leave;
+		}
+		if (FindFcb(Data, pFileName, &pFcb))
+		{
+			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+			//如果文件正在被其他程序打开，create时是否有权限？
+			FsFreeFcb(pFcb, NULL);
+		}
+	}
+	__finally
+	{
+		if (pFileName != NULL)
+		{
+			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileName, 'refn');
+		}
+
+		if (FileInfo != NULL)
+		{
+			FltReleaseFileNameInformation(FileInfo);
+		}
+	}
+
+	DbgPrint("FsFileInfoChangedNotify end....\n");
+	return ntStatus;
+}
+//获取进程完整路径名
+NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName)
+{
+	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
+	HANDLE hProcess = NULL;
+	PEPROCESS Eprocess = NULL;
+	ULONG RetLength = 0;
+	ULONG BufferLength = 0;
+	PVOID Buffer = NULL;
+	PUNICODE_STRING ImagePath = NULL;
+	USHORT i = 0;
+	PWCHAR pTmp = NULL;
+	USHORT ProcessNameLength = 0;
+
+	__try
+	{
+		if (4 == ProcessID || 0 == ProcessID)
+		{
+			//系统进程，暂不处理
+			__leave;
+		}
+		if (NULL == g_DYNAMIC_FUNCTION_POINTERS.QueryInformationProcess)
+		{
+			__leave;
+		}
+		ntStatus = PsLookupProcessByProcessId((HANDLE)ProcessID, &Eprocess);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		ntStatus = ObOpenObjectByPointer(Eprocess, OBJ_KERNEL_HANDLE, NULL, GENERIC_READ, *PsProcessType, KernelMode, &hProcess);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryInformationProcess(hProcess, ProcessImageFileName, NULL, 0, &RetLength);
+		if (STATUS_INFO_LENGTH_MISMATCH != ntStatus)
+		{
+			__leave;
+		}
+		BufferLength = RetLength - sizeof (UNICODE_STRING);
+		Buffer = ExAllocatePoolWithTag(PagedPool, RetLength, 'proc');
+		if (NULL == Buffer)
+		{
+			ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+			__leave;
+		}
+		ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryInformationProcess(hProcess, ProcessImageFileName, Buffer, RetLength, &RetLength);
+		if (NT_SUCCESS(ntStatus))
+		{
+			ImagePath = (PUNICODE_STRING)Buffer;
+			//RtlCopyUnicodeString(ProcessImagePath, ImagePath);
+			//取进程名
+			pTmp = ImagePath->Buffer + ImagePath->Length / sizeof(WCHAR);
+			for (i = 0; i < ImagePath->Length / sizeof(WCHAR); i++)
+			{
+				if (L'\\' == pTmp[0])
+				{
+					RtlCopyMemory(ProcessImageName->Buffer, pTmp + 1, ProcessNameLength * sizeof(WCHAR));
+					break;
+				}
+				pTmp -= 1;
+				ProcessNameLength++;
+			}
+		}
+	}
+	__finally
+	{
+		if (Eprocess != NULL)
+		{
+			ObDereferenceObject(Eprocess);
+		}
+		if (hProcess != NULL)
+		{
+			ZwClose(hProcess);
+		}
+		if (Buffer != NULL)
+		{
+			ExFreePoolWithTag(Buffer, 'proc');
+		}
+	}
+
 	return ntStatus;
 }

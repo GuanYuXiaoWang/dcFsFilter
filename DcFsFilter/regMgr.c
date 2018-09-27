@@ -2,22 +2,25 @@
 #include <wdm.h>
 #include "Head.h"
 
-#define DRIVER_LOAD_REG_PATH L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\services\\DcFsFilter"
-#define CONTROL_PROCESS_NAME L"ControlProcessName"
+#define DRIVER_LOAD_REG_PATH L"\\REGISTRY\\MACHINE\\SYSTEM\\CurrentControlSet\\services\\DGFile"
+#define CONTROL_PROCESS_NAME L"ControlProcName"
 #define CONTROL_FILE_TYPE L"ControlFileType"
-#define FILTER_FILE_TYPE L"FilterFileType"
+#define FILTER_FILE_TYPE L"PassthroughPathEndsWith"
 #define DOG_ID_NAME L"DogId"
 #define FILE_KEY_NAME L"Key"
+#define CONTROL_SYS_NAME L"ControlSysName"
 
 NPAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
 
-LIST_ENTRY   g_ControlProcessList;
-LIST_ENTRY   g_ControlFileTypeList;
-LIST_ENTRY	g_FilterFileTypeList;
+LIST_ENTRY g_ControlProcessList;
+LIST_ENTRY g_ControlFileTypeList;
+LIST_ENTRY g_FilterFileTypeList;
+LIST_ENTRY g_ControlSysList;
 
 ERESOURCE g_ControlProcessResource;
 ERESOURCE g_ControlFileTypeResource;
 ERESOURCE g_FilterFileTypeResource;
+ERESOURCE g_ControlSysResource;
 
 void InitReg()
 {
@@ -28,6 +31,8 @@ void InitReg()
 	UNICODE_STRING strCPN;
 	UNICODE_STRING strCFT;
 	UNICODE_STRING strFFT;
+	UNICODE_STRING strCSN;
+
 	USHORT length = sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 1024;
 	PKEY_VALUE_PARTIAL_INFORMATION pKeyInfo = NULL;
 
@@ -35,10 +40,12 @@ void InitReg()
 	InitializeListHead(&g_ControlProcessList);
 	InitializeListHead(&g_ControlFileTypeList);
 	InitializeListHead(&g_FilterFileTypeList);
+	InitializeListHead(&g_ControlSysList);
 
 	ExInitializeResourceLite(&g_ControlProcessResource);
 	ExInitializeResourceLite(&g_ControlFileTypeResource);
 	ExInitializeResourceLite(&g_FilterFileTypeResource);
+	ExInitializeResourceLite(&g_ControlSysResource);
 
 	//读注册表
 	__try
@@ -47,6 +54,7 @@ void InitReg()
 		RtlInitUnicodeString(&strCPN, CONTROL_PROCESS_NAME);
 		RtlInitUnicodeString(&strCFT, CONTROL_FILE_TYPE);
 		RtlInitUnicodeString(&strFFT, FILTER_FILE_TYPE);
+		RtlInitUnicodeString(&strCSN, CONTROL_SYS_NAME);
 
 		pKeyInfo = ExAllocatePoolWithTag(NonPagedPool, length, 'keyv');
 		if (NULL == pKeyInfo)
@@ -79,6 +87,12 @@ void InitReg()
 			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strFFT.Buffer, ntStatus, __LINE__);
 		}
 		RtlZeroMemory(pKeyInfo, length);
+		ntStatus = InitListByKeyInfo(hKey, &strCSN, KeyValuePartialInformation, pKeyInfo, length, &g_ControlSysList);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strCSN.Buffer, ntStatus, __LINE__);
+		}
+		RtlZeroMemory(pKeyInfo, length);
 		ntStatus = InitDogKeyInfo(hKey, KeyValuePartialInformation, pKeyInfo, length);
 	}
 	__finally
@@ -99,10 +113,12 @@ void UnInitReg()
 	FilterDeleteList(&g_ControlProcessList);
 	FilterDeleteList(&g_ControlFileTypeList);
 	FilterDeleteList(&g_FilterFileTypeList);
+	FilterDeleteList(&g_ControlSysList);
 	ExDeleteNPagedLookasideList(&g_RegKeyLookasideList);
 	ExDeleteResourceLite(&g_ControlProcessResource);
 	ExDeleteResourceLite(&g_ControlFileTypeResource);
 	ExDeleteResourceLite(&g_FilterFileTypeResource);
+	ExDeleteResourceLite(&g_ControlSysResource);
 }
 
 NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle, 
@@ -140,9 +156,11 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 					}
 					RtlZeroMemory(pItem, sizeof(REG_KEY_INFO));
 					pItem->length = (nIndex - (nFind > 0 ? nFind + 1 : nFind)) * sizeof(WCHAR);
-					if (pItem->length <= sizeof(WCHAR))//空的情况,像||这样
+					if (pItem->length < sizeof(WCHAR))//空的情况,像||这样
 					{
 						ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+						nFind = nIndex;
+						nIndex++;
 						continue;
 					}
 					RtlCopyMemory(pItem->keyValue, pTmp + (nFind > 0 ? nFind + 1 : 0), pItem->length);
@@ -299,6 +317,34 @@ BOOLEAN IsControlProcess(__in PUCHAR pProcessName)
 	return bFind;
 }
 
+BOOLEAN IsControlProcessEx(__in PWCHAR pProcessName)
+{
+	BOOLEAN bFind = FALSE;
+	LIST_ENTRY* listEntry = NULL;
+	PREG_KEY_INFO pItem = NULL;
+	BOOLEAN bAcquireResource = FALSE;
+	if (IsListEmpty(&g_ControlProcessList))
+	{
+		return FALSE;
+	}
+
+	bAcquireResource = ExAcquireResourceShared(&g_ControlProcessResource, TRUE);
+	for (listEntry = g_ControlProcessList.Flink; listEntry != &g_ControlProcessList; listEntry = listEntry->Flink)
+	{
+		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		if (pItem && 0 == wcsicmp(pProcessName, pItem->keyValue))
+		{
+			bFind = TRUE;
+			break;
+		}
+	}
+	if (bAcquireResource)
+	{
+		ExReleaseResourceLite(&g_ControlProcessResource);
+	}
+	return bFind;
+}
+
 BOOLEAN IsControlFileType(__in PWCHAR pFileExt, __in USHORT Length)
 {
 	BOOLEAN bFind = FALSE;
@@ -355,6 +401,37 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 	if (bAcquireResource)
 	{
 		ExReleaseResourceLite(&g_FilterFileTypeResource);
+	}
+
+	return bFind;
+}
+
+ BOOLEAN IsControlSys(__in PWCHAR pFileExt, __in USHORT Length)
+{
+	BOOLEAN bFind = FALSE;
+	LIST_ENTRY* listEntry = NULL;
+	PREG_KEY_INFO pItem = NULL;
+	UNICODE_STRING strFilterFileType;
+	BOOLEAN bAcquireResource = FALSE;
+	if (IsListEmpty(&g_FilterFileTypeList))
+	{
+		return FALSE;
+	}
+	RtlInitUnicodeString(&strFilterFileType, pFileExt);
+
+	bAcquireResource = ExAcquireResourceShared(&g_ControlSysResource, TRUE);
+	for (listEntry = g_FilterFileTypeList.Flink; listEntry != &g_FilterFileTypeList; listEntry = listEntry->Flink)
+	{
+		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		if (pItem && 0 == wcsicmp(strFilterFileType.Buffer, pItem->keyValue))
+		{
+			bFind = TRUE;
+			break;
+		}
+	}
+	if (bAcquireResource)
+	{
+		ExReleaseResourceLite(&g_ControlSysResource);
 	}
 
 	return bFind;

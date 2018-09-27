@@ -3,7 +3,7 @@
 
 #include <fltKernel.h>
 
-#define KEY_VALUE_LENGTH 16//三种类型最大长度：受控进程名，受控文件类型，过滤掉的文件类型
+#define KEY_VALUE_LENGTH 32//三种类型最大长度：受控进程名，受控文件类型，过滤掉的文件类型
 
 typedef struct tagREG_KEY_INFO
 {
@@ -13,10 +13,6 @@ typedef struct tagREG_KEY_INFO
 }REG_KEY_INFO, *PREG_KEY_INFO;
 
 extern NPAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
-
-// LIST_ENTRY   g_ControlProcessList;
-// LIST_ENTRY   g_ControlFileTypeList;
-// LIST_ENTRY	g_FilterFileTypeList;
 
 #ifdef __cplusplus
 extern "C" {
@@ -39,6 +35,7 @@ void UnInitReg();
 
 NTSTATUS FilterDeleteList(__in PLIST_ENTRY pListEntry);
 BOOLEAN  IsControlProcess(__in PUCHAR pProcessName);
+BOOLEAN IsControlProcessEx(__in PWCHAR pProcessName);
 BOOLEAN IsControlFileType(__in PWCHAR pFileExt, __in USHORT Length);
 BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length);
 
