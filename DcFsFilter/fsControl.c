@@ -26,7 +26,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	DbgPrint("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode);
+	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -119,7 +119,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreLockControl(__inout PFLT_CALLBACK_DATA Data, __in
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	DbgPrint("PtPreLockControl....\n");
+	KdPrint(("PtPreLockControl....\n"));
 	bTopLevelIrp = FsIsIrpTopLevel(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -204,7 +204,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 
 		if (FltCurrentBatchOplock(&Fcb->Oplock))
 		{
-			DbgPrint("have file oplock...\n");
+			KdPrint(("have file oplock...\n"));
 		}
 
 		if (IsWin7OrLater())
@@ -359,7 +359,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	FileClass = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileInformationClass;
-	DbgPrint("PtPreDirectoryControl, file class=%d....\n", FileClass);
+	KdPrint(("PtPreDirectoryControl, file class=%d....\n", FileClass));
 
 	__try
 	{

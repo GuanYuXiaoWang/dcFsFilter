@@ -19,7 +19,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		PFSRTL_COMMON_FCB_HEADER Header = FltObjects->FileObject->FsContext;
 		if (NULL != Header)
 		{
-			DbgPrint("File Size=%d, vaildata size=%d....\n", Header->FileSize.QuadPart, Header->ValidDataLength.QuadPart);
+			KdPrint(("File Size=%d, vaildata size=%d....\n", Header->FileSize.QuadPart, Header->ValidDataLength.QuadPart));
 		}
 	}
 #endif
@@ -28,7 +28,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreCleanup begin......\n");
+	KdPrint(("PtPreCleanup begin......\n"));
 	FsRtlEnterFileSystem();
 	bTopLevelIrp = IsTopLevelIRP(Data);
 
@@ -62,7 +62,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		IoSetTopLevelIrp(NULL);
 	}
 	FsRtlExitFileSystem();
-	DbgPrint("PtPreCleanup end......\n");
+	KdPrint(("PtPreCleanup end......\n"));
 	return FltStatus;
 }
 
@@ -101,7 +101,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	__try
 	{
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		DbgPrint("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart);
+		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart));
 		if (1 == Fcb->OpenCount)
 		{
 			//
@@ -161,11 +161,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				{
 					FILE_END_OF_FILE_INFORMATION FileSize;
 					FileSize.EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
-					DbgPrint("clean:file size =%d...\n", FileSize.EndOfFile.LowPart);
+					KdPrint(("clean:file size =%d...\n", FileSize.EndOfFile.LowPart));
 					Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, &FileSize, sizeof(FILE_END_OF_FILE_INFORMATION), FileEndOfFileInformation);
 					if (!NT_SUCCESS(Status))
 					{
-						DbgPrint("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status);
+						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
 				}
@@ -185,6 +185,14 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					}
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
+
+					if (Fcb->CcFileObject && Fcb->FileAcessType != FILE_TXT_ACCESS)
+					{
+						ObDereferenceObject(Fcb->CcFileObject);
+						FltClose(Fcb->CcFileHandle);
+						Fcb->CcFileObject = NULL;
+						Fcb->CcFileHandle = NULL;
+					}
 				}
 
 				Fcb->DestCacheObject = NULL;

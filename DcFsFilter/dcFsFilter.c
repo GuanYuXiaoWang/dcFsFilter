@@ -488,7 +488,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 		{
 			InitCommunication(gFilterHandle);
 			g_bAllModuleInitOk = TRUE;
-			DbgPrint("DriverEntry ok...\n");
+			KdPrint(("DriverEntry ok...\n"));
 		}
 	}
 	else
@@ -606,7 +606,7 @@ The return value is the status of the operation.
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{
-		DbgPrint("PtPreOperationPassThrough:major=0x%x, minor=0x%x...\n", Data->Iopb->MajorFunction, Data->Iopb->MinorFunction);
+		KdPrint(("PtPreOperationPassThrough:major=0x%x, minor=0x%x...\n", Data->Iopb->MajorFunction, Data->Iopb->MinorFunction));
 		if (FLT_IS_FASTIO_OPERATION(Data))
 		{
 			FltStatus = FLT_PREOP_DISALLOW_FASTIO;

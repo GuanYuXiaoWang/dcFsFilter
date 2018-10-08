@@ -27,7 +27,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}	
-	DbgPrint("PtPreClose......\n");
+	KdPrint(("PtPreClose......\n"));
 
 	bTopLevelIrp = IsTopLevelIRP(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -40,7 +40,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			{
 				__leave;
 			}
-			DbgPrint("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount);
+			KdPrint(("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount));
 			if (0 == Fcb->OpenCount)
 			{
 				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))

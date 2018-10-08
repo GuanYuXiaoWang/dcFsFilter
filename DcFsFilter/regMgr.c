@@ -72,25 +72,25 @@ void InitReg()
 		ntStatus = InitListByKeyInfo(hKey, &strCPN, KeyValuePartialInformation, pKeyInfo, length, &g_ControlProcessList);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strCPN.Buffer, ntStatus, __LINE__);
+			KdPrint(("init list(%S) info failed(0x%x), line=%d...\n", strCPN.Buffer, ntStatus, __LINE__));
 		}
 		RtlZeroMemory(pKeyInfo, length);
 		ntStatus = InitListByKeyInfo(hKey, &strCFT, KeyValuePartialInformation, pKeyInfo, length, &g_ControlFileTypeList);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strCFT.Buffer, ntStatus, __LINE__);
+			KdPrint(("init list(%S) info failed(0x%x), line=%d...\n", strCFT.Buffer, ntStatus, __LINE__));
 		}
 		RtlZeroMemory(pKeyInfo, length);
 		ntStatus = InitListByKeyInfo(hKey, &strFFT, KeyValuePartialInformation, pKeyInfo, length, &g_FilterFileTypeList);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strFFT.Buffer, ntStatus, __LINE__);
+			KdPrint(("init list(%S) info failed(0x%x), line=%d...\n", strFFT.Buffer, ntStatus, __LINE__));
 		}
 		RtlZeroMemory(pKeyInfo, length);
 		ntStatus = InitListByKeyInfo(hKey, &strCSN, KeyValuePartialInformation, pKeyInfo, length, &g_ControlSysList);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("init list(%S) info failed(0x%x), line=%d...\n", strCSN.Buffer, ntStatus, __LINE__);
+			KdPrint(("init list(%S) info failed(0x%x), line=%d...\n", strCSN.Buffer, ntStatus, __LINE__));
 		}
 		RtlZeroMemory(pKeyInfo, length);
 		ntStatus = InitDogKeyInfo(hKey, KeyValuePartialInformation, pKeyInfo, length);
@@ -230,14 +230,14 @@ NTSTATUS InitDogKeyInfo(__in HANDLE KeyHandle,
 		ntStatus = ZwQueryValueKey(KeyHandle, &strDog, KeyValueInformationClass, KeyValueInformation, Length, &RetLength);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("Query dog id failed(0x%x)...\n", ntStatus);
+			KdPrint(("Query dog id failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
 		pData->SystemUser.DogID = *((ULONG *)(KeyValueInformation->Data));
 		ntStatus = ZwQueryValueKey(KeyHandle, &strKey, KeyValueInformationClass, KeyValueInformation, Length, &RetLength);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("Query key failed(0x%x)...\n", ntStatus);
+			KdPrint(("Query key failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
 		pwstrKey = ExAllocatePoolWithTag(NonPagedPool, KeyValueInformation->DataLength, 'skey');
@@ -250,7 +250,7 @@ NTSTATUS InitDogKeyInfo(__in HANDLE KeyHandle,
 		RtlInitUnicodeString(&strTmp, pwstrKey);
 		RtlUnicodeStringToAnsiString(&ansiStrTmp, &strTmp, TRUE);
 		RtlCopyMemory(pData->szbtKey, ansiStrTmp.Buffer, ansiStrTmp.Length);
-		DbgPrint("DogId=%d, key=%s...\n", pData->SystemUser.DogID, pData->szbtKey);
+		KdPrint(("DogId=%d, key=%s...\n", pData->SystemUser.DogID, pData->szbtKey));
 	}
 	__finally
 	{

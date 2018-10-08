@@ -26,7 +26,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass);
+	KdPrint(("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass));
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -45,7 +45,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 
 			if (!NT_SUCCESS(ntStatus))
 			{
-				DbgPrint("FsCommonQueryInformation failed(0x%x)...\n", ntStatus);
+				KdPrint(("FsCommonQueryInformation failed(0x%x)...\n", ntStatus));
 				Data->IoStatus.Status = ntStatus;
 				Data->IoStatus.Information = 0;
 			}
@@ -72,7 +72,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	}
 	
 	FsRtlExitFileSystem();
-	DbgPrint("PreQueryInformation end......\n");
+	KdPrint(("PreQueryInformation end......\n"));
 	return FltStatus;
 }
 
@@ -121,7 +121,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		Ccb = FileObject->FsContext2;
 		if (NULL == Fcb)
 		{
-			DbgPrint("QueryInformation:Fcb is not exit!\n");
+			KdPrint(("QueryInformation:Fcb is not exit!\n"));
 			__leave;
 		}
 
@@ -130,7 +130,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileBasicInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_BASIC_INFORMATION))
 			{
-				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_BASIC_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_BASIC_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
 				try_return(ntStatus);
 			}
 			length = sizeof(FILE_BASIC_INFORMATION);
@@ -144,7 +144,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileAllInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_ALL_INFORMATION))
 			{
-				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_ALL_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_ALL_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
 				try_return(ntStatus);
 			}
 			length = sizeof(FILE_ALL_INFORMATION);
@@ -163,7 +163,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileStandardInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
 			{
-				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
 				try_return(ntStatus);
 			}
 			length = sizeof(FILE_STANDARD_INFORMATION);
@@ -177,7 +177,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileNetworkOpenInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
 			{
-				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
 				try_return(ntStatus);
 			}
 			length = sizeof(FILE_NETWORK_OPEN_INFORMATION);
@@ -197,7 +197,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FilePositionInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_POSITION_INFORMATION))
 			{
-				DbgPrint("QueryInformation:length(%d) < sizeof(FILE_POSITION_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length);
+				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_POSITION_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
 				try_return(ntStatus);
 			}
 			length = sizeof(FILE_POSITION_INFORMATION);
@@ -213,7 +213,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
 			if (!NT_SUCCESS(ntStatus))
 			{
-				DbgPrint("FltQueryInformationFile failed(0x%x)...\n", ntStatus);
+				KdPrint(("FltQueryInformationFile failed(0x%x)...\n", ntStatus));
 			}
 			break;
 
@@ -245,7 +245,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 #ifdef TEST
 	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
 	{
-		DbgPrint("(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
+		KdPrint(("(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass));
 	}
 	
 #endif
@@ -257,7 +257,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass);
+	KdPrint(("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass));
 #ifdef TEST
 	KdBreakPoint();
 #endif
@@ -301,7 +301,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	}
 
 	FsRtlExitFileSystem();
-	DbgPrint("PtPreSetInformation end......\n");
+	KdPrint(("PtPreSetInformation end......\n"));
 	return FltStatus;
 }
 
@@ -331,7 +331,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PreQueryEa......\n");
+	KdPrint(("PreQueryEa......\n"));
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -364,7 +364,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	
-	DbgPrint("PreSetEa......\n");
+	KdPrint(("PreSetEa......\n"));
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -394,7 +394,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
-	DbgPrint("PtPreAcquireForSection....\n");
+	KdPrint(("PtPreAcquireForSection....\n"));
 
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb && Fcb->Header.PagingIoResource)
@@ -429,7 +429,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreReleaseForSection....\n");
+	KdPrint(("PtPreReleaseForSection....\n"));
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb && Fcb->Header.PagingIoResource)
 	{
@@ -543,7 +543,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			}
 			else
 			{
-				DbgPrint("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status);
+				KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 			}
 			
 		}
@@ -951,7 +951,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data));
+	KdPrint(("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
 
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -964,7 +964,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 
 			if (!NT_SUCCESS(ntStatus))
 			{
-				DbgPrint("FltQuerySecurityObject failed(0x%x)...\n", ntStatus);
+				KdPrint(("FltQuerySecurityObject failed(0x%x)...\n", ntStatus));
 			}
 		}
 		__finally
@@ -988,7 +988,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 		Data->IoStatus.Information = 0;
 	}
-	DbgPrint("PtPreQuerySecurity over....\n");
+	KdPrint(("PtPreQuerySecurity end....\n"));
 	FsRtlExitFileSystem();
 	return FltStatus;
 }
@@ -1018,7 +1018,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetSecurity....\n");
+	KdPrint(("PtPreSetSecurity start....\n"));
 
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -1030,7 +1030,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 			ntStatus = FltSetSecurityObject(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetSecurity.SecurityInformation, Data->Iopb->Parameters.SetSecurity.SecurityDescriptor);
 			if (!NT_SUCCESS(ntStatus))
 			{
-				DbgPrint("FltSetSecurityObject failed(0x%x)...\n", ntStatus);
+				KdPrint(("FltSetSecurityObject failed(0x%x)...\n", ntStatus));
 				__leave;
 			}
 		}
@@ -1056,7 +1056,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 		Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
 		Data->IoStatus.Information = 0;
 	}
-	DbgPrint("PtPreSetSecurity over....\n");
+	KdPrint(("PtPreSetSecurity end....\n"));
 	FsRtlExitFileSystem();
 	return FltStatus;
 }
@@ -1092,7 +1092,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreQueryVolumeInformation....\n");
+	KdPrint(("PtPreQueryVolumeInformation....\n"));
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -1170,7 +1170,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA D
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreSetVolumeInformation....\n");
+	KdPrint(("PtPreSetVolumeInformation....\n"));
 
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -1182,7 +1182,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA D
 				Data->Iopb->Parameters.SetVolumeInformation.Length, Data->Iopb->Parameters.SetVolumeInformation.FsInformationClass);
 			if (!NT_SUCCESS(ntStatus))
 			{
-				DbgPrint("FltSetVolumeInformation failed(0x%x)...\n", ntStatus);
+				KdPrint(("FltSetVolumeInformation failed(0x%x)...\n", ntStatus));
 			}
 		}
 		__finally
@@ -1256,7 +1256,7 @@ BOOLEAN GetVolDevNameByQueryObj(__in UNICODE_STRING * pSymName, __out UNICODE_ST
 			);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("[%s]ZwQuerySymbolicLinkObject failed(0x%x)...\n", __FUNCTION__, ntStatus);
+			KdPrint(("[%s]ZwQuerySymbolicLinkObject failed(0x%x)...\n", __FUNCTION__, ntStatus));
 			__leave;
 		}
 
@@ -1295,14 +1295,14 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			CcFlushCache(FileObject->SectionObjectPointer, NULL, 0, &IoStatus);
 			if (!NT_SUCCESS(IoStatus.Status))
 			{
-				DbgPrint("[%s]CcFlushCache failed(0x%x)...\n", __FUNCTION__, IoStatus.Status);
+				KdPrint(("[%s]CcFlushCache failed(0x%x)...\n", __FUNCTION__, IoStatus.Status));
 			}
 		}
 		ntStatus = FltSetInformationFile(FltObjects->Instance, FileObject, Data->Iopb->Parameters.SetFileInformation.InfoBuffer,
 			Data->Iopb->Parameters.SetFileInformation.Length, Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
 		if (!NT_SUCCESS(ntStatus))
 		{
-			DbgPrint("FltSetInformationFile failed(0x%x)...\n", ntStatus);
+			KdPrint(("FltSetInformationFile failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
 		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);//是否要保留部分信息？？

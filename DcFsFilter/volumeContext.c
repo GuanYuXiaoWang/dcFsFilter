@@ -31,7 +31,7 @@ VOID initMetadataFileList(WSTRING * pString, int nCount)
 		pString[i].pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, pString[i].ulLength, VOLUME_CONTEXT_POOL_TAG);
 		if (NULL == pString[i].pwszName)
 		{
-			DbgPrint("ExAllocatePoolWithTag failed, line=%d, file=%s\n", __LINE__, __FILE__);
+			KdPrint(("ExAllocatePoolWithTag failed, line=%d, file=%s\n", __LINE__, __FILE__));
 			continue;
 		}
 		memset(pString[i].pwszName, 0, pString[i].ulLength);

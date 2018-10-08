@@ -19,6 +19,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreFastIoCheckPossible(__inout PFLT_CALLBACK_DATA Da
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
+	KdPrint(("PtPreFastIoCheckPossible....\n"));
+
 	FsRtlExitFileSystem();
 	return FLT_PREOP_DISALLOW_FASTIO;
 }

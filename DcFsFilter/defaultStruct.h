@@ -10,6 +10,7 @@
 
 #define FILE_NO_ACCESS 0x800
 #define FILE_PASS_ACCESS 0x400
+#define FILE_TXT_ACCESS 0x200
 
 #ifndef MAX_PATH
 #define MAX_PATH 256
@@ -115,52 +116,6 @@ typedef struct _tagNTFSFCB
 	PERESOURCE Resource;
 	PERESOURCE PageioResource;
 }NTFS_FCB, *PNTFS_FCB;
-
-typedef struct tagDISKFILEOBJECT
-{
-	LIST_ENTRY		list;					//
-
-	LIST_ENTRY		UserFileObjList;		// USERFILEOBJECT 的链表 usermode 传递过来的文件对象，可以有多个打开的usermode的文件对象
-	ERESOURCE		UserObjectResource;
-	LONG			nReferenceCount;		//跟踪磁盘文件打开的被引用的次数
-	PFILE_OBJECT	pDiskFileObjectWriteThrough;		//对应于usermode 在磁盘上打开的 实际的文件对象
-	HANDLE			hFileWriteThrough;				//打开的磁盘上的文件的句柄：主要是内核中使用ntcreatefile NTReadFile 时候使用的
-	PDEVICE_OBJECT	pOurSpyDevice;
-	PVOID			pFCB;
-
-	BOOLEAN			bFileNOTEncypted; //文件已经存在 ，并且是明文形式
-	BOOLEAN			bAllHandleClosed;
-	BOOLEAN			bNeedBackUp;
-	UNICODE_STRING	FullFilePath;			//打开的 文件对应的全路径
-	UNICODE_STRING	FileNameOnDisk;
-	//////////////////////////////////////////////////////////////////////////
-	HANDLE			hBackUpFileHandle;
-	PFILE_OBJECT	hBackUpFileObject;
-	BOOLEAN			bProcessOpened;
-	BOOLEAN			bUnderSecurFolder;
-	BOOLEAN			bFileTypeNeedEncrypt;
-	BOOLEAN			bOpeningAfterAllGothroughCleanup;
-	PVOID			pVirtualDiskFile;
-	PERESOURCE		pParentDirResource;
-}DISKFILEOBJECT, *PDISKFILEOBJECT;
-
-typedef struct tagDISKDIROBEJECT
-{
-	LIST_ENTRY		list;
-	PVOID			pParent;
-	ERESOURCE*		AccssLocker;
-	UNICODE_STRING	DirName;
-
-	PDEVICE_OBJECT	pOurSpyDevice;
-	PVOID			pDCB; //ppfpfcb for directory
-	BOOLEAN			bInMemory;// means this is a real directory					
-	UNICODE_STRING  FullFilePath;
-
-	LIST_ENTRY		ChildVirtualDirLists;//子目录
-
-	LIST_ENTRY		VirtualDiskFileLists;//子文件
-	BOOLEAN			bRoot;
-}DISKDIROBEJECT, *PDISKDIROBEJECT;
 
 typedef struct tagSTREAM_FILE_INFO
 {
@@ -528,5 +483,25 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 #define FsReleaseFcb(IRPCONTEXT,Fcb) {                 \
 	ExReleaseResourceLite((Fcb)->Header.Resource);    \
 }
+
+typedef struct _KLDR_DATA_TABLE_ENTRY{
+	LIST_ENTRY InLoadOrderLinks;
+	PVOID ExceptionTable;
+	ULONG ExceptionTableSize;
+	PVOID GpValue;
+	//PNON_PAGED_DEBUG_INFO NonPagedDebugInfo;
+	PVOID DllBase;//指明了驱动的加载基址
+	PVOID EntryPoint;
+	ULONG SizeOfImage;
+	UNICODE_STRING FullDllName;//指明了驱动模块文件的全路径
+	UNICODE_STRING BaseDllName;//指明了驱动模块的名称
+	ULONG Flags;
+	USHORT LoadCount;
+	USHORT __Unused5;
+	PVOID SectionPointer;
+	ULONG CheckSum;
+	PVOID LoadedImports;
+	PVOID PatchInformation;
+}KLDR_DATA_TABLE_ENTRY, *PKLDR_DATA_TABLE_ENTRY;
 
 #endif

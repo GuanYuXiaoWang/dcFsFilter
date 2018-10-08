@@ -140,7 +140,7 @@ BOOLEAN EncFile(__in PCFLT_RELATED_OBJECTS FltObjects, __inout char *lpHead)
 
 		EncBuf(pBuf, nWriteBytes, (const UCHAR *)p4KBuf);
 
-		DbgPrint("[%s] [Lind] [%d] [Pid] [%d] [Tid] [%d] %wZ \n", __FUNCTION__, __LINE__, PsGetCurrentProcessId(), PsGetCurrentThreadId(), &FltObjects->FileObject->FileName);
+		KdPrint(("[%s] [Lind] [%d] [Pid] [%d] [Tid] [%d] %wZ \n", __FUNCTION__, __LINE__, PsGetCurrentProcessId(), PsGetCurrentThreadId(), &FltObjects->FileObject->FileName));
 
 		WriteOffset.QuadPart = ReadOffset.QuadPart + ENCRYPT_HEAD_LENGTH;
 		status = FltWriteFile(

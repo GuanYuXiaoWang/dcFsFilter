@@ -35,7 +35,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 #ifdef TEST
 	KdBreakPoint();
 #endif
-	DbgPrint("PtPreWrite begin......\n");
+	KdPrint(("PtPreWrite begin......\n"));
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -85,7 +85,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FltStatus = FLT_PREOP_COMPLETE;
 	}
 	FsRtlExitFileSystem();
-	DbgPrint("PtPreWrite end......\n");
+	KdPrint(("PtPreWrite end......\n"));
 	return FltStatus;
 }
 
@@ -689,7 +689,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					}
 					else
 					{
-						DbgPrint("write file header failed(0x%x)...\n", Status);
+						KdPrint(("write file header failed(0x%x)...\n", Status));
 					}
 				}
 				//RealWriteLen = (ULONG)ROUND_TO_SIZE(RealWriteLen,CRYPT_UNIT);
@@ -916,7 +916,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			if (bPagingIoResourceAcquired)
 			{
-				DbgPrint("[%s]Release paging IO resource,%d.....\n", __FUNCDNAME__, __LINE__);
 				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			}
 
@@ -1130,7 +1129,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForModWrite(__inout PFLT_CALLBACK_DATA Dat
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreAcquireForModWrite......\n");
+	KdPrint(("PtPreAcquireForModWrite......\n"));
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb != NULL && Fcb->Header.PagingIoResource != NULL)
 	{
@@ -1170,7 +1169,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForModWrite(__inout PFLT_CALLBACK_DATA Dat
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreReleaseForModWrite......\n");
+	KdPrint(("PtPreReleaseForModWrite......\n"));
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 	if (Fcb && Fcb->Header.PagingIoResource != NULL)
 	{

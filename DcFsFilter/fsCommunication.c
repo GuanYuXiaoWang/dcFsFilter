@@ -91,7 +91,7 @@ NTSTATUS FLTAPI ConnectNotify(
 		}
 	}
 
-	DbgPrint("Recv Connect Msg, process id=0x%x......\n", ProcessID);
+	KdPrint(("Recv Connect Msg, process id=0x%x......\n", ProcessID));
 
 	return Status;
 }
@@ -120,7 +120,7 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 	{
 		if (!g_FltPort || !g_FltClientPort)
 		{
-			DbgPrint("comm parameter error");
+			KdPrint(("comm parameter error"));
 			__leave;
 		}
 
@@ -142,18 +142,18 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 				{
 					//if (CheckDebugFlag(DEBUG_FLAG_PRINT_DOGID_AND_KEY))
 					{
-						DbgPrint("[DogID] %d - 0x%x", DrvData->SystemUser.DogID);
-						DbgPrint("[Key] %hs", DrvData->szbtKey);
+						KdPrint(("[DogID] %d - 0x%x", DrvData->SystemUser.DogID));
+						KdPrint(("[Key] %hs", DrvData->szbtKey));
 					}
 
 					g_bSafeDataReady = TRUE;
 				}
 				else
-					DbgPrint("DogID and Key error");
+					KdPrint(("DogID and Key error"));
 			}
 			else
 			{
-				DbgPrint("DogID and Key already set");
+				KdPrint(("DogID and Key already set"));
 				g_bSafeDataReady = TRUE;
 			}		
 
@@ -166,7 +166,7 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 			break;
 		default:
 		{
-			DbgPrint("cmdType error. cmdType(%d)", cmdType);
+			KdPrint(("cmdType error. cmdType(%d)", cmdType));
 			__leave;
 		}
 		}

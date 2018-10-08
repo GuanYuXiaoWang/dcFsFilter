@@ -44,7 +44,7 @@ LARGE_INTEGER  Li1 = { 1, 0 };
 KSPIN_LOCK g_GeneralSpinLock;
 
 NTKERNELAPI UCHAR * PsGetProcessImageFileName(__in PEPROCESS Process);
-#define PROCESS_NAME_LENGTH 32
+
 BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType)
 {
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
@@ -54,14 +54,14 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	BOOLEAN bFilter = FALSE;
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
-	WCHAR szProcessName[PROCESS_NAME_LENGTH] = { 0 };
+	WCHAR szProcessName[MAX_PATH] = { 0 };
 	UNICODE_STRING strProcessName;
 
 	UNREFERENCED_PARAMETER(pProcType);
 
 	if (!CheckEnv(MINIFILTER_ENV_TYPE_SAFE_DATA))
 	{
-	//	return FALSE;
+		return FALSE;
 	}
 
 	//先判断文件是否为加密文件，再判断访问进程是否为受控进程(可以不区分先后)
@@ -79,10 +79,10 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			*pStatus = STATUS_UNSUCCESSFUL;
 			__leave;
 		}
-		//test
+		/*
 		RtlInitUnicodeString(&strProcessName, szProcessName);
-		strProcessName.Length = PROCESS_NAME_LENGTH * sizeof(WCHAR);
-		strProcessName.MaximumLength = PROCESS_NAME_LENGTH * sizeof(WCHAR);
+		strProcessName.Length = (MAX_PATH - 1)* sizeof(WCHAR);
+		strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
 		*pStatus = FsGetProcessName(ProcessId, &strProcessName);
 		if (!NT_SUCCESS(*pStatus))
 		{
@@ -92,7 +92,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		/*
+		*/
+		if (0 == ProcessId || 4 == ProcessId)
+		{
+			__leave;
+		}
+
 		*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
 		if (!NT_SUCCESS(*pStatus))
 		{
@@ -100,11 +105,15 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		}
 
 		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
+		if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
+		{
+			Process = NULL;
+			__leave;
+		}
 		if (!IsControlProcess(ProcessName))
 		{
 			__leave;
 		}
-		*/
 
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
@@ -122,15 +131,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		DbgPrint("FileName=%S....\n", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none");
-#ifdef TEST
-		if (0 == RtlCompareUnicodeString(&(FileInfo->Name), &unicodeString, TRUE))
+		if (0 == wcsicmp(szExName, L"txt") && 0 == _stricmp(ProcessName, "notepad.exe"))
 		{
-			bFilter = TRUE;
+			*pProcType = FILE_TXT_ACCESS;
 		}
-#else
+		KdPrint(("ProcessName=%s,FileName=%S....\n", ProcessName, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none"));
 		bFilter = TRUE;
-#endif
 	}
 	__finally
 	{
@@ -557,7 +563,7 @@ BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pF
 			{
 				*pFcb = pContext->Fcb;
 				bRet = TRUE;
-				DbgPrint("Find Fcb:%S...\n", pTempFile);
+				KdPrint(("Find Fcb:%S...\n", pTempFile));
 				break;
 			}
 		}
@@ -884,7 +890,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 	SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 	SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_IN_FSP);
 
-	DbgPrint("DispatchWorkItem,function=0x%x......\n", IrpContext->MajorFunction);
+	KdPrint(("DispatchWorkItem,function=0x%x......\n", IrpContext->MajorFunction));
 
 	while (TRUE)
 	{
@@ -1569,7 +1575,7 @@ NTSTATUS FsOverWriteFile(__in PFILE_OBJECT FileObject, __in PDEFFCB Fcb, __in LA
 			SetFlag(Fcb->FcbState, FCB_STATE_NOTIFY_RESIZE_STREAM);
 			if (!CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, FALSE))
 			{
-				DbgPrint("error:CcPurgeCacheSection failed...\n");
+				KdPrint(("error:CcPurgeCacheSection failed...\n"));
 			}
 			ClearFlag(Fcb->FcbState, FCB_STATE_NOTIFY_RESIZE_STREAM);
 
@@ -1631,7 +1637,7 @@ NTSTATUS FsCloseGetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 	{
 		if (!NT_SUCCESS(Status))
 		{
-			DbgPrint("FsCloseGetFileBasicInfo failed(0x%x)....\n", Status);
+			KdPrint(("FsCloseGetFileBasicInfo failed(0x%x)....\n", Status));
 		}
 		if (NULL != NewData)
 		{
@@ -1669,7 +1675,7 @@ NTSTATUS FsCloseSetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 	{
 		if (!NT_SUCCESS(Status))
 		{
-			DbgPrint("FsCloseSetFileBasicInfo failed(0x%x)....\n",Status);
+			KdPrint(("FsCloseSetFileBasicInfo failed(0x%x)....\n",Status));
 		}
 		if (NewData != NULL)
 		{
@@ -1984,48 +1990,44 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 	PFILE_OBJECT FileObject = FltObjects->FileObject;
 	HANDLE hProcessId = NULL;
 	PEPROCESS Process = NULL;
-	PUCHAR ProcessName = NULL;
 	WCHAR szExName[8] = { 0 };
 	BOOLEAN bTrue = FALSE;
 	ULONG length = 0;
 	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L"1.um"};
+	WCHAR wszName[5] = {L".xls"};
+	WCHAR szProcessName[MAX_PATH] = { 0 };
+	UNICODE_STRING strProcessName;
+	HANDLE ProcessId = NULL;
 	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
 	__try
 	{
+		ProcessId = PsGetCurrentProcessId();
+		RtlInitUnicodeString(&strProcessName, szProcessName);
+		strProcessName.Length = MAX_PATH * sizeof(WCHAR);
+		strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
+		status = FsGetProcessName(ProcessId, &strProcessName);
+		if (!NT_SUCCESS(status))
+		{
+			__leave;
+		}
+
 		if (FileObject && (NULL != FileObject->FileName.Buffer))
 		{
 			length = FileObject->FileName.Length + sizeof(WCHAR);
 			pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, length, 'aaaa');
 			RtlZeroMemory(pwszName, length);
 			RtlCopyMemory(pwszName, FileObject->FileName.Buffer, FileObject->FileName.Length);
-			if (NULL != wcsstr(pwszName, wszName))
+			if (NULL == wcsstr(pwszName, wszName))
 			{
-				hProcessId = PsGetCurrentProcessId();
-				if (NULL != hProcessId)
-				{
-					status = PsLookupProcessByProcessId(hProcessId, &Process);
-					if (NT_SUCCESS(status))
-					{
-						ProcessName = PsGetProcessImageFileName(Process);
-					}
-					else
-					{
-						__leave;
-					}
-				}
-				else
-				{
-					__leave;
-				}
+				__leave;
 			}
 		}
 
-		if (ProcessName && (0 == stricmp("wpp.exe", ProcessName) || 
-			0 == stricmp("FileIRP.exe", ProcessName)))
+		if (0 == wcsicmp(L"360rp.exe", strProcessName.Buffer) ||
+			0 == wcsicmp(L"FileIRP.exe", strProcessName.Buffer))
 		{
 			bTrue = TRUE;
-			DbgPrint("funtionName=%s, File Name=%S...\n", FunctionName, FileObject->FileName.Buffer ? FileObject->FileName.Buffer : L"none");
+			KdPrint(("processName=%S, funtionName=%s, File Name=%S...\n", strProcessName.Buffer, FunctionName, pwszName));
 		}
 	}
 	__finally
@@ -2068,10 +2070,9 @@ BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * 
 			break;
 		}
 		nIndex--;
-
 	};
 
-	if (nIndex <0)
+	if (nIndex < 0)
 		return FALSE;
 
 	if (pFileName[nIndex] == L'\\')
@@ -2080,7 +2081,7 @@ BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * 
 		return FALSE;
 	nIndex++;
 
-	if (FilePath->Length / sizeof(WCHAR)-nIndex > 49)
+	if (FilePath->Length / sizeof(WCHAR)-nIndex > 32)
 		return FALSE;
 
 	while ((USHORT)nIndex < FilePath->Length / sizeof(WCHAR) && pFileName[nIndex] != 0)
@@ -2513,7 +2514,7 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 
 		if (MINIFILTER_ENV_TYPE_NULL == ulMinifilterEnvType)
 		{
-			DbgPrint("MinifilterEnvType error");
+			KdPrint(("MinifilterEnvType error"));
 			__leave;
 		}
 
@@ -2681,7 +2682,7 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 		}
 		else
 		{
-			DbgPrint("Get Object Id failed(0x%x)....\n", ntStatus);
+			KdPrint(("Get Object Id failed(0x%x)....\n", ntStatus));
 		}
 	}
 	if (NULL != NewData)
@@ -2746,7 +2747,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		return ntStatus;
 	}
-	DbgPrint("FsFileInfoChangedNotify begin....\n");
+	KdPrint(("FsFileInfoChangedNotify begin....\n"));
 	
 	__try
 	{
@@ -2829,7 +2830,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 	}
 
-	DbgPrint("FsFileInfoChangedNotify end....\n");
+	KdPrint(("FsFileInfoChangedNotify end....\n"));
 	return ntStatus;
 }
 //获取进程完整路径名
@@ -2872,6 +2873,12 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 		{
 			__leave;
 		}
+
+		if (RetLength > MAX_PATH || RetLength <= sizeof (UNICODE_STRING))
+		{
+			KdPrint(("QueryInformationProcess:Retlength > %d...\n", MAX_PATH));
+			__leave;
+		}
 		BufferLength = RetLength - sizeof (UNICODE_STRING);
 		Buffer = ExAllocatePoolWithTag(PagedPool, RetLength, 'proc');
 		if (NULL == Buffer)
@@ -2880,10 +2887,14 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 			__leave;
 		}
 		ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryInformationProcess(hProcess, ProcessImageFileName, Buffer, RetLength, &RetLength);
-		if (NT_SUCCESS(ntStatus))
+		if (NT_SUCCESS(ntStatus) && Buffer != NULL)
 		{
 			ImagePath = (PUNICODE_STRING)Buffer;
 			//RtlCopyUnicodeString(ProcessImagePath, ImagePath);
+			if (ImagePath->Length / sizeof(WCHAR) > MAX_PATH)
+			{
+				__leave;
+			}
 			//取进程名
 			pTmp = ImagePath->Buffer + ImagePath->Length / sizeof(WCHAR);
 			for (i = 0; i < ImagePath->Length / sizeof(WCHAR); i++)
@@ -2896,6 +2907,7 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 				pTmp -= 1;
 				ProcessNameLength++;
 			}
+			ProcessImageName->Length = ProcessNameLength * sizeof(WCHAR);
 		}
 	}
 	__finally

@@ -117,7 +117,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForCcFlush(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreAcquireForCcFlush......\n");
+	KdPrint(("PtPreAcquireForCcFlush......\n"));
 
 	if (Fcb && Fcb->Header.PagingIoResource != NULL)
 	{
@@ -147,7 +147,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForCcFlush(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	DbgPrint("PtPreReleaseForCcFlush......\n");
+	KdPrint(("PtPreReleaseForCcFlush......\n"));
 	if (Fcb && Fcb->Header.PagingIoResource != NULL)
 	{
 		ExReleaseResource(Fcb->Header.PagingIoResource);

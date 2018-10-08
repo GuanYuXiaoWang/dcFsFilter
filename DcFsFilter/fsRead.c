@@ -29,7 +29,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 #ifdef TEST
 	if (IsTest(Data, FltObjects, "PtPreRead"))
 	{
-		KdBreakPoint();
+		KdPrint(("read:offset=%d, byteCount=%d....\n", Data->Iopb->Parameters.Read.ByteOffset, Data->Iopb->Parameters.Read.Length));
 	}
 	
 #endif
@@ -44,7 +44,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	KdBreakPoint();
 #endif
 
-	DbgPrint("PtPreRead begin......\n");
+	KdPrint(("PtPreRead begin......\n"));
 
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
@@ -66,7 +66,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 			}
 			else
 			{
-				DbgPrint("read MinorFunction=%d...\n", Data->Iopb->MinorFunction);
+				KdPrint(("read MinorFunction=%d...\n", Data->Iopb->MinorFunction));
 				FltStatus = FsCommonRead(Data, FltObjects, IrpContext);
 			}
 		}
@@ -91,7 +91,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 		IoSetTopLevelIrp(NULL);
 	}
 	FsRtlExitFileSystem();
-	DbgPrint("PtPreRead end......\n");
+	KdPrint(("PtPreRead end......\n"));
 	return FltStatus;
 }
 
@@ -480,7 +480,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 					{
 						try_return(bPostIrp = TRUE);
 					}
-					DbgPrint("CcCopyRead:%s...\n", SystemBuffer);
+					KdPrint(("CcCopyRead:%s...\n", SystemBuffer));
 					
 					Status = Data->IoStatus.Status;
 					try_return(Status);
@@ -499,16 +499,13 @@ try_exit:NOTHING;
 			if (!bPostIrp)
 			{
 				ActualBytesRead = (ULONG)Data->IoStatus.Information;
-				if (!bPagingIo)
+				if (bSynchronousIo && !bPagingIo)
 				{
-					if (bSynchronousIo)
-					{
-						FileObject->CurrentByteOffset.QuadPart = StartByte + ActualBytesRead;
-					}
-					if (NT_SUCCESS(Status))
-					{
-						SetFlag(FileObject->Flags, FO_FILE_FAST_IO_READ);
-					}
+					FileObject->CurrentByteOffset.QuadPart = StartByte + ActualBytesRead;
+				}
+				if (NT_SUCCESS(Status) && !bPagingIo)
+				{
+					SetFlag(FileObject->Flags, FO_FILE_FAST_IO_READ);
 				}
 			}
 			else
@@ -522,7 +519,7 @@ try_exit:NOTHING;
 		}
 		if (!NT_SUCCESS(Status))
 		{
-			DbgPrint("read failed(0x%x)...\n", Status);
+			KdPrint(("read failed(0x%x)...\n", Status));
 		}
 	}
 	__finally
@@ -722,7 +719,7 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 			//SwapBuffer
 			//DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
 			DecBuf(IoContext->SwapBuffer, orgData->IoStatus.Information, IoContext->FileHeader);
-			DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
+			KdPrint(("FileText=%s.....\n", IoContext->SwapBuffer));
 		}
 		RtlCopyMemory(IoContext->SystemBuffer, IoContext->SwapBuffer, ByteCount);
 	}
