@@ -111,7 +111,7 @@ FLT_PREOP_CALLBACK_STATUS FsFastIoWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	PLARGE_INTEGER FileOffset = &Iopb->Parameters.Write.ByteOffset;
 	ULONG LockKey = Iopb->Parameters.Write.Key;
 	ULONG Length = Iopb->Parameters.Write.Length;
-	PVOID Buffer = FsMapUserBuffer(Data);
+	PVOID Buffer = FsMapUserBuffer(Data, NULL);
 
 	BOOLEAN bWait = CanFsWait(Data);
 	BOOLEAN bAcquireResource = FALSE;
@@ -627,8 +627,19 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			PMDL newMdl = NULL;
 			ULONG_PTR RetBytes = 0;
 			ULONG SectorSize = volCtx->ulSectorSize;
+			BOOLEAN bFileMap = FALSE;
 
-			SystemBuffer = FsMapUserBuffer(Data);
+			if (NULL == Fcb->CcFileObject)
+			{
+				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject);
+				if (!NT_SUCCESS(Status))
+				{
+					try_return(NOTHING);
+				}
+				bFileMap = TRUE;
+			}
+
+			SystemBuffer = FsMapUserBuffer(Data, NULL);
 			//修正大小变成扇区整数倍
 			//WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen,CRYPT_UNIT); error
 
@@ -709,7 +720,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			IrpContext->pIoContext->FltObjects = FltObjects;
 			IrpContext->pIoContext->Instance = FltObjects->Instance;
 			Status = FsRealWriteFile(FltObjects, IrpContext, newBuf, NewByteOffset, ByteCount, &RetBytes);
-
+			if (bFileMap)
+			{
+				FsFreeCcFileInfo(&Fcb->CcFileHandle, &Fcb->CcFileObject);
+			}
 			if (bWait)
 			{
 				Data->IoStatus.Status = Status;
@@ -792,7 +806,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			bWriteFileSizeToDirent = BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WRITE_THROUGH);
 			if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 			{
-				SystemBuffer = FsMapUserBuffer(Data);
+				SystemBuffer = FsMapUserBuffer(Data, NULL);
 				if (!CcCopyWrite(FileObject,
 					(PLARGE_INTEGER)&StartByte,
 					(ULONG)ByteCount,

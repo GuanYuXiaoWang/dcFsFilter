@@ -85,11 +85,16 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	PDEF_CCB Ccb = NULL;
 	BOOLEAN bAcquireFcb = FALSE;
 	LARGE_INTEGER TruncateSize;
-	PFILE_OBJECT FileObject = FltObjects->FileObject;
+	PFILE_OBJECT FileObject = NULL;
 	IO_STATUS_BLOCK IoStatus = { 0 };
 	BOOLEAN bPureCache = FALSE;
 	ULONG i = 0;
 
+	if (NULL == FltObjects || NULL == FltObjects->FileObject)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	FileObject = FltObjects->FileObject;
 	Fcb = FileObject->FsContext;
 	Ccb = FileObject->FsContext2;
 	//
@@ -100,6 +105,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	//
 	__try
 	{
+		if (NULL == Fcb)
+		{
+			__leave;
+		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
 		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart));
 		if (1 == Fcb->OpenCount)
@@ -186,7 +195,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 
-					if (Fcb->CcFileObject && Fcb->FileAcessType != FILE_TXT_ACCESS)
+					if (Fcb->CcFileObject /*&& Fcb->FileAcessType != FILE_TXT_ACCESS*/)
 					{
 						ObDereferenceObject(Fcb->CcFileObject);
 						FltClose(Fcb->CcFileHandle);

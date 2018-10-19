@@ -176,11 +176,26 @@ FLT_POSTOP_CALLBACK_STATUS PtPostLockControl(__inout PFLT_CALLBACK_DATA Data, __
 FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	PFILE_OBJECT FileObject = NULL;
+	PDEFFCB Fcb = NULL;
 	BOOLEAN bFcbAcquired = FALSE;
 	BOOLEAN bOplockPostIrp = FALSE;
 	PFLT_CALLBACK_DATA OrgData = NULL;
 
+	if (NULL == FltObjects)
+	{
+		FltObjects = &IrpContext->FltObjects;
+	}
+	if (FltObjects != NULL)
+	{
+		FileObject = FltObjects->FileObject;
+	}
+	else
+	{
+		FileObject = Data->Iopb->TargetFileObject;
+	}
+
+	Fcb = FileObject->FsContext;
 	__try
 	{
 		if (NULL == Fcb || Fcb->OpenCount <= 1)

@@ -72,7 +72,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					}
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 				}
-				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) /*|| Fcb->FileAcessType != FILE_TXT_ACCESS*/)
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 					FsFreeFcb(Fcb, NULL);

@@ -77,6 +77,10 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 	{
 		FileObject = FltObjects->FileObject;
 	}
+	if (NULL == FileObject)
+	{
+		return STATUS_SUCCESS;
+	}
 	
 	Fcb = FileObject->FsContext;
 	do 

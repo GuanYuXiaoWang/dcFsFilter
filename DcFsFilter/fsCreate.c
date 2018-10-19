@@ -22,6 +22,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	if (IsTest(Data, FltObjects, "PtPreCreate"))
 	{
 		//KdBreakPoint();
+		KdPrint(("Is test...\n"));
 	}
 #endif
 
@@ -191,7 +192,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	{
 		if (KernelMode == Data->RequestorMode)
 		{
-			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+			//try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		if (FlagOn(pIopb->OperationFlags, SL_OPEN_PAGING_FILE))
 		{

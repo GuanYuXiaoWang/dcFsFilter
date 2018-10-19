@@ -66,7 +66,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 			}
 			else
 			{
-				KdPrint(("read MinorFunction=%d...\n", Data->Iopb->MinorFunction));
 				FltStatus = FsCommonRead(Data, FltObjects, IrpContext);
 			}
 		}
@@ -358,8 +357,19 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			ULONG_PTR ZeroOffset = 0;
 			ULONG_PTR ZeroLength = 0;
+			BOOLEAN bFileMap = FALSE;
 
-			SystemBuffer = FsMapUserBuffer(Data);
+			if (NULL == Fcb->CcFileObject)
+			{
+				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject);
+				if (!NT_SUCCESS(Status))
+				{
+					try_return(NOTHING);
+				}
+				bFileMap = TRUE;
+			}
+
+			SystemBuffer = FsMapUserBuffer(Data, NULL);
 			if (ByteRange.QuadPart > ValidDataLength.QuadPart)
 			{
 				if (StartByte < ValidDataLength.QuadPart)
@@ -415,6 +425,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			IrpContext->pIoContext->bEnFile = Fcb->bEnFile;
 
 			Status = FsRealReadFile(FltObjects, IrpContext, newBuf, NewByteOffset, readLen, &RetBytes);
+			if (bFileMap)
+			{
+				FsFreeCcFileInfo(&Fcb->CcFileHandle, &Fcb->CcFileObject);
+			}
 			if (bWait)
 			{
 				if (Fcb->bEnFile)
@@ -475,12 +489,32 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				}
 				if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 				{
-					SystemBuffer = FsMapUserBuffer(Data);
-					if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
+					ULONG Length = 0;
+					PVOID Buffer = NULL;
+					SystemBuffer = FsMapUserBuffer(Data, &Length);
+					__try
 					{
-						try_return(bPostIrp = TRUE);
+						if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
+						{
+							try_return(bPostIrp = TRUE);
+						}
 					}
-					KdPrint(("CcCopyRead:%s...\n", SystemBuffer));
+					__except (EXCEPTION_EXECUTE_HANDLER)
+					{
+						KdPrint(("CcCopyRead exception...\n"));
+						Buffer = ExAllocatePoolWithTag(NonPagedPool, ByteCount, 'buff');
+						if (Buffer != NULL)
+						{
+							RtlZeroMemory(Buffer, ByteCount);
+							if (CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, Buffer, &Data->IoStatus))
+							{
+								RtlCopyMemory(SystemBuffer, Buffer, ByteCount);
+							}
+							ExFreePoolWithTag(Buffer, 'buff');
+						}
+					}
+				
+					//KdPrint(("CcCopyRead:%s...\n", SystemBuffer));
 					
 					Status = Data->IoStatus.Status;
 					try_return(Status);
@@ -597,7 +631,7 @@ FLT_PREOP_CALLBACK_STATUS FsFastIoRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	BOOLEAN bWait = FltIsOperationSynchronous(Data);
 	PIO_STATUS_BLOCK IoStatus = &Data->IoStatus;
 
-	PVOID Buffer = FsMapUserBuffer(Data);
+	PVOID Buffer = FsMapUserBuffer(Data, NULL);
 	//Buffer == NULL???
 	Fcb = FileObject->FsContext;
 	Ccb = FileObject->FsContext2;
@@ -719,7 +753,7 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 			//SwapBuffer
 			//DbgPrint("FileText=%s.....\n", IoContext->SwapBuffer);
 			DecBuf(IoContext->SwapBuffer, orgData->IoStatus.Information, IoContext->FileHeader);
-			KdPrint(("FileText=%s.....\n", IoContext->SwapBuffer));
+			//KdPrint(("FileText=%s.....\n", IoContext->SwapBuffer));
 		}
 		RtlCopyMemory(IoContext->SystemBuffer, IoContext->SwapBuffer, ByteCount);
 	}

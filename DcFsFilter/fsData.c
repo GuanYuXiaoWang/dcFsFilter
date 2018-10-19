@@ -135,7 +135,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			*pProcType = FILE_TXT_ACCESS;
 		}
-		KdPrint(("ProcessName=%s,FileName=%S....\n", ProcessName, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none"));
+		KdPrint(("ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessName, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 	}
 	__finally
@@ -905,7 +905,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 		{
 			IoSetTopLevelIrp((PIRP)Data);
 		}
-		__try
+		//__try
 		{
 			IrpContext->ExceptionStatus = 0;
 			if (NULL != Data)
@@ -963,6 +963,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 				FsCompleteRequest(&IrpContext, NULL, STATUS_SUCCESS, TRUE);
 			}
 		}
+		/*
 		__except (EXCEPTION_EXECUTE_HANDLER)
 		{
 			ExceptionCode = GetExceptionCode();
@@ -975,6 +976,7 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 				FsRaiseStatus(NULL, ExceptionCode);
 			}
 		}
+		*/
 		IoSetTopLevelIrp(NULL);
 		FsRtlExitFileSystem();
 		if (!Retry)
@@ -1182,7 +1184,7 @@ NTSTATUS FsGetFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF
 			}
 			else
 			{
-				IrpContext->createInfo.FileAccess = FILE_WRITE_ACCESS;
+				IrpContext->createInfo.FileAccess = FileInfo.FileAttributes;
 			}
 			RtlCopyMemory(&IrpContext->createInfo.BaseInfo, &FileInfo, sizeof(FILE_BASIC_INFORMATION));
 		}
@@ -1354,29 +1356,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		}
 		else
 		{
-			/*
-			Options = FILE_NON_DIRECTORY_FILE;
-#ifdef USE_CACHE_READWRITE
-			SetFlag(Options, FILE_WRITE_THROUGH);//直接写入
-#endif
-			UNICODE_STRING unicodeString;
-			IO_STATUS_BLOCK IoStatus;
-			RtlInitUnicodeString(&unicodeString, Fcb->wszFile);
-			InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-			status = FltCreateFile(FltObjects->Filter, FltObjects->Instance, &Fcb->CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
-				NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
-			if (!NT_SUCCESS(status))
-			{
-				try_return(status);
-			}
-			status = ObReferenceObjectByHandle(Fcb->CcFileHandle, 0, *IoFileObjectType, KernelMode, &Fcb->CcFileObject, NULL);
-			if (!NT_SUCCESS(status))
-			{
-				FltClose(Fcb->CcFileHandle);
-				Fcb->CcFileHandle = NULL;
-				try_return(status);
-			}
-			*/
 			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
 		}
@@ -1780,7 +1759,7 @@ VOID FsProcessException(IN OUT PDEF_IRP_CONTEXT *IrpContext OPTIONAL, IN OUT PFL
 	}
 }
 
-PVOID FsMapUserBuffer(IN OUT PFLT_CALLBACK_DATA Data)
+PVOID FsMapUserBuffer(__inout PFLT_CALLBACK_DATA Data, __inout PULONG RetLength)
 {
 	NTSTATUS Status;
 	PMDL pMdl = NULL;
@@ -1803,6 +1782,10 @@ PVOID FsMapUserBuffer(IN OUT PFLT_CALLBACK_DATA Data)
 	}
 	pMdl = *ppMdl;
 	pBuffer = *ppBuffer;
+	if (RetLength != NULL)
+	{
+		*RetLength = *Length;
+	}
 
 	if (NULL == pMdl)
 	{
@@ -1813,6 +1796,12 @@ PVOID FsMapUserBuffer(IN OUT PFLT_CALLBACK_DATA Data)
 	{
 		FsRaiseStatus(NULL, STATUS_INSUFFICIENT_RESOURCES);
 	}
+	if (RetLength != NULL)
+	{
+		*RetLength = *Length;
+	}
+	KdPrint(("[%s]buffer=0x%x, SystemBuffer=0x%x, Length=%d...\n", __FUNCTION__, pBuffer, pSystemBuffer, *Length));
+	
 	return pSystemBuffer;
 }
 
@@ -2022,9 +2011,9 @@ BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjec
 				__leave;
 			}
 		}
-
-		if (0 == wcsicmp(L"360rp.exe", strProcessName.Buffer) ||
-			0 == wcsicmp(L"FileIRP.exe", strProcessName.Buffer))
+		KdPrint(("-------Test:File:%S. Process:%S ...\n", pwszName, strProcessName.Buffer));
+		if (0 == wcsicmp(L"NTRtScan.exe", strProcessName.Buffer) ||
+			0 == wcsicmp(L"coreServiceShell.exe", strProcessName.Buffer))
 		{
 			bTrue = TRUE;
 			KdPrint(("processName=%S, funtionName=%s, File Name=%S...\n", strProcessName.Buffer, FunctionName, pwszName));
@@ -2812,9 +2801,14 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (FindFcb(Data, pFileName, &pFcb))
 		{
+			KdPrint(("Find Fcb:%S...\n", pFcb->wszFile));
+
 			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			//如果文件正在被其他程序打开，create时是否有权限？
-			FsFreeFcb(pFcb, NULL);
+			//if (FILE_TXT_ACCESS == pFcb->FileAcessType)
+			{
+				FsFreeFcb(pFcb, NULL);
+			}
 		}
 	}
 	__finally
@@ -2927,4 +2921,47 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 	}
 
 	return ntStatus;
+}
+
+NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout  PVOID * CcFileObject)
+{
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	UNICODE_STRING unicodeString;
+	IO_STATUS_BLOCK IoStatus;
+	OBJECT_ATTRIBUTES ob;
+	ULONG Options = FILE_NON_DIRECTORY_FILE;
+	SetFlag(Options, FILE_WRITE_THROUGH);
+	__try
+	{
+		RtlInitUnicodeString(&unicodeString, FileName);
+		InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+		status = FltCreateFile(FltObject->Filter, FltObject->Instance, CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
+			NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
+		if (!NT_SUCCESS(status))
+		{
+			__leave;
+		}
+		status = ObReferenceObjectByHandle(*CcFileHandle, 0, *IoFileObjectType, KernelMode, CcFileObject, NULL);
+		if (!NT_SUCCESS(status))
+		{
+			FltClose(*CcFileHandle);
+			*CcFileHandle = NULL;
+			__leave;
+		}
+	}
+	__finally
+	{
+	}
+	return status;
+}
+
+VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
+{
+	if (*CcFileObject != NULL)
+	{
+		ObDereferenceObject(*CcFileObject);
+		FltClose(*CcFileHandle);
+	}
+	*CcFileObject = NULL;
+	*CcFileHandle = NULL;
 }
