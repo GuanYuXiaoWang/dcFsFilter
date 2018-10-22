@@ -12,6 +12,7 @@
 #include "FsFastIo.h"
 #include "fsFlush.h"
 #include "fsCommunication.h"
+#include "threadMgr.h"
 
 PFLT_FILTER gFilterHandle = NULL;
 
@@ -472,6 +473,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 	UNREFERENCED_PARAMETER(pRegistryPath);
 	
 	InitData();
+	InitThreadMgr(pDeviceObject);
 
 	status = FltRegisterFilter(pDeviceObject, &FilterRegistration, &gFilterHandle);
 	if (NT_SUCCESS(status))
@@ -482,18 +484,19 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT pDeviceObject, PUNICODE_STRING pRegistryPath
 			g_bUnloading = TRUE;
 			g_bAllModuleInitOk = FALSE;
 			UnInitData();
+			UnInitThreadMgr();
 			FltUnregisterFilter(gFilterHandle);
 		}
 		else
 		{
 			InitCommunication(gFilterHandle);
 			g_bAllModuleInitOk = TRUE;
-			KdPrint(("DriverEntry ok...\n"));
 		}
 	}
 	else
 	{
 		UnInitData();
+		UnInitThreadMgr();
 	}
 	
 	return status;
@@ -538,6 +541,7 @@ Returns the final status of this operation.
 
 	UnInitData();
 	UnInitCommunication();
+	UnInitThreadMgr();
 
 	return STATUS_SUCCESS;
 }

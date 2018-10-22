@@ -411,19 +411,19 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 	BOOLEAN bFind = FALSE;
 	LIST_ENTRY* listEntry = NULL;
 	PREG_KEY_INFO pItem = NULL;
-	UNICODE_STRING strFilterFileType;
+	UNICODE_STRING strControlSysList;
 	BOOLEAN bAcquireResource = FALSE;
 	if (IsListEmpty(&g_FilterFileTypeList))
 	{
 		return FALSE;
 	}
-	RtlInitUnicodeString(&strFilterFileType, pFileExt);
+	RtlInitUnicodeString(&strControlSysList, pFileExt);
 
 	bAcquireResource = ExAcquireResourceShared(&g_ControlSysResource, TRUE);
-	for (listEntry = g_FilterFileTypeList.Flink; listEntry != &g_FilterFileTypeList; listEntry = listEntry->Flink)
+	for (listEntry = g_ControlSysList.Flink; listEntry != &g_ControlSysList; listEntry = listEntry->Flink)
 	{
 		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
-		if (pItem && 0 == wcsicmp(strFilterFileType.Buffer, pItem->keyValue))
+		if (pItem && 0 == wcsicmp(strControlSysList.Buffer, pItem->keyValue))
 		{
 			bFind = TRUE;
 			break;

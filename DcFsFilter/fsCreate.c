@@ -186,6 +186,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	{
 		pFileObject = FltObjects->FileObject;
 	}
+	if (NULL == pFileObject)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 	pRelatedFileObject = pFileObject->RelatedFileObject;
 	pFileName = &pFileObject->FileName;
 	__try
@@ -292,7 +296,23 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		IrpContext->uSectorsPerAllocationUnit = pVolCtx->uSectorsPerAllocationUnit;
 
 		Status = STATUS_SUCCESS;
-		if (IsMyFakeFcb(pFileObject) || FindFcb(Data, pFileObject->FileName.Buffer, &pFcb))
+		if (IsMyFakeFcb(pFileObject))
+		{
+			pFcb = pFileObject->FsContext;
+		}
+		else
+		{
+			FindFcb(Data, pFileObject->FileName.Buffer, &pFcb);
+		}
+		if (pFcb)
+		{
+			if (pFcb->ProcessID != PsGetCurrentProcessId() && 0 == pFcb->OpenCount)
+			{
+				FsFreeFcb(pFcb, NULL);
+				pFcb = NULL;
+			}
+		}
+		if (pFcb)
 		{
 			Status = CreateFileByExistFcb(Data, FltObjects, pFcb, IrpContext);
 			if (Status == STATUS_PENDING)

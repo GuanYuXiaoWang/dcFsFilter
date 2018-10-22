@@ -38,6 +38,7 @@ BOOLEAN  IsControlProcess(__in PUCHAR pProcessName);
 BOOLEAN IsControlProcessEx(__in PWCHAR pProcessName);
 BOOLEAN IsControlFileType(__in PWCHAR pFileExt, __in USHORT Length);
 BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length);
+BOOLEAN IsControlSys(__in PWCHAR pFileExt, __in USHORT Length);
 
 #ifdef __cplusplus
 }

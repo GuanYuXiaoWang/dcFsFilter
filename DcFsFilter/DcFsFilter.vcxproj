@@ -152,7 +152,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>_X86_=1;i386=1;_WIN32_WINNT=_WIN32_WINNT_VISTA;NTDDI_VERSION=NTDDI_VISTA;UNICODE;USE_CACHE_READWRITE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;_WIN32_WINNT=_WIN32_WINNT_VISTA;NTDDI_VERSION=NTDDI_VISTA;UNICODE;USE_CACHE_READWRITE;DBG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>F:\WinDDK\7600.16385.1\inc\ddk;F:\WinDDK\7600.16385.1\inc\crt;F:\WinDDK\7600.16385.1\inc\api</AdditionalIncludeDirectories>
       <CallingConvention>StdCall</CallingConvention>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -274,6 +274,7 @@
     <ClCompile Include="fsWrite.c" />
     <ClCompile Include="Head.cpp" />
     <ClCompile Include="regMgr.c" />
+    <ClCompile Include="threadMgr.c" />
     <ClCompile Include="volumeContext.c" />
   </ItemGroup>
   <ItemGroup>
@@ -298,6 +299,7 @@
     <ClInclude Include="Head.h" />
     <ClInclude Include="nodetype.h" />
     <ClInclude Include="regMgr.h" />
+    <ClInclude Include="threadMgr.h" />
     <ClInclude Include="userkernel.h" />
     <ClInclude Include="volumeContext.h" />
   </ItemGroup>

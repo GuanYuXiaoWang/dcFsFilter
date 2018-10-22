@@ -224,6 +224,7 @@ typedef struct tagDEFFCB
 	ULONG FileAllOpenCount;
 	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
+	HANDLE ProcessID;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////

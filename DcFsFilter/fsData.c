@@ -15,6 +15,7 @@
 #include "EncFile.h"
 #include "regMgr.h"
 #include "fsControl.h"
+#include "threadMgr.h"
 
 NPAGED_LOOKASIDE_LIST  g_IrpContextLookasideList;
 NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
@@ -93,26 +94,35 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		*/
-		if (0 == ProcessId || 4 == ProcessId)
+		if (0 == ProcessId)
 		{
 			__leave;
 		}
+		if (4 == ProcessId)
+		{
+			if (!IsIn(PsGetCurrentThreadId()))
+			{
+				__leave;
+			}
+		}
+		else
+		{
+			*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
+			if (!NT_SUCCESS(*pStatus))
+			{
+				__leave;
+			}
 
-		*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
-		if (!NT_SUCCESS(*pStatus))
-		{
-			__leave;
-		}
-
-		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
-		if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
-		{
-			Process = NULL;
-			__leave;
-		}
-		if (!IsControlProcess(ProcessName))
-		{
-			__leave;
+			ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
+			if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
+			{
+				Process = NULL;
+				__leave;
+			}
+			if (!IsControlProcess(ProcessName))
+			{
+				__leave;
+			}
 		}
 
 		//判断文件后缀名
@@ -130,12 +140,9 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		if (!IsControlFileType(szExName, length))
 		{
 			__leave;
-		}
-		if (0 == wcsicmp(szExName, L"txt") && 0 == _stricmp(ProcessName, "notepad.exe"))
-		{
-			*pProcType = FILE_TXT_ACCESS;
-		}
-		KdPrint(("ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessName, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
+		}	
+		
+		KdPrint(("PID=%d, ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessId, ProcessName ? ProcessName : "none", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 	}
 	__finally
@@ -1272,6 +1279,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
+		Fcb->ProcessID = PsGetCurrentProcessId();
 
 		FltInitializeOplock(&Fcb->Oplock);
 		Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
