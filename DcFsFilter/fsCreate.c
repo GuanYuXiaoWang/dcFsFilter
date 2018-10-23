@@ -338,7 +338,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			if (!NT_SUCCESS(Status) || IrpContext->FltStatus != FLT_PREOP_COMPLETE)
 			{
 				KdPrint(("CreateFileByNonExistFcb failed(0x%x), fltStatus=%d...\n", Status, IrpContext->FltStatus));
+#ifndef REAL_ENCRYPTE
 				IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
+#endif
 				bPostIrp = FALSE;
 			}
 			try_return(FltStatus = IrpContext->FltStatus);
@@ -870,15 +872,16 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			else
 			{
 				Data->IoStatus.Status = Status;
+#ifndef REAL_ENCRYPTE
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+#else
+				try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
+#endif
 			}
 		}
 
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
-		Status = FsGetFileStandardInfo(Data,
-			FltObjects,
-			IrpContext);
-
+		Status = FsGetFileStandardInfo(Data, FltObjects, IrpContext);
 		if (!NT_SUCCESS(Status) || IrpContext->createInfo.Directory)
 		{
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
@@ -891,16 +894,21 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
 		}
 
-		//TODO::非加密文件不过滤
-		//test：原来是加密的，后来被删除了或者直接写，目前是一个新的，那么加密一下（应该监控文件的状态，比如，删除、重命名、修改等，如果删除了，应把Fcb里的状态置零）
+#ifndef REAL_ENCRYPTE
+		if (!IrpContext->createInfo.bEnFile && IrpContext->createInfo.FileSize.QuadPart > 0)
+		{
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+		}
+#else
+		//test：原来是加密的，后来被删除了或覆盖写，目前是一个新的，那么加密一下（应该监控文件的状态，比如，删除、重命名、修改等，如果删除了，应把Fcb里的状态置零）
 		if (Fcb->bEnFile && !IrpContext->createInfo.bEnFile)
  		{
 			//需要重新写入加密头信息
 			Fcb->bWriteHead = FALSE;
 			ClearFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
-			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
-			//try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+			Fcb->FileHeaderLength = 0;
 		}
+#endif
 		if (!IrpContext->createInfo.bNetWork)
 		{
 			FsGetFileObjectIdInfo(Data, FltObjects, IrpContext->createInfo.pStreamObject, Fcb);
@@ -1226,12 +1234,13 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Data->IoStatus.Status = Status;
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
-		//TODO::非加密文件不过滤
+		//非加密文件不过滤
+#ifndef REAL_ENCRYPTE
  		if (!IrpContext->createInfo.bEnFile)
  		{
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
  		}
-
+#endif
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
 			Status = STATUS_ACCESS_DENIED;
@@ -1391,33 +1400,61 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	InitializeObjectAttributes(&ob, FileName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, SecurityDescriptor);
 
 	//尝试去打开一个文件（不创建，如果文件不存在，直接返回）
+	Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
+		FltObjects->Instance,
+		phFile,
+		DesiredAccess,
+		&ob,
+		IoStatus,
+		NULL,
+		FILE_ATTRIBUTE_NORMAL,
+		FILE_SHARE_READ,
+		FILE_OPEN,
+		Options,
+		NULL,
+		0,
+		0
+		);
+	if (!NT_SUCCESS(Status) && STATUS_OBJECT_NAME_NOT_FOUND == Status)
 	{
-		Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
-			FltObjects->Instance,
-			phFile,
-			DesiredAccess,
-			&ob,
-			IoStatus,
-			NULL,
-			FILE_ATTRIBUTE_NORMAL,
-			FILE_SHARE_READ,
-			FILE_OPEN,
-			Options,
-			NULL,
-			0,
-			0
-			);
-		if (!NT_SUCCESS(Status) && STATUS_OBJECT_NAME_NOT_FOUND == Status)
-		{
-			KdPrint(("open file failed(0x%x)...\n", Status));
-			return Status;
-		}
-		if (NT_SUCCESS(Status))
-		{
-			FltClose(*phFile);
-		}
+#ifdef REAL_ENCRYPTE
+// 		{
+// 			ULONG Options = Iopb->Parameters.Create.Options;
+// 			Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
+// 				FltObjects->Instance,
+// 				phFile,
+// 				Iopb->Parameters.Create.SecurityContext->DesiredAccess,
+// 				&ob,
+// 				IoStatus,
+// 				&AllocationSize,
+// 				FileAttributes,
+// 				ShareAccess,
+// 				(Options >> 24) & 0x000000ff,
+// 				Options,
+// 				EaBuffer,
+// 				EaLength,
+// 				Flags
+// 				);
+// 			if (!NT_SUCCESS(Status) && STATUS_OBJECT_NAME_NOT_FOUND == Status)
+// 			{
+// 				KdPrint(("FltCreateFile failed(0x%x)...\n", Status));
+// 				return Status;
+// 			}
+// 			if (NT_SUCCESS(Status))
+// 			{
+// 				FltClose(*phFile);
+// 			}
+// 		}
+#else
+		KdPrint(("open file failed(0x%x)...\n", Status));
+		return Status;
+#endif
 	}
-	
+	else if (NT_SUCCESS(Status))
+	{
+		FltClose(*phFile);
+	}
+
 	Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
 		FltObjects->Instance,
 		phFile,

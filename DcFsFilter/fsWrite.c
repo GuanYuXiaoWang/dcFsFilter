@@ -684,15 +684,14 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			bResouceAcquired = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
 			IrpContext->pIoContext->Wait.Async.Resource2 = Fcb->Resource;
 
-			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
-
-			if (Fcb->bEnFile)
+			//if (Fcb->bEnFile)
 			{
 				if (!Fcb->bWriteHead)
 				{
 					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, volCtx->ulSectorSize, Fcb);
 					if (NT_SUCCESS(Status))
 					{
+						Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 						Fcb->bWriteHead = TRUE;
 						Fcb->bAddHeaderLength = TRUE;
 						SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
@@ -707,6 +706,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				//¼ÓÃÜnewBuf
 				EncBuf(newBuf, ByteCount, Fcb->szFileHead);
 			}
+			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
 
 			IrpContext->FileObject = Fcb->CcFileObject/* BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject*/;
 			IrpContext->pIoContext->Data = Data;

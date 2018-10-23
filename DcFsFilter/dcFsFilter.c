@@ -542,7 +542,6 @@ Returns the final status of this operation.
 	UnInitData();
 	UnInitCommunication();
 	UnInitThreadMgr();
-
 	return STATUS_SUCCESS;
 }
 
