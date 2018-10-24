@@ -85,6 +85,8 @@ BOOLEAN IsInControlSysNameList(
 	__in PETHREAD	pEThread
 	);
 
+VOID Sleep(__in LONGLONG llTimeMilliseconds);
+
 extern PFLT_FILTER gFilterHandle;
 
 #endif

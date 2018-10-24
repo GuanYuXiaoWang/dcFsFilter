@@ -205,6 +205,7 @@ VOID InitData()
 
 VOID UnInitData()
 {
+	ClearFcbList();
 	ExDeleteNPagedLookasideList(&g_FcbLookasideList);
 	ExDeleteNPagedLookasideList(&g_CcbLookasideList);
 	ExDeleteNPagedLookasideList(&g_EResourceLookasideList);
@@ -499,6 +500,32 @@ BOOLEAN RemoveFcbList(WCHAR * pwszFile)
 		}
 	}
 	return bRet;
+}
+
+VOID ClearFcbList()
+{
+	BOOLEAN bAcquireResource = FALSE;
+	PENCRYPT_FILE_FCB pFileFcb = NULL;
+	PLIST_ENTRY pListEntry;
+	PENCRYPT_FILE_FCB pContext = NULL;
+	__try
+	{
+		FsRtlEnterFileSystem();
+		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
+		{
+			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
+			RemoveEntryList(&pContext->listEntry);
+			ExFreeToPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
+		}
+	}
+	__finally
+	{
+		if (bAcquireResource)
+		{
+			ExReleaseResourceLite(&g_FcbResource);
+			FsRtlExitFileSystem();
+		}
+	}
 }
 
 BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pFcb)

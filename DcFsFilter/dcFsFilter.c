@@ -532,16 +532,17 @@ Returns the final status of this operation.
 	g_bUnloading = TRUE;
 	g_bAllModuleInitOk = FALSE;
 
+	UnInitThreadMgr();
+
+	UnInitData();
+	UnInitCommunication();
+
 	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 		("PassThrough!PtUnload: Entered\n"));
 	if (gFilterHandle)
 	{
 		FltUnregisterFilter(gFilterHandle);
 	}
-
-	UnInitData();
-	UnInitCommunication();
-	UnInitThreadMgr();
 
 	return STATUS_SUCCESS;
 }

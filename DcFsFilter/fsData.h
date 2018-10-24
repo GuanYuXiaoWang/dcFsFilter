@@ -68,6 +68,7 @@ extern "C" {
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);
+	VOID ClearFcbList();
 	BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pFcb);
 	BOOLEAN UpdateFcbList(WCHAR * pwszFile, PDEFFCB * pFcb);
 

@@ -79,6 +79,10 @@ BOOLEAN UnInitThreadMgr()
 	__try
 	{
 		GetLock();
+		while (!IsListEmpty(&ms_ListHead))
+		{
+			Sleep(50000);
+		}
 
 		if (ms_bSetThreadNotifyRoutine)
 		{
@@ -87,14 +91,12 @@ BOOLEAN UnInitThreadMgr()
 				KdPrint(("PsRemoveCreateThreadNotifyRoutine failed. (0x%x)", ntStatus));
 		}
 
-		Clear();
-
 		bRet = TRUE;
 	}
 	__finally
 	{
 		FreeLock();
-
+		Clear();
 		ms_ulControlSysNameCount = 0;
 
 		ExDeleteResourceLite(&ms_Lock);
@@ -953,5 +955,25 @@ BOOLEAN IsIn(__in ULONG ulTid)
 		return TRUE;
 	else
 		return FALSE;
+}
+
+VOID Sleep(__in LONGLONG llTimeMilliseconds)
+{
+	LARGE_INTEGER liOneHundredNanoseconds = { 0 };
+
+	if (APC_LEVEL >= KeGetCurrentIrql())
+	{
+		liOneHundredNanoseconds.QuadPart = -1 * llTimeMilliseconds;
+		KeDelayExecutionThread(KernelMode, FALSE, &liOneHundredNanoseconds);
+	}
+	else
+	{
+		do
+		{
+			llTimeMilliseconds--;
+		} while (0 < llTimeMilliseconds);
+	}
+
+	return;
 }
 
