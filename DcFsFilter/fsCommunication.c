@@ -5,6 +5,7 @@
 #include "userkernel.h"
 #include "Head.h"
 #include "EncFile.h"
+#include "regMgr.h"
 
 PFLT_PORT g_FltPort = NULL;
 PFLT_PORT g_FltClientPort = NULL;
@@ -163,6 +164,26 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 			break;
 		}
 		case eSetProcAuthentic:
+			break;
+		case eAppendPolicy:
+		{
+			int i = 0;
+			int nCount = ((PCommandMsg)InputBuffer)->nBytes;
+			PUSER_PROCESSINFO pItem = (PUSER_PROCESSINFO)(((PCommandMsg)InputBuffer)->MsgInfo);
+			for (i; i < nCount; i++)
+			{
+				if ((pItem + i)->bControled)
+				{
+					InsertControlProcess((pItem + i)->wszProcessName, (pItem + i)->length);
+				}
+				else
+				{
+					DeleteControlProcess((pItem + i)->wszProcessName, (pItem + i)->length);
+				}
+			}
+			
+			ntStatus = STATUS_SUCCESS;
+		}
 			break;
 		default:
 		{

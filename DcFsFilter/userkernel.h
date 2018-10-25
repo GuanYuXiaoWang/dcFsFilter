@@ -25,6 +25,14 @@
 	// 加解密KEY长度(字节数)
 #define CRYPTO_KEY_LEN				32
 
+#define SUPPORT_PROCESS_NAME_MAX_LENGTH 32
+typedef struct tagUSER_PROCESSINFO
+{
+	WCHAR wszProcessName[SUPPORT_PROCESS_NAME_MAX_LENGTH];//
+	int length;
+	BOOLEAN bControled;
+}USER_PROCESSINFO, *PUSER_PROCESSINFO;
+
 
 	// 通信相关
 	typedef enum _EWorkState

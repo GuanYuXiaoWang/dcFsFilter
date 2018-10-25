@@ -303,7 +303,7 @@ BOOLEAN IsControlProcess(__in PUCHAR pProcessName)
 	for (listEntry = g_ControlProcessList.Flink; listEntry != &g_ControlProcessList; listEntry = listEntry->Flink)
 	{
 		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
-		if (pItem && 0 == wcsicmp(strControlProcess.Buffer, pItem->keyValue))
+		if (pItem && 0 == wcsnicmp(strControlProcess.Buffer, pItem->keyValue, strControlProcess.Length))
 		{
 			bFind = TRUE;
 			break;
@@ -435,4 +435,143 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 	}
 
 	return bFind;
-}
+ }
+
+ BOOLEAN InsertControlProcess(__in PWCHAR pProcessName, __in USHORT Length)
+ {
+	 BOOLEAN bFind = FALSE;
+	 LIST_ENTRY* listEntry = NULL;
+	 PREG_KEY_INFO pItem = NULL;
+	 BOOLEAN bAcquireResource = FALSE;
+
+	 bAcquireResource = ExAcquireResourceExclusive(&g_ControlProcessResource, TRUE);
+	 for (listEntry = g_ControlProcessList.Flink; listEntry != &g_ControlProcessList; listEntry = listEntry->Flink)
+	 {
+		 pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		 if (pItem && 0 == wcsicmp(pProcessName, pItem->keyValue))
+		 {
+			 bFind = TRUE;
+			 break;
+		 }
+	 }
+
+	if (!bFind)
+	{
+		pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+		if (NULL == pItem)
+		{
+			if (bAcquireResource)
+			{
+				ExReleaseResourceLite(&g_ControlProcessResource);
+			}
+			return FALSE;
+		}
+		RtlZeroMemory(pItem, sizeof(REG_KEY_INFO));
+		pItem->length = Length > KEY_VALUE_LENGTH *sizeof(WCHAR) ? KEY_VALUE_LENGTH *sizeof(WCHAR) : Length;
+		RtlCopyMemory(pItem->keyValue, pProcessName, pItem->length);
+		InsertTailList(&g_ControlProcessList, &pItem->listEntry);
+		KdPrint(("[%s]process name=%S....\n", __FUNCTION__, pProcessName));
+	}
+	
+	 if (bAcquireResource)
+	 {
+		 ExReleaseResourceLite(&g_ControlProcessResource);
+	 }
+	 return TRUE;
+ }
+
+ BOOLEAN DeleteControlProcess(__in PWCHAR pProcessName, __in USHORT Length)
+ {
+	 BOOLEAN bFind = FALSE;
+	 LIST_ENTRY* listEntry = NULL;
+	 PREG_KEY_INFO pItem = NULL;
+	 BOOLEAN bAcquireResource = FALSE;
+
+	 bAcquireResource = ExAcquireResourceExclusive(&g_ControlProcessResource, TRUE);
+	 for (listEntry = g_ControlProcessList.Flink; listEntry != &g_ControlProcessList; listEntry = listEntry->Flink)
+	 {
+		 pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		 if (pItem && 0 == wcsicmp(pProcessName, pItem->keyValue))
+		 {
+			 bFind = TRUE;
+			 RemoveEntryList(listEntry);
+			 ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+			 break;
+		 }
+	 }
+
+	 if (bAcquireResource)
+	 {
+		 ExReleaseResourceLite(&g_ControlProcessResource);
+	 }
+	 return TRUE;
+ }
+
+ BOOLEAN InsertControlFileType(__in PWCHAR pFileType, __in USHORT Length)
+ {
+	 BOOLEAN bFind = FALSE;
+	 LIST_ENTRY* listEntry = NULL;
+	 PREG_KEY_INFO pItem = NULL;
+	 BOOLEAN bAcquireResource = FALSE;
+
+	 bAcquireResource = ExAcquireResourceExclusive(&g_ControlFileTypeResource, TRUE);
+	 for (listEntry = g_ControlFileTypeList.Flink; listEntry != &g_ControlFileTypeList; listEntry = listEntry->Flink)
+	 {
+		 pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		 if (pItem && 0 == wcsicmp(pFileType, pItem->keyValue))
+		 {
+			 bFind = TRUE;
+			 break;
+		 }
+	 }
+
+	 if (!bFind)
+	 {
+		 pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+		 if (NULL == pItem)
+		 {
+			 if (bAcquireResource)
+			 {
+				 ExReleaseResourceLite(&g_ControlFileTypeResource);
+			 }
+			 return FALSE;
+		 }
+		 RtlZeroMemory(pItem, sizeof(REG_KEY_INFO));
+		 pItem->length = Length;
+		 RtlCopyMemory(pItem->keyValue, pFileType, Length);
+		 InsertTailList(&g_ControlFileTypeList, &pItem->listEntry);
+	 }
+
+	 if (bAcquireResource)
+	 {
+		 ExReleaseResourceLite(&g_ControlFileTypeResource);
+	 }
+	 return TRUE;
+ }
+
+ BOOLEAN DeleteControlFileType(__in PWCHAR pFileType, __in USHORT Length)
+ {
+	 BOOLEAN bFind = FALSE;
+	 LIST_ENTRY* listEntry = NULL;
+	 PREG_KEY_INFO pItem = NULL;
+	 BOOLEAN bAcquireResource = FALSE;
+
+	 bAcquireResource = ExAcquireResourceExclusive(&g_ControlFileTypeResource, TRUE);
+	 for (listEntry = g_ControlFileTypeList.Flink; listEntry != &g_ControlFileTypeList; listEntry = listEntry->Flink)
+	 {
+		 pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
+		 if (pItem && 0 == wcsicmp(pFileType, pItem->keyValue))
+		 {
+			 bFind = TRUE;
+			 RemoveEntryList(listEntry);
+			 ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+			 break;
+		 }
+	 }
+
+	 if (bAcquireResource)
+	 {
+		 ExReleaseResourceLite(&g_ControlFileTypeResource);
+	 }
+	 return bFind;
+ }
