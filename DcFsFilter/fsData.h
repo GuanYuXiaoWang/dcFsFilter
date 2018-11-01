@@ -50,6 +50,7 @@ extern "C" {
 	VOID UnInitData();
 
 	BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType);
+	BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID);
 
 	PERESOURCE FsdAllocateResource();
 	BOOLEAN FsIsIrpTopLevel(IN PFLT_CALLBACK_DATA Data);
@@ -143,6 +144,7 @@ extern "C" {
 	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
 	NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
+	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 #ifdef __cplusplus
 }
 #endif

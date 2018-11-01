@@ -110,7 +110,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			__leave;
 		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart));
+		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
 		if (1 == Fcb->OpenCount)
 		{
 			//
@@ -195,7 +195,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 
-					if (Fcb->CcFileObject /*&& Fcb->FileAcessType != FILE_TXT_ACCESS*/)
+					if (Fcb->CcFileObject)
 					{
 						ObDereferenceObject(Fcb->CcFileObject);
 						FltClose(Fcb->CcFileHandle);

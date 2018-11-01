@@ -208,7 +208,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileStreamInformation:
 		case FileNameInformation:
 		case FileEaInformation:
-			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject, 
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject,
 				Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, 
 				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
 			if (!NT_SUCCESS(ntStatus))

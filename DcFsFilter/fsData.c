@@ -50,13 +50,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 {
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
 	HANDLE ProcessId = NULL;
-	PEPROCESS Process = NULL;
-	PUCHAR ProcessName;
 	BOOLEAN bFilter = FALSE;
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
 	WCHAR szProcessName[MAX_PATH] = { 0 };
 	UNICODE_STRING strProcessName;
+	
 
 	UNREFERENCED_PARAMETER(pProcType);
 
@@ -64,9 +63,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	{
 		return FALSE;
 	}
-
 	//先判断文件是否为加密文件，再判断访问进程是否为受控进程(可以不区分先后)
-
 	__try
 	{
 		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
@@ -98,33 +95,11 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		if (4 == ProcessId)
+		if (!IsControlProcessByProcessId(ProcessId))
 		{
-			if (!IsIn(PsGetCurrentThreadId()))
-			{
-				__leave;
-			}
+			__leave;
 		}
-		else
-		{
-			*pStatus = PsLookupProcessByProcessId(ProcessId, &Process);
-			if (!NT_SUCCESS(*pStatus))
-			{
-				__leave;
-			}
-
-			ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
-			if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
-			{
-				Process = NULL;
-				__leave;
-			}
-			if (!IsControlProcess(ProcessName))
-			{
-				__leave;
-			}
-		}
-
+		
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
 		{
@@ -140,10 +115,10 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		if (!IsControlFileType(szExName, length))
 		{
 			__leave;
-		}	
-		
-		KdPrint(("PID=%d, ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessId, ProcessName ? ProcessName : "none", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
+		}
+		KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
+		*pStatus = STATUS_SUCCESS;
 	}
 	__finally
 	{
@@ -151,15 +126,56 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			FltReleaseFileNameInformation(FileInfo);
 		}
-		if (Process != NULL)
-		{
-			ObDereferenceObject(Process);
-		}
 	}
 
 	return bFilter;
 }
 
+BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID)
+{
+	PEPROCESS Process = NULL;
+	PUCHAR ProcessName = NULL;
+	BOOLEAN bControl = FALSE;
+	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
+
+	if (4 == ProcessID)
+	{
+#ifndef REAL_ENCRYPTE
+ 		if (!IsIn(PsGetCurrentThreadId()))
+ 		{
+ 			bControl = FALSE;
+ 		}		
+#endif
+	}
+	else
+	{
+		ntStatus = PsLookupProcessByProcessId(ProcessID, &Process);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			return FALSE;
+		}
+
+		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
+		if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
+		{
+			Process = NULL;
+			return FALSE;
+		}
+		if (!IsControlProcess(ProcessName))
+		{
+			return FALSE;
+		}
+		bControl = TRUE;
+		//KdPrint(("process:%s....\n", ProcessName));
+	}
+
+	if (Process != NULL)
+	{
+		ObDereferenceObject(Process);
+	}
+
+	return bControl;
+}
 
 VOID InitData()
 {
@@ -282,7 +298,7 @@ BOOLEAN FsAcquireFcbForLazyWrite(IN PVOID Fcb, IN BOOLEAN Wait)
 	{
 		return FALSE;
 	}
-	if (NULL == pFcb->Header.PagingIoResource || !ExAcquireResourceSharedLite(pFcb->Header.PagingIoResource, Wait))
+	if (NULL == pFcb->Header.Resource || !ExAcquireResourceSharedLite(pFcb->Header.Resource, Wait))
 	{
 		return FALSE;
 	}
@@ -310,9 +326,9 @@ VOID FsReleaseFcbFromLazyWrite(IN PVOID Fcb)
 		IoSetTopLevelIrp(NULL);
 	}
 	pFcb->LazyWriteThread[uIndex] = NULL;
-	if (pFcb->Header.PagingIoResource)
+	if (pFcb->Header.Resource)
 	{
-		ExReleaseResourceLite(pFcb->Header.PagingIoResource);
+		ExReleaseResourceLite(pFcb->Header.Resource);
 	}
 }
 
@@ -2069,11 +2085,11 @@ BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * 
 		nIndex--;
 	};
 
-	if (nIndex < 0)
+	if (nIndex <= 0)
 		return FALSE;
 
 	if (pFileName[nIndex] == L'\\')
-		return FALSE;
+		return TRUE;
 	if (pFileName[nIndex] == L'.' && nIndex>0 && pFileName[nIndex - 1] == L'*')
 		return FALSE;
 	nIndex++;
@@ -2130,8 +2146,7 @@ NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		}
 		if (0 == Fcb->Header.FileSize.QuadPart)
 		{
-			Status = FsWriteFileHeader(FltObjects, BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject,
-				&Fcb->Header.FileSize, Fcb->wszFile);
+			Status = FsWriteFileHeader(FltObjects, Fcb->CcFileObject, &Fcb->Header.FileSize, Fcb->wszFile);
 			try_return(Status);
 		}
 		OrgFileLength = wcslen(Fcb->wszFile) * sizeof(WCHAR) + TmpNameLength + sizeof(WCHAR);
@@ -2183,6 +2198,7 @@ NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		//打开文件读出来保存到tmp文件里面
 		OrgByteOffset.QuadPart = 0;
 		ByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
+		CreateFileHead(Fcb->szFileHead);
 		while (OrgByteOffset.QuadPart < Fcb->Header.AllocationSize.QuadPart)
 		{
 			RtlZeroMemory(pBuffer, ENCRYPT_HEAD_LENGTH);
@@ -2319,7 +2335,6 @@ NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJ
 	PVOID pHeader = NULL;
 	LARGE_INTEGER ByteOffset;
 	ByteOffset.QuadPart = 0;
-	PDEFFCB Fcb = FileObject->FsContext;
 	__try
 	{
 		pHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
@@ -2327,14 +2342,8 @@ NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJ
 		{
 			return STATUS_INSUFFICIENT_RESOURCES;
 		}
-		
-		//if (strlen(Fcb->szFileHead) <= 0)
-		{
-			CreateFileHead(Fcb->szFileHead);
-		}
-		//todo::填充文件头
-		RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);	
-		RtlCopyMemory(pHeader, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
+		RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);
+		CreateFileHead(pHeader);
 		EncryptFileHead(pHeader);
 		//
 		Status = FltWriteFile(FltObjects->Instance,
@@ -2718,18 +2727,18 @@ NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 	}
 	return ntStatus;
 }
-
+#define SURPORT_NAME_LENGTH 64
 NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.SetFileInformation.FileInformationClass;
 	PFILE_RENAME_INFORMATION FileRenameInfo = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
 	WCHAR * pFileName = NULL;
-	ULONG Length = 0;
 	WCHAR wszDosName[32] = { 0 };//磁盘路径，C:、D:等
-	WCHAR wszNtName[FILE_PATH_LENGTH_MAX] = { 0 };
+	WCHAR wszNtName[SURPORT_NAME_LENGTH] = { 0 };
 	UNICODE_STRING strDosName;
 	UNICODE_STRING strNtName;
+	UNICODE_STRING strFullPath;
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
 	BOOLEAN bFilter = FALSE;
 	WCHAR szExName[32] = { 0 };
@@ -2750,34 +2759,47 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		if (FileRenameInformation == FileInfoClass)
 		{
+			if (!IsControlProcessByProcessId(PsGetCurrentProcessId()))
+			{
+				__leave;
+			}
+			//test
+			ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			//
 			RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
 			RtlInitUnicodeString(&strDosName, wszDosName);
 			strNtName.Buffer = wszNtName;
-			strNtName.Length = FILE_PATH_LENGTH_MAX;
-			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-			if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+			strNtName.Length = SURPORT_NAME_LENGTH;
+			strNtName.MaximumLength = SURPORT_NAME_LENGTH;
+			if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &length))
 			{
 				__leave;
 			}
-			if (0 == Length)
+			if (0 == length)
 			{
 				__leave;
 			}
-			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, Length + sizeof(WCHAR), 'refn');
+			strNtName.Length = length;
+			length += FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR);
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, length, 'refn');
 			if (NULL == pFileName)
 			{
 				__leave;
 			}
-			RtlZeroMemory(pFileName, Length + sizeof(WCHAR));
-			strNtName.Buffer = pFileName;
-			strNtName.Length = FILE_PATH_LENGTH_MAX;
-			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-			if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
-			{
-				__leave;
-			}
+			RtlZeroMemory(pFileName, length);
+			RtlCopyMemory(pFileName, strNtName.Buffer, strNtName.Length);
+			RtlCopyMemory(pFileName + (strNtName.Length / sizeof(WCHAR) - sizeof(WCHAR)), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
+
+			KdPrint(("[%s]rename file:org=%S, dest=%S....\n", __FUNCTION__, FileInfo->Name.Buffer, pFileName));
+
+			RtlInitUnicodeString(&strFullPath, pFileName);
 			//判断文件后缀名
-			if (!FsGetFileExtFromFileName(&strDosName, szExName, &length))
+			length = 0;
+			if (!FsGetFileExtFromFileName(&strFullPath, szExName, &length))
 			{
 				__leave;
 			}
@@ -2794,13 +2816,14 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			{
 				__leave;
 			}
-			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, FileInfo->Name.Length + sizeof(WCHAR), 'refn');
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, FileInfo->Name.Length + sizeof(WCHAR), 'refn');
 			if (NULL == pFileName)
 			{
 				__leave;
 			}
 			RtlZeroMemory(pFileName, FileInfo->Name.Length + sizeof(WCHAR));
 			RtlCopyMemory(pFileName, FileInfo->Name.Buffer, FileInfo->Name.Length);
+			KdPrint(("[%s]delete file:%S....\n", __FUNCTION__, pFileName));
 		}
 		//过滤包含特定类型的文件??
 		if (!IsControlFileType(szExName, length))
@@ -2809,21 +2832,25 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (FindFcb(Data, pFileName, &pFcb))
 		{
-			KdPrint(("Find Fcb:%S...\n", pFcb->wszFile));
-
 			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			//如果文件正在被其他程序打开，create时是否有权限？
-			//if (FILE_TXT_ACCESS == pFcb->FileAcessType)
+			if (FileDispositionInformation == FileInfoClass && 0 == pFcb->OpenCount)
 			{
 				FsFreeFcb(pFcb, NULL);
 			}
+		}
+		else if (FileRenameInformation == FileInfoClass)
+		{
+			//受控进程把一个文件重命名为受控类型文件，对此文件进行加密
+			KdPrint(("ReName file.....\n"));
+			FsEncrypteFile(Data, FltObjects);
 		}
 	}
 	__finally
 	{
 		if (pFileName != NULL)
 		{
-			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileName, 'refn');
+			ExFreePoolWithTag(pFileName, 'refn');
 		}
 
 		if (FileInfo != NULL)
@@ -2972,4 +2999,297 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 	}
 	*CcFileObject = NULL;
 	*CcFileHandle = NULL;
+}
+
+NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	WCHAR * pFileName = NULL;
+	PFLT_FILE_NAME_INFORMATION FileNameInfo = NULL;
+	WCHAR szTmpName[5] = { L".tmp" };
+	ULONG TmpNameLength = sizeof(szTmpName)-sizeof(WCHAR);
+	ULONG LengthPathOrg = 0;
+	ULONG LengthTmpPath = 0;//include '\0'
+
+	OBJECT_ATTRIBUTES ob;
+	HANDLE Handle = NULL;
+	PFILE_OBJECT FileObject = NULL;
+	HANDLE HandleTmp = NULL;
+	PFILE_OBJECT FileObjectTmp = NULL;
+	IO_STATUS_BLOCK IoStatus;
+	UNICODE_STRING FileString = { 0 };
+	
+	LARGE_INTEGER ByteOffset = {0};
+	LARGE_INTEGER OrgByteOffset = {0};
+	FILE_STANDARD_INFORMATION FileInfo = { 0 };
+	PUCHAR pBuffer = NULL;
+	PUCHAR pHeader = NULL;
+
+	__try
+	{
+		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileNameInfo);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		LengthPathOrg = FileNameInfo->Name.Length;
+		LengthTmpPath = LengthPathOrg + TmpNameLength + sizeof(WCHAR);
+		pFileName = ExAllocatePoolWithTag(NonPagedPool, LengthTmpPath, 'enfn');
+		if (NULL == pFileName)
+		{
+			__leave;
+		}
+		RtlZeroMemory(pFileName, LengthTmpPath);
+		RtlCopyMemory(pFileName, FileNameInfo->Name.Buffer, LengthPathOrg);
+		ntStatus = FsGetCcFileInfo(FltObjects, pFileName, &Handle, &FileObject);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		ntStatus = FltQueryInformationFile(FltObjects->Instance, FileObject, &FileInfo, sizeof(FILE_STANDARD_INFORMATION), FileStandardInformation, NULL);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+
+		if (0 == FileInfo.EndOfFile.QuadPart)
+		{
+			ntStatus = FsWriteFileHeader(FltObjects, FileObject, NULL, NULL);
+			__leave;
+		}
+
+		if (FileInfo.EndOfFile.QuadPart >= ENCRYPT_HEAD_LENGTH)
+		{
+			LARGE_INTEGER Offset = { 0 };
+			ULONG EncrypteType = 0;
+			PUCHAR DecrypteHeader = NULL;
+
+			pHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
+			if (NULL == pHeader)
+			{
+				ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+				__leave;
+			}
+			RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);
+			DecrypteHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
+			if (NULL == DecrypteHeader)
+			{
+				ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+				__leave;
+			}
+			RtlZeroMemory(DecrypteHeader, ENCRYPT_HEAD_LENGTH);
+
+			ntStatus = FltReadFile(FltObjects->Instance,
+				FileObject,
+				&Offset,
+				ENCRYPT_HEAD_LENGTH,
+				pHeader,
+				FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET,
+				NULL, NULL, NULL);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				KdPrint(("[%s]FltReadFile failed(0x%x)...\n", __FUNCTION__, ntStatus));
+				__leave;
+			}
+			if (IsEncryptedFileHead(pHeader, &EncrypteType, DecrypteHeader))
+			{
+				KdPrint(("[%s]IsEncryptedFileHead ,so return...\n", __FUNCTION__));
+				FltFreePoolAlignedWithTag(FltObjects->Instance, DecrypteHeader, 'fsfh');
+				__leave;
+			}
+			FltFreePoolAlignedWithTag(FltObjects->Instance, DecrypteHeader, 'fsfh');
+		}
+
+		RtlCopyMemory(pFileName + LengthPathOrg / sizeof(WCHAR), szTmpName, TmpNameLength);
+		FileString.Buffer = pFileName;
+		FileString.Length = LengthTmpPath - sizeof(WCHAR);
+		FileString.MaximumLength = LengthTmpPath;
+
+		InitializeObjectAttributes(&ob, &FileString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
+		ntStatus = FltCreateFile(FltObjects->Filter,
+			FltObjects->Instance,
+			&HandleTmp,
+			FILE_READ_DATA | FILE_WRITE_DATA | DELETE,
+			&ob,
+			&IoStatus,
+			NULL,
+			FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_TEMPORARY,
+			FILE_SHARE_VALID_FLAGS,
+			FILE_OVERWRITE_IF,
+			FILE_DELETE_ON_CLOSE | FILE_NON_DIRECTORY_FILE,
+			NULL,
+			0,
+			IO_IGNORE_SHARE_ACCESS_CHECK);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			KdPrint(("[%s]FltCreateFile failed(0x%x)....\n", __FUNCTION__, ntStatus));
+			__leave;
+		}
+		ntStatus = ObReferenceObjectByHandle(HandleTmp, 0, *IoFileObjectType, KernelMode, &FileObjectTmp, NULL);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			FltClose(HandleTmp);
+			__leave;
+		}
+		//从原文件中读取内容加密后写到tmp文件中，然后把tmp文件里的内容读出写到原文件
+		ntStatus = FsWriteFileHeader(FltObjects, FileObjectTmp, NULL, NULL);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			__leave;
+		}
+		if (NULL == pHeader)
+		{
+			pHeader = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
+			if (NULL == pHeader)
+			{
+				ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+				__leave;
+			}
+		}
+
+		RtlZeroMemory(pHeader, ENCRYPT_HEAD_LENGTH);
+		CreateFileHead(pHeader);
+
+		pBuffer = FltAllocatePoolAlignedWithTag(FltObjects->Instance, PagedPool, ENCRYPT_HEAD_LENGTH, 'fsfh');
+		if (NULL == pBuffer)
+		{
+			ntStatus = STATUS_INSUFFICIENT_RESOURCES;
+			__leave;
+		}
+
+		OrgByteOffset.QuadPart = 0;
+		ByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
+		while (OrgByteOffset.QuadPart < FileInfo.AllocationSize.QuadPart)
+		{
+			RtlZeroMemory(pBuffer, ENCRYPT_HEAD_LENGTH);
+			ntStatus = FltReadFile(FltObjects->Instance,
+				FileObject,
+				&OrgByteOffset,
+				ENCRYPT_HEAD_LENGTH,
+				pBuffer,
+				/*FLTFL_IO_OPERATION_NON_CACHED | */FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET, //非缓存的打开
+				NULL, NULL, NULL);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				break;
+			}
+			//todo::加密内容
+			EncBuf(pBuffer, ENCRYPT_HEAD_LENGTH, pHeader);
+			//
+			ntStatus = FltWriteFile(FltObjects->Instance,
+				FileObjectTmp,
+				&ByteOffset,
+				ENCRYPT_HEAD_LENGTH,
+				pBuffer,
+				/*FLTFL_IO_OPERATION_NON_CACHED | */FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET, //非缓存的打开
+				NULL, NULL, NULL);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				break;
+			}
+			OrgByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
+			ByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
+		}
+		//设置文件的大小等等信息
+		if (!NT_SUCCESS(ntStatus) && ntStatus != STATUS_END_OF_FILE)
+		{
+			__leave;
+		}
+
+		//把加密文件写回去
+		ByteOffset.QuadPart = 0;
+		while (ByteOffset.QuadPart < (FileInfo.AllocationSize.QuadPart + ENCRYPT_HEAD_LENGTH))
+		{
+			RtlZeroMemory(pBuffer, ENCRYPT_HEAD_LENGTH);
+			ntStatus = FltReadFile(FltObjects->Instance,
+				FileObjectTmp,
+				&ByteOffset,
+				ENCRYPT_HEAD_LENGTH,
+				pBuffer,
+				/*FLTFL_IO_OPERATION_NON_CACHED | */FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET, //非缓存的打开
+				NULL, NULL, NULL);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				break;
+			}
+			ntStatus = FltWriteFile(FltObjects->Instance,
+				FileObject,
+				&ByteOffset,
+				ENCRYPT_HEAD_LENGTH,
+				pBuffer,
+				/*FLTFL_IO_OPERATION_NON_CACHED |*/  FLTFL_IO_OPERATION_DO_NOT_UPDATE_BYTE_OFFSET, //非缓存的打开
+				NULL, NULL, NULL);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				break;
+			}
+			ByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
+		}
+		//设置文件的大小
+		if (NT_SUCCESS(ntStatus) || STATUS_END_OF_FILE == ntStatus)
+		{
+			FILE_END_OF_FILE_INFORMATION FileEndInfo;
+			FILE_ALLOCATION_INFORMATION FileAllocateInfo;
+			LARGE_INTEGER TmpLI = { 0 };
+
+			FileEndInfo.EndOfFile = FileInfo.EndOfFile;
+			FileEndInfo.EndOfFile.QuadPart += ENCRYPT_HEAD_LENGTH;
+			TmpLI.QuadPart = FileEndInfo.EndOfFile.QuadPart;
+			ntStatus = FltSetInformationFile(FltObjects->Instance,
+				FileObject,
+				&FileEndInfo,
+				sizeof(FILE_END_OF_FILE_INFORMATION),
+				FileEndOfFileInformation);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			FileAllocateInfo.AllocationSize.QuadPart = FileEndInfo.EndOfFile.QuadPart;
+			ntStatus = FltSetInformationFile(FltObjects->Instance,
+				FileObject,
+				&FileAllocateInfo,
+				sizeof(FILE_ALLOCATION_INFORMATION),
+				FileAllocationInformation);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+		}
+	}
+	__finally
+	{
+		if (NULL != pFileName)
+		{
+			ExFreePoolWithTag(pFileName, 'enfn');
+			pFileName = NULL;
+		}
+		if (NULL != FileNameInfo)
+		{
+			FltReleaseFileNameInformation(FileNameInfo);
+			FileNameInfo = NULL;
+		}
+		if (NULL != Handle)
+		{
+			FsFreeCcFileInfo(&Handle, &FileObject);
+		}
+		if (NULL != FileObjectTmp)
+		{
+			ObDereferenceObject(FileObjectTmp);
+		}
+		if (NULL != HandleTmp)
+		{
+			FltClose(HandleTmp);
+		}
+
+		if (NULL != pBuffer)
+		{
+			FltFreePoolAlignedWithTag(FltObjects->Instance, pBuffer, 'fsfh');
+		}
+		if (NULL != pHeader)
+		{
+			FltFreePoolAlignedWithTag(FltObjects->Instance, pHeader, 'fsfh');
+		}
+	}
+
+	return ntStatus;
 }

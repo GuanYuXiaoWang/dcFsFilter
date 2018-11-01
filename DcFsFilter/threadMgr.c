@@ -30,6 +30,9 @@ __in BOOLEAN	bCreate
 
 BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 {
+#ifdef REAL_ENCRYPTE
+	return TRUE;
+#endif
 	BOOLEAN		bRet = FALSE;
 	NTSTATUS	ntStatus = STATUS_UNSUCCESSFUL;
 	ms_pDriverObject = DeviceObject;
@@ -69,8 +72,10 @@ BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 
 BOOLEAN UnInitThreadMgr()
 {
+#ifdef REAL_ENCRYPTE
+	return TRUE;
+#endif
 	BOOLEAN		bRet = FALSE;
-
 	NTSTATUS	ntStatus = STATUS_UNSUCCESSFUL;
 
 	if (ms_bUnloaded)
