@@ -375,6 +375,7 @@ typedef struct tagIRP_CONTEXT
 
 	PMDL AllocateMdl;
 	PDEF_IO_CONTEXT pIoContext;
+	BOOLEAN IrpOperation;
 }DEF_IRP_CONTEXT, *PDEF_IRP_CONTEXT;
 
 

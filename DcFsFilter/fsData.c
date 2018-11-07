@@ -32,6 +32,7 @@ BOOLEAN g_bSafeDataReady = FALSE;
 PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
 ERESOURCE g_FcbResource;
 LIST_ENTRY g_FcbEncryptFileList;
+ERESOURCE g_FilterResource;
 
 ULONG g_OsMajorVersion = 0;
 ULONG g_OsMinorVersion = 0;
@@ -94,10 +95,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		*/
-		if (0 == ProcessId)
-		{
-			__leave;
-		}
 		if (4 == ProcessId)
 		{
 			if (!IsIn(PsGetCurrentThreadId()))
@@ -141,7 +138,11 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}	
-		
+		//回收站的文件不处理：$Recycle.Bin
+		if (IsRecycleBinFile(FileInfo->Name.Buffer, FileInfo->Name.Length))
+		{
+			__leave;
+		}
 		KdPrint(("PID=%d, ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessId, ProcessName ? ProcessName : "none", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 	}
@@ -160,6 +161,51 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	return bFilter;
 }
 
+BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID)
+{
+	PEPROCESS Process = NULL;
+	PUCHAR ProcessName = NULL;
+	BOOLEAN bControl = FALSE;
+	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
+
+	if (4 == ProcessID)
+	{
+#ifndef REAL_ENCRYPTE
+		if (!IsIn(PsGetCurrentThreadId()))
+		{
+			bControl = FALSE;
+		}
+#endif
+	}
+	else
+	{
+		ntStatus = PsLookupProcessByProcessId(ProcessID, &Process);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			return FALSE;
+		}
+
+		ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
+		if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
+		{
+			Process = NULL;
+			return FALSE;
+		}
+		if (!IsControlProcess(ProcessName))
+		{
+			return FALSE;
+		}
+		bControl = TRUE;
+		//KdPrint(("process:%s....\n", ProcessName));
+	}
+
+	if (Process != NULL)
+	{
+		ObDereferenceObject(Process);
+	}
+
+	return bControl;
+}
 
 VOID InitData()
 {
@@ -200,6 +246,7 @@ VOID InitData()
 	InitializeListHead(&g_FcbEncryptFileList);
 	KeInitializeSpinLock(&g_GeneralSpinLock);
 	ExInitializeResourceLite(&g_FcbResource);
+	ExInitializeResourceLite(&g_FilterResource);
 	InitReg();
 }
 
@@ -212,6 +259,7 @@ VOID UnInitData()
 	ExDeleteNPagedLookasideList(&g_IrpContextLookasideList);
 	ExDeleteNPagedLookasideList(&g_IoContextLookasideList);
 	ExDeleteResourceLite(&g_FcbResource);
+	ExDeleteResourceLite(&g_FilterResource);
 	UnInitReg();
 }
 
@@ -266,6 +314,7 @@ PDEF_IRP_CONTEXT FsCreateIrpContext(IN PFLT_CALLBACK_DATA Data, IN PCFLT_RELATED
 		{
 			SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_RECURSIVE_CALL);
 		}
+		pIrpContext->IrpOperation = FLT_IS_IRP_OPERATION(Data);
 	}
 
 	return pIrpContext;
@@ -860,6 +909,10 @@ VOID FsOplockComplete(IN PFLT_CALLBACK_DATA Data, IN PVOID Context)
 VOID FsAddToWorkQueue(IN PFLT_CALLBACK_DATA Data, IN PDEF_IRP_CONTEXT IrpContext)
 {
 	PFLT_IO_PARAMETER_BLOCK CONST Iopb = IrpContext->OriginatingData->Iopb;
+	if (NULL == Iopb || NULL == Iopb->TargetFileObject)
+	{
+		return;
+	}
 	IrpContext->WorkItem = IoAllocateWorkItem(Iopb->TargetFileObject->DeviceObject);
 	IoQueueWorkItem(IrpContext->WorkItem, FsDispatchWorkItem, DelayedWorkQueue, (PVOID)IrpContext);
 }
@@ -1631,6 +1684,11 @@ NTSTATUS FsCloseGetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFLT_CALLBACK_DATA NewData = NULL;
 
+	if (NULL == IrpContext)
+	{
+		return Status;
+	}
+
 	__try
 	{
 		Status = FltAllocateCallbackData(IrpContext->FltObjects.Instance, FileObject, &NewData);
@@ -1666,6 +1724,11 @@ NTSTATUS FsCloseSetFileBasicInfo(__in PFILE_OBJECT FileObject, __in PDEF_IRP_CON
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFLT_CALLBACK_DATA NewData = NULL;
+
+	if (NULL == IrpContext)
+	{
+		return Status;
+	}
 
 	__try
 	{
@@ -2583,7 +2646,6 @@ BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length)
 	USHORT usLength = Length / sizeof(WCHAR);
 	__try
 	{
-		
 		switch (usLength)
 		{
 		case 0:
@@ -2746,6 +2808,7 @@ NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 	return ntStatus;
 }
 
+#define SURPORT_NAME_LENGTH 64
 NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
@@ -2757,6 +2820,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	WCHAR wszNtName[FILE_PATH_LENGTH_MAX] = { 0 };
 	UNICODE_STRING strDosName;
 	UNICODE_STRING strNtName;
+	UNICODE_STRING strFullPath;
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
 	BOOLEAN bFilter = FALSE;
 	WCHAR szExName[32] = { 0 };
@@ -2771,40 +2835,53 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		return ntStatus;
 	}
-	KdPrint(("FsFileInfoChangedNotify begin....\n"));
+	KdPrint(("FsFileInfoChangedNotify(class:%d) begin....\n", FileInfoClass));
 	
 	__try
 	{
 		if (FileRenameInformation == FileInfoClass)
 		{
+			if (!IsControlProcessByProcessId(PsGetCurrentProcessId()))
+			{
+				__leave;
+			}
+			//test
+			ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			//
 			RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
 			RtlInitUnicodeString(&strDosName, wszDosName);
 			strNtName.Buffer = wszNtName;
-			strNtName.Length = FILE_PATH_LENGTH_MAX;
-			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-			if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
+			strNtName.Length = SURPORT_NAME_LENGTH;
+			strNtName.MaximumLength = SURPORT_NAME_LENGTH;
+			if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &length))
 			{
 				__leave;
 			}
-			if (0 == Length)
+			if (0 == length)
 			{
 				__leave;
 			}
-			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, Length + sizeof(WCHAR), 'refn');
+			strNtName.Length = length;
+			length += FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR);
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, length, 'refn');
 			if (NULL == pFileName)
 			{
 				__leave;
 			}
-			RtlZeroMemory(pFileName, Length + sizeof(WCHAR));
-			strNtName.Buffer = pFileName;
-			strNtName.Length = FILE_PATH_LENGTH_MAX;
-			strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-			if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
-			{
-				__leave;
-			}
+			RtlZeroMemory(pFileName, length);
+			RtlCopyMemory(pFileName, strNtName.Buffer, strNtName.Length);
+			RtlCopyMemory(pFileName + (strNtName.Length / sizeof(WCHAR)-sizeof(WCHAR)), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
+
+			KdPrint(("[%s]rename file:org=%S, dest=%S....\n", __FUNCTION__, FileInfo->Name.Buffer, pFileName));
+
+			RtlInitUnicodeString(&strFullPath, pFileName);
 			//判断文件后缀名
-			if (!FsGetFileExtFromFileName(&strDosName, szExName, &length))
+			length = 0;
+			if (!FsGetFileExtFromFileName(&strFullPath, szExName, &length))
 			{
 				__leave;
 			}
@@ -2821,13 +2898,14 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			{
 				__leave;
 			}
-			pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, FileInfo->Name.Length + sizeof(WCHAR), 'refn');
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, FileInfo->Name.Length + sizeof(WCHAR), 'refn');
 			if (NULL == pFileName)
 			{
 				__leave;
 			}
 			RtlZeroMemory(pFileName, FileInfo->Name.Length + sizeof(WCHAR));
 			RtlCopyMemory(pFileName, FileInfo->Name.Buffer, FileInfo->Name.Length);
+			KdPrint(("[%s]delete file:%S....\n", __FUNCTION__, pFileName));
 		}
 		//过滤包含特定类型的文件??
 		if (!IsControlFileType(szExName, length))
@@ -2836,21 +2914,25 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (FindFcb(Data, pFileName, &pFcb))
 		{
-			KdPrint(("Find Fcb:%S...\n", pFcb->wszFile));
-
 			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			//如果文件正在被其他程序打开，create时是否有权限？
-			//if (FILE_TXT_ACCESS == pFcb->FileAcessType)
+			if (FileDispositionInformation == FileInfoClass && 0 == pFcb->OpenCount)
 			{
 				FsFreeFcb(pFcb, NULL);
 			}
+		}
+		else if (FileRenameInformation == FileInfoClass)
+		{
+			//受控进程把一个文件重命名为受控类型文件，对此文件进行加密
+			KdPrint(("ReName file.....\n"));
+			//FsEncrypteFile(Data, FltObjects);
 		}
 	}
 	__finally
 	{
 		if (pFileName != NULL)
 		{
-			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileName, 'refn');
+			ExFreePoolWithTag(pFileName, 'refn');
 		}
 
 		if (FileInfo != NULL)
@@ -2999,4 +3081,42 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 	}
 	*CcFileObject = NULL;
 	*CcFileHandle = NULL;
+}
+
+#define RECYCLE_BIN_FILE L"$Recycle.Bin"
+BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length)
+{
+	//\Device\HarddiskVolume1\$Recycle.Bin
+	PWCHAR pTmp = NULL;
+	USHORT Index = 0;
+	USHORT Count = 0;
+	while (Index < Length)
+	{
+		if ('\\' == *(FilePath+Index))
+		{
+			Count++;
+		}
+		if (3 == Count)
+		{
+			break;
+		}
+		Index++;
+	}
+	Count = wcslen(RECYCLE_BIN_FILE);
+	pTmp = FilePath + Index + 1;
+	if (Count + Index <= Length && 0 == wcsnicmp(pTmp, RECYCLE_BIN_FILE, Count))
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
+BOOLEAN FsAcquireFilterExclusiveResource()
+{
+	return ExAcquireResourceExclusive(&g_FilterResource, TRUE);
+}
+
+VOID FsReleaseFilterExclusiveResource()
+{
+	ExReleaseResource(&g_FilterResource);
 }

@@ -333,7 +333,6 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	switch (ControlCode)
 	{
 	case FSCTL_GET_OBJECT_ID:
-	//case FSCTL_CREATE_OR_GET_OBJECT_ID:
 	{
 		RtlCopyMemory(&pBuf->ObjectId, &Fcb->FileObjectIdInfo.ObjectId, 16);
 		RtlCopyMemory(&pBuf->ExtendedInfo, &Fcb->FileObjectIdInfo.ExtendedInfo, 48);
@@ -341,7 +340,14 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	}
 		break;
 	case FSCTL_SET_OBJECT_ID:
-		ntStatus = STATUS_INVALID_PARAMETER;
+ 	case FSCTL_GET_RETRIEVAL_POINTERS:
+	{
+		ntStatus = FsPostUnderlyingDriverControl(Data, FltObjects, Fcb->CcFileObject);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			KdPrint(("[%s]FsPostUnderlyingDriverControl failed(0x%x), line=%d....\n", __FUNCTION__, ntStatus, __LINE__));
+		}
+	}
 		break;
 
 	default:
@@ -425,4 +431,50 @@ FLT_POSTOP_CALLBACK_STATUS PtPostDirectoryControl(__inout PFLT_CALLBACK_DATA Dat
 	UNREFERENCED_PARAMETER(Flags);
 
 	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+
+NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	PFLT_CALLBACK_DATA NewData = NULL;
+
+	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
+	if (NT_SUCCESS(Status))
+	{
+		NewData->Iopb->MajorFunction = Data->Iopb->MajorFunction;
+		NewData->Iopb->MinorFunction = Data->Iopb->MinorFunction;
+		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
+		NewData->Iopb->Parameters.FileSystemControl.Common.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.InputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength;
+
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer = Data->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Buffered.OutputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Buffered.FsControlCode;
+		NewData->Iopb->Parameters.FileSystemControl.Buffered.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Buffered.InputBufferLength;
+
+		NewData->Iopb->Parameters.FileSystemControl.Direct.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Direct.FsControlCode;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Direct.InputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.InputSystemBuffer = Data->Iopb->Parameters.FileSystemControl.Direct.InputSystemBuffer;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Direct.OutputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputMdlAddress = Data->Iopb->Parameters.FileSystemControl.Direct.OutputMdlAddress;
+		NewData->Iopb->Parameters.FileSystemControl.Direct.OutputBuffer = Data->Iopb->Parameters.FileSystemControl.Direct.OutputBuffer;
+
+		NewData->Iopb->Parameters.FileSystemControl.Neither.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Neither.FsControlCode;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.InputBuffer = Data->Iopb->Parameters.FileSystemControl.Neither.InputBuffer;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer = Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer;
+		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress = Data->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress;
+
+		NewData->Iopb->TargetFileObject = FileObject;
+		SetFlag(NewData->Iopb->IrpFlags, IRP_SYNCHRONOUS_API);
+		FltPerformSynchronousIo(NewData);
+		Status = NewData->IoStatus.Status;
+	}
+
+	if (NewData != NULL)
+	{
+		FltFreeCallbackData(NewData);
+	}
+	return Status;
 }
