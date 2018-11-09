@@ -670,6 +670,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 		if (NewAllocationSize > Fcb->Header.AllocationSize.QuadPart)
 		{
 			Fcb->Header.AllocationSize.QuadPart = NewAllocationSize;
+			KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 		}
 		else
 		{
@@ -703,7 +704,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 					Fcb->Header.ValidDataLength.LowPart = Fcb->Header.FileSize.LowPart;
 				}
 			}
-
+			KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 			if (bFileSizeChanged)
 			{
 				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
@@ -951,7 +952,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	KdPrint(("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
+	KdPrint(("PtPreQuerySecurity start, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
 
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -1338,9 +1339,9 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 		}
 	try_exit:NOTHING;
 		
-		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
-		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
-		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
+// 		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
+// 		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
+// 		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
 		
 		//如果是未受控的文件类型？？解密？？
 	}

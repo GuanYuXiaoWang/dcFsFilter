@@ -177,6 +177,20 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
+					if (!Fcb->bEnFile)
+					{
+						Status = FsEncrypteFile(Data, FltObjects, Fcb->wszFile,  FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+						if (NT_SUCCESS(Status))
+						{
+							Fcb->bEnFile = TRUE;
+							Fcb->bWriteHead = TRUE;
+							Fcb->bAddHeaderLength = FALSE;
+						}
+						else
+						{
+							KdPrint(("[%s]FsEncrypteFile failed(0x%x)...\n", __FUNCTION__, Status));
+						}
+					}
 				}
 
 				if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
@@ -192,7 +206,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
 						}
 					}
-					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
+					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO) * SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 
 					if (Fcb->CcFileObject)

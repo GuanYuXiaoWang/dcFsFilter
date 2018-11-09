@@ -631,7 +631,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			if (NULL == Fcb->CcFileObject)
 			{
-				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject);
+				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
 				if (!NT_SUCCESS(Status))
 				{
 					try_return(NOTHING);
@@ -684,7 +684,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			bResouceAcquired = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
 			IrpContext->pIoContext->Wait.Async.Resource2 = Fcb->Resource;
 
-			//if (Fcb->bEnFile)
+			if (Fcb->bEnFile)
 			{
 				if (!Fcb->bWriteHead)
 				{
@@ -708,7 +708,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = Fcb->CcFileObject/* BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject*/;
+			IrpContext->FileObject = Fcb->CcFileObject;
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;

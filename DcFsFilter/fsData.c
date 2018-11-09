@@ -2744,6 +2744,8 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
 	PDEFFCB pFcb = NULL;
+	PVOLUMECONTEXT pVolCtx = NULL;
+	BOOLEAN bNetWork = FALSE;
 
 	if (!CheckEnv(MINIFILTER_ENV_TYPE_SAFE_DATA))
 	{
@@ -2843,11 +2845,27 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		{
 			//受控进程把一个文件重命名为受控类型文件，对此文件进行加密
 			KdPrint(("ReName file.....\n"));
-			FsEncrypteFile(Data, FltObjects);
+			ntStatus = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &pVolCtx);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			ExAcquireResourceExclusiveLite(pVolCtx->pEresurce, TRUE);
+			if (pVolCtx->uDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM)
+			{
+				bNetWork = TRUE;
+			}
+			ExReleaseResourceLite(pVolCtx->pEresurce);
+			FsEncrypteFile(Data, FltObjects, NULL, bNetWork);
 		}
 	}
 	__finally
 	{
+		if (NULL != pVolCtx)
+		{
+			FltReleaseContext(pVolCtx);
+		}
+
 		if (pFileName != NULL)
 		{
 			ExFreePoolWithTag(pFileName, 'refn');
@@ -2958,7 +2976,7 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 	return ntStatus;
 }
 
-NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout  PVOID * CcFileObject)
+NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout  PVOID * CcFileObject, __in BOOLEAN NetWork)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	UNICODE_STRING unicodeString;
@@ -2966,12 +2984,22 @@ NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileN
 	OBJECT_ATTRIBUTES ob;
 	ULONG Options = FILE_NON_DIRECTORY_FILE;
 	SetFlag(Options, FILE_WRITE_THROUGH);
+	ACCESS_MASK DesiredAccess = FILE_SPECIAL_ACCESS;
+	ULONG ShareAccess = 0;
+	if (NetWork)
+	{
+		SetFlag(DesiredAccess, READ_CONTROL);
+		SetFlag(DesiredAccess, SYNCHRONIZE);
+		SetFlag(ShareAccess, FILE_SHARE_READ);
+		SetFlag(DesiredAccess, FILE_READ_DATA);
+	}
+
 	__try
 	{
 		RtlInitUnicodeString(&unicodeString, FileName);
 		InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-		status = FltCreateFile(FltObject->Filter, FltObject->Instance, CcFileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
-			NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, Options, NULL, 0, 0);
+		status = FltCreateFile(FltObject->Filter, FltObject->Instance, CcFileHandle, DesiredAccess, &ob, &IoStatus,
+			NULL, FILE_ATTRIBUTE_NORMAL, ShareAccess, FILE_OPEN, Options, NULL, 0, 0);
 		if (!NT_SUCCESS(status))
 		{
 			__leave;
@@ -3001,7 +3029,7 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 	*CcFileHandle = NULL;
 }
 
-NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
+NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in BOOLEAN Network)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	WCHAR * pFileName = NULL;
@@ -3027,21 +3055,38 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS
 
 	__try
 	{
-		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileNameInfo);
-		if (!NT_SUCCESS(ntStatus))
+		if (NULL == FilePath)
 		{
-			__leave;
+			ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileNameInfo);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+			LengthPathOrg = FileNameInfo->Name.Length;
+			LengthTmpPath = LengthPathOrg + TmpNameLength + sizeof(WCHAR);
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, LengthTmpPath, 'enfn');
+			if (NULL == pFileName)
+			{
+				__leave;
+			}
+			RtlZeroMemory(pFileName, LengthTmpPath);
+			RtlCopyMemory(pFileName, FileNameInfo->Name.Buffer, LengthPathOrg);
 		}
-		LengthPathOrg = FileNameInfo->Name.Length;
-		LengthTmpPath = LengthPathOrg + TmpNameLength + sizeof(WCHAR);
-		pFileName = ExAllocatePoolWithTag(NonPagedPool, LengthTmpPath, 'enfn');
-		if (NULL == pFileName)
+		else
 		{
-			__leave;
+			LengthPathOrg = wcslen(FilePath) * sizeof(WCHAR);
+			LengthTmpPath = LengthPathOrg + TmpNameLength + sizeof(WCHAR);
+			pFileName = ExAllocatePoolWithTag(NonPagedPool, LengthTmpPath, 'enfn');
+			if (NULL == pFileName)
+			{
+				__leave;
+			}
+			RtlZeroMemory(pFileName, LengthTmpPath);
+			RtlCopyMemory(pFileName, FilePath, LengthPathOrg);
 		}
-		RtlZeroMemory(pFileName, LengthTmpPath);
-		RtlCopyMemory(pFileName, FileNameInfo->Name.Buffer, LengthPathOrg);
-		ntStatus = FsGetCcFileInfo(FltObjects, pFileName, &Handle, &FileObject);
+
+		
+		ntStatus = FsGetCcFileInfo(FltObjects, pFileName, &Handle, &FileObject, Network);
 		if (!NT_SUCCESS(ntStatus))
 		{
 			__leave;
