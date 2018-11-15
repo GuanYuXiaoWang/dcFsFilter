@@ -43,6 +43,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			KdPrint(("close:openCount=%d, uncleanup=%d...\n", Fcb->OpenCount, Fcb->UncleanCount));
 			if (0 == Fcb->OpenCount)
 			{
+				bAcquire = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
 				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 				{
 					for (i = 0; i < Fcb->FileAllOpenCount; i++)
@@ -72,9 +73,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					}
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 				}
-				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+				if (/*FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE)*/TRUE)
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
+					if (bAcquire)
+					{
+						ExReleaseResourceLite(Fcb->Resource);
+						bAcquire = FALSE;
+					}
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
@@ -92,7 +98,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		}
 		__finally
 		{
-
+			if (bAcquire)
+			{
+				ExReleaseResourceLite(Fcb->Resource);
+			}
 		}
 	}
 	else if (FLT_IS_FASTIO_OPERATION(Data))

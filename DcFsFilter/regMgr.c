@@ -413,7 +413,7 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 	PREG_KEY_INFO pItem = NULL;
 	UNICODE_STRING strControlSysList;
 	BOOLEAN bAcquireResource = FALSE;
-	if (IsListEmpty(&g_FilterFileTypeList))
+	if (IsListEmpty(&g_ControlSysList))
 	{
 		return FALSE;
 	}

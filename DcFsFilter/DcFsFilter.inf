@@ -7,8 +7,8 @@
 
 [Version]
 Signature   = "$Windows NT$"
-Class       = "ActivityMonitor"                         ;This is determined by the work this filter driver does
-ClassGuid   = {b86dff51-a31e-4bac-b3cf-e8cfe75c9fc2}    ;This value is determined by the Class
+Class       = "Encryption"                         ;This is determined by the work this filter driver does
+ClassGuid   = {a0a701c0-a511-42ff-aa6c-06dc0395576f}    ;This value is determined by the Class
 Provider    = %ProviderString%
 DriverVer   = 06/16/2007,1.0.0.1
 CatalogFile = DcFsFilter.cat
@@ -51,7 +51,7 @@ Dependencies     = "FltMgr"
 ServiceType      = 2                            ;SERVICE_FILE_SYSTEM_DRIVER
 StartType        = 3                            ;SERVICE_DEMAND_START
 ErrorControl     = 1                            ;SERVICE_ERROR_NORMAL
-LoadOrderGroup   = "FSFilter Activity Monitor"
+LoadOrderGroup   = "FSFilter Encryption"
 AddReg           = MiniFilter.AddRegistry
 
 ;
@@ -92,5 +92,5 @@ DiskId1                 = "DcFsFilter Device Installation Disk"
 ;Instances specific information.
 DefaultInstance         = "DcFsFilter Instance"
 Instance1.Name          = "DcFsFilter Instance"
-Instance1.Altitude      = "370030"
+Instance1.Altitude      = "149000"
 Instance1.Flags         = 0x0              ; Allow all attachments

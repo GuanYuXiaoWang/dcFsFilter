@@ -72,7 +72,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
-
+	if (FileObject)
+	{
+		KdPrint(("[%s]fileObject:0x%x, fscontext:0x%x, fscontext2:0x%x...\n", __FUNCTION__, FileObject, FileObject->FsContext, FileObject->FsContext2));
+	}
 	KdPrint(("PtPreCreate begin, Data Flag=0x%x......\n", Data->Flags));
 #ifdef TEST
 	KdBreakPoint();
@@ -225,9 +228,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	PFLT_IO_PARAMETER_BLOCK pIopb = Data->Iopb;
 	PFILE_OBJECT pFileObject, pRelatedFileObject;
 	PUNICODE_STRING pFileName;
-	PERESOURCE pFcbResource = NULL;
 	BOOLEAN bPostIrp = FALSE;
 	BOOLEAN bFOResourceAcquired = FALSE;
+	BOOLEAN bAcquireFcb = FALSE;
 	PDEFFCB pFcb = NULL;
 	PDEF_CCB pCcb = NULL;
 
@@ -339,6 +342,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		if (pVolCtx->uDeviceType == FILE_DEVICE_NETWORK_FILE_SYSTEM)
 		{
 			IrpContext->createInfo.bNetWork = TRUE;
+			try_return(FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 
 		IrpContext->ulSectorSize = pVolCtx->ulSectorSize;
@@ -356,10 +360,21 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		}
 		if (pFcb)
 		{
-			if (pFcb->ProcessID != PsGetCurrentProcessId() && 0 == pFcb->OpenCount)
+			bAcquireFcb = ExAcquireResourceExclusiveLite(pFcb->Resource, TRUE);
+			if (0 == pFcb->OpenCount)
 			{
+				if (bAcquireFcb)
+				{
+					ExReleaseResourceLite(pFcb->Resource);
+					bAcquireFcb = FALSE;
+				}
 				FsFreeFcb(pFcb, NULL);
 				pFcb = NULL;
+			}
+			if (bAcquireFcb)
+			{
+				ExReleaseResourceLite(pFcb->Resource);
+				bAcquireFcb = FALSE;
 			}
 		}
 		if (pFcb)
@@ -678,7 +693,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	__try
 	{
 		bFcbAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
-		bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
+		//bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
 
 		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenCount != 0)
 		{
@@ -1057,10 +1072,10 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		{
 			SetFlag(Ccb->CcbState, CCB_FLAG_NETWORK_FILE);
 		}
-		if (!IrpContext->createInfo.bNetWork)
-		{
-			FsGetFileObjectIdInfo(Data, FltObjects, Fcb->CcFileObject, Fcb);
-		}
+// 		if (!IrpContext->createInfo.bNetWork)
+// 		{
+// 			FsGetFileObjectIdInfo(Data, FltObjects, Fcb->CcFileObject, Fcb);
+// 		}
 		ExInitializeFastMutex(&Ccb->StreamFileInfo.FileObjectMutex);
 
 		FileObject->FsContext = Fcb;
@@ -1254,7 +1269,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
  		{
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
  		}
-		KdPrint(("[%s]test....line=%d....\n", __FUNCTION__, __LINE__));
+
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
 			Status = STATUS_ACCESS_DENIED;
@@ -1326,10 +1341,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				FileObject->Flags |= FO_CACHE_SUPPORTED;
 			}
 			Fcb->Ccb = FileObject->FsContext2;
-			if (!IrpContext->createInfo.bNetWork)
-			{
-				FsGetFileObjectIdInfo(Data, FltObjects, Fcb->CcFileObject, Fcb);
-			}
+// 			if (!IrpContext->createInfo.bNetWork)
+// 			{
+// 				FsGetFileObjectIdInfo(Data, FltObjects, Fcb->CcFileObject, Fcb);
+// 			}
 			Fcb->Vpb.SupportsObjects = IrpContext->createInfo.Vpb.SupportsObjects;
 			Fcb->Vpb.VolumeCreationTime.QuadPart = IrpContext->createInfo.Vpb.VolumeCreationTime.QuadPart;
 			Fcb->Vpb.VolumeSerialNumber = IrpContext->createInfo.Vpb.VolumeSerialNumber;

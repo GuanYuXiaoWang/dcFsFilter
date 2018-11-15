@@ -871,13 +871,11 @@ NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObjec
 	PDEF_CCB Ccb = FileObject->FsContext2;
 
 	FsRtlEnterFileSystem();
-
 	__try
 	{
 		if (IsMyFakeFcb(FileObject))
 		{
-			ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
-			bEncryptResource = TRUE;
+			bEncryptResource = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
 			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) || Ccb->StreamFileInfo.StreamObject == NULL)
 			{
 				try_return(Status = STATUS_FILE_DELETED);
@@ -887,7 +885,7 @@ NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObjec
 				StreamObject = Ccb->StreamFileInfo.StreamObject;
 			}
 		}
-
+		KdPrint(("[%s]file name:%S, Fcb File:%S....\n", __FUNCTION__, FileName->Name.Buffer, Fcb->wszFile));
 		ClearFlag(NameOptions, FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER);
 
 		if (FlagOn(NameOptions, FLT_FILE_NAME_NORMALIZED))

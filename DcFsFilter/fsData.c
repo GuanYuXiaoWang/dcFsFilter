@@ -52,7 +52,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
 	HANDLE ProcessId = NULL;
 	PEPROCESS Process = NULL;
-	PUCHAR ProcessName;
+	PUCHAR ProcessName = NULL;
 	BOOLEAN bFilter = FALSE;
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
@@ -1360,6 +1360,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
 		Fcb->ProcessID = PsGetCurrentProcessId();
+		Fcb->ThreadID = PsGetCurrentThreadId();
 
 		FltInitializeOplock(&Fcb->Oplock);
 		Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;

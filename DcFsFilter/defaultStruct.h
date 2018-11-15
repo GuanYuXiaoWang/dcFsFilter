@@ -225,6 +225,7 @@ typedef struct tagDEFFCB
 	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
 	HANDLE ProcessID;
+	HANDLE ThreadID;
 }DEFFCB, *PDEFFCB;
 
 //////////////////////////////////////////////////////////////////////////
