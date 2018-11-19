@@ -145,11 +145,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	}
 #endif
 	PAGED_CODE();
-	// 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
-	// 	{		
-	// 		return FLT_PREOP_DISALLOW_FASTIO;
-	// 	}
-	// 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	//test wps
+ 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
+	{		
+	 	return FLT_PREOP_DISALLOW_FASTIO;
+	}
+	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	//
 	if (!IsFilterProcess(Data, &Status, &ProcType))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -270,6 +272,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdPrint(("FileObject=0x%x....\n", pFileObject));
 	pRelatedFileObject = pFileObject->RelatedFileObject;
 	pFileName = &pFileObject->FileName;
 	__try
@@ -388,6 +391,15 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				FsFreeFcb(pFcb, NULL);
 				pFcb = NULL;
 			}
+			else if (BooleanFlagOn(pFcb->FcbState, FCB_STATE_DELAY_CLOSE))
+			{
+				bPostIrp = TRUE;
+				IrpContext->FltStatus = FLT_PREOP_PENDING;
+				IrpContext->createInfo.bOplockPostIrp = FALSE;
+				Status = STATUS_PENDING;
+				__leave;
+			}
+
 		}
 		if (pFcb)
 		{
@@ -705,9 +717,11 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 	__try
 	{
-		bFcbAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
-		bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
-
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
+		bFcbAcquired = FsAcquireSharedFcb(IrpContext, Fcb);
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
+		bResourceAcquired = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
 		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenCount != 0)
 		{
 			try_return(Status = STATUS_DELETE_PENDING);
@@ -803,6 +817,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 // 			}
 // 			try_return(Status);
 // 		}
+		/*
 		if (IsWin7OrLater())
 		{
 			if (Fcb->OpenCount != 0)
@@ -858,7 +873,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = OrgData->IoStatus.Status);
 			}
 		}
-
+		*/
 		ExAcquireFastMutex(Fcb->Header.FastMutex);
 
 		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
@@ -925,7 +940,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			Fcb->CcFileHandle = NULL;
 			Fcb->CcFileObject = NULL;
 		}
-
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
 		Status = FsCreateFileLimitation(Data,
 			FltObjects,
 			&IrpContext->createInfo.nameInfo->Name,
@@ -935,7 +950,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			IrpContext->createInfo.bNetWork,
 			&IrpContext->createInfo.Vpb
 			);
-
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
 		if (!NT_SUCCESS(Status)) 
 		{
 			if (Status == STATUS_FILE_IS_A_DIRECTORY)
@@ -959,14 +974,14 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		{
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
 		}
-
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
 		Status = FsGetFileHeaderInfo(FltObjects, IrpContext);
 		if (!NT_SUCCESS(Status))
 		{
 			Data->IoStatus.Status = Status;
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
 		}
-
+		KdPrint(("[%s]line=0x%x......\n", __FUNCTION__, __LINE__));
 #ifndef REAL_ENCRYPTE
 		if (!IrpContext->createInfo.bEnFile && IrpContext->createInfo.FileSize.QuadPart > 0)
 		{
@@ -1307,7 +1322,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//非加密文件不过滤
-#ifdef REAL_ENCRYPTE
+#ifndef REAL_ENCRYPTE
  		if (!IrpContext->createInfo.bEnFile)
  		{
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);

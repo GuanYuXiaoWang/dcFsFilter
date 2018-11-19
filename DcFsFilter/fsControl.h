@@ -48,4 +48,6 @@ FLT_POSTOP_CALLBACK_STATUS PtPostDirectoryControl(__inout PFLT_CALLBACK_DATA Dat
 	__in FLT_POST_OPERATION_FLAGS Flags
 	);
 
+NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject);
+
 #endif

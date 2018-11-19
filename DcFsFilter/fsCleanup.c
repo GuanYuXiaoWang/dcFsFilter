@@ -132,7 +132,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 				bAcquireFcb = TRUE;
 				FltCheckOplock(&Fcb->Oplock, Data, IrpContext, NULL, NULL);
-
+				SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				if (FlagOn(FileObject->Flags, FO_CACHE_SUPPORTED) && (Fcb->UncleanCount != 0) &&
 					Fcb->SectionObjectPointers.DataSectionObject != NULL &&
 					Fcb->SectionObjectPointers.ImageSectionObject == NULL &&
@@ -147,7 +147,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					ExReleaseResourceLite(Fcb->Header.Resource);
 					bAcquireFcb = FALSE;
 				}
-				if (Fcb->DestCacheObject != NULL && FileObject->PrivateCacheMap != NULL)
+				if (FileObject->PrivateCacheMap != NULL)
 				{
 					CACHE_UNINITIALIZE_EVENT Event;
 					KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
@@ -159,7 +159,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					}
 				}
 			
-				SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 				if (Fcb->bAddHeaderLength)
 				{
 					Fcb->bAddHeaderLength = FALSE;
@@ -218,11 +217,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					}
 				}
 
-				Fcb->DestCacheObject = NULL;
+				//Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
-				Fcb->DestCacheObject = NULL;
-	
 				IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
+				SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 			}
 		}
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);

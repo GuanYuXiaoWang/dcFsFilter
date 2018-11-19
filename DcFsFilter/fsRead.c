@@ -159,8 +159,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		FileObject = Iopb->TargetFileObject;
 	}
 
-	//DbgPrint("ExGetCurrentResourceThread()=%d......\n", ExGetCurrentResourceThread());
-
 	Fcb = FileObject->FsContext;
 	Ccb = FileObject->FsContext2;
 
@@ -366,8 +364,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				}
 				bFileMap = TRUE;
 			}
-
-			SystemBuffer = FsMapUserBuffer(Data, NULL);
+			ULONG Length = 0;
+			SystemBuffer = FsMapUserBuffer(Data, &Length);
+			KdPrint(("SystemBuffer:0x%x, Length=0x%x, ....\n", SystemBuffer, Length));
 			if (ByteRange.QuadPart > ValidDataLength.QuadPart)
 			{
 				if (StartByte < ValidDataLength.QuadPart)
@@ -391,6 +390,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			readLen = (ULONG)ROUND_TO_SIZE(ByteCount, volCtx->ulSectorSize);
 			newBuf = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, readLen, 'rn');
+			KdPrint(("swapBuffer:0x%x, Length=0x%x, ....\n", newBuf, readLen));
 			if (NULL == newBuf)
 			{
 				try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
@@ -483,7 +483,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 					CcInitializeCacheMap(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize, FALSE, &g_CacheManagerCallbacks, Fcb);
 					CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
-					Fcb->DestCacheObject = FileObject;
+					//Fcb->DestCacheObject = FileObject;
 				}
 				if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 				{
@@ -580,9 +580,16 @@ try_exit:NOTHING;
 		}
 		else
 		{
-			if (bPagingIoResourceAcquired)
+			if (bFcbAcquired)
 			{
-				ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+				if (bPagingIo)
+				{
+					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
+				}
+				else
+				{
+					FsReleaseFcb(NULL, Fcb);
+				}
 			}
 		}
 

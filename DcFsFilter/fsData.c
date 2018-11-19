@@ -1544,7 +1544,11 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	{
 		FsRtlTeardownPerStreamContexts(&Fcb->Header);
 	}
-	FltUninitializeOplock(&Fcb->Oplock);
+	if (Fcb->Oplock && NULL != &Fcb->Oplock)
+	{
+		FltUninitializeOplock(&Fcb->Oplock);
+	}
+	
 	if (Fcb->FileLock)
 	{
 		if (TRUE/*FLT_FILE_LOCK*/)

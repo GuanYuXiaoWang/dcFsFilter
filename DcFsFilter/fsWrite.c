@@ -644,7 +644,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			//WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen,CRYPT_UNIT); error
 
 			WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen, SectorSize);
-			if (Fcb->DestCacheObject && ((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
+			if (((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
 				((WriteLen != ByteCount) && (StartByte.QuadPart + (LONGLONG)ByteCount < ValidDataLength.QuadPart))))
 			{
 				try_return(Status = STATUS_NOT_IMPLEMENTED);
@@ -785,7 +785,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 				CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
 				//CcSetAdditionalCacheAttributes(FileObject, FALSE, TRUE);
-				Fcb->DestCacheObject = FileObject;
+				//Fcb->DestCacheObject = FileObject;
 			}
 
 			//如果写入的时候大小超过了有效数据范围我们需要清0

@@ -211,13 +211,13 @@ typedef struct tagDEFFCB
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
-	PFILE_OBJECT DestCacheObject;
+	FILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;
 	ULONG FileAcessType;
-	HANDLE CcFileHandle;
-	PVOID CcFileObject;
+	HANDLE CcFileHandle;//sys
+	PVOID CcFileObject;//sys
 	PVOID Ccb;
 	PKEVENT MoveFileEvent;
 	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
