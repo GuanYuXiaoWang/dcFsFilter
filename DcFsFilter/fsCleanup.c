@@ -207,10 +207,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
 				Fcb->DestCacheObject = NULL;
-	
-				IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 			}
 		}
+		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
 	}

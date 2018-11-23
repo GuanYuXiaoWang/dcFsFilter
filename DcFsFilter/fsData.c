@@ -1564,6 +1564,8 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	FILE_BASIC_INFORMATION fileInfo = { 0 };
 	BOOLEAN bSetBasicInfo = FALSE;
 	RemoveFcbList(Fcb->wszFile);
+	FsFreeCcb(Fcb->Ccb);
+
 	if (NULL != Fcb->CcFileObject)
 	{
 		if (!BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
@@ -2041,14 +2043,6 @@ VOID FsFreeCcb(IN PDEF_CCB Ccb)
 {
 	if (NULL != Ccb)
 	{
-// 		if (Ccb->StreamFileInfo.StreamObject)
-// 		{
-// 			ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
-// 		}
-// 		if (Ccb->StreamFileInfo.hStreamHandle)
-// 		{
-// 			FltClose(Ccb->StreamFileInfo.hStreamHandle);
-// 		}
 		if (Ccb->StreamFileInfo.pFO_Resource)
 		{
 			ExDeleteResourceLite(Ccb->StreamFileInfo.pFO_Resource);
