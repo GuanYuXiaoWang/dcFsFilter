@@ -86,6 +86,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 	BOOLEAN bAcquireFcb = FALSE;
 	LARGE_INTEGER TruncateSize;
 	PFILE_OBJECT FileObject = NULL;
+	PFILE_OBJECT CcFileObject = NULL;
 	IO_STATUS_BLOCK IoStatus = { 0 };
 	BOOLEAN bPureCache = FALSE;
 	ULONG i = 0;
@@ -109,8 +110,16 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		{
 			__leave;
 		}
+		if (FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
+		{
+			if (FlagOn(FileObject->Flags, FO_FILE_MODIFIED))
+			{
+				//flush cache?
+			}
+			__leave;
+		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
+		KdPrint(("clean:processID:%d, openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->ProcessID, Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
 		if (1 == Fcb->OpenCount)
 		{
 			//
@@ -128,12 +137,13 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 // 			}
 // 			else
 			{
+				CcFileObject = Fcb->DestCacheObject;
 				ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
 				ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 				bAcquireFcb = TRUE;
-				FltCheckOplock(&Fcb->Oplock, Data, IrpContext, NULL, NULL);
 				SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				if (FlagOn(FileObject->Flags, FO_CACHE_SUPPORTED) && (Fcb->UncleanCount != 0) &&
+					FlagOn(FileObject->Flags, FO_FILE_SIZE_CHANGED) && 
 					Fcb->SectionObjectPointers.DataSectionObject != NULL &&
 					Fcb->SectionObjectPointers.ImageSectionObject == NULL &&
 					MmCanFileBeTruncated(&Fcb->SectionObjectPointers, NULL))
@@ -147,7 +157,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					ExReleaseResourceLite(Fcb->Header.Resource);
 					bAcquireFcb = FALSE;
 				}
-				if (FileObject->PrivateCacheMap != NULL)
+				if (FlagOn(FileObject->Flags, FO_FILE_SIZE_CHANGED) && FileObject->PrivateCacheMap != NULL)
 				{
 					CACHE_UNINITIALIZE_EVENT Event;
 					KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
@@ -208,21 +218,22 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO) * SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 
-					if (Fcb->CcFileObject)
+					if (/*Fcb->CcFileObject*/FALSE)
 					{
 						ObDereferenceObject(Fcb->CcFileObject);
 						FltClose(Fcb->CcFileHandle);
 						Fcb->CcFileObject = NULL;
 						Fcb->CcFileHandle = NULL;
 					}
+					//FsFreeCcFileObjectInfo(Fcb);
 				}
 
-				//Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
-				IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
-				SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 			}
 		}
+		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
+		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
+		//FltCheckOplock(&Fcb->Oplock, Data, IrpContext, NULL, NULL);
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
 	}

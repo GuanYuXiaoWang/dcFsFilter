@@ -341,6 +341,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Data->IoStatus.Information = 64;
 	}
 		break;
+		/*
 	case FSCTL_SET_OBJECT_ID:
 	case FSCTL_GET_RETRIEVAL_POINTERS:
 	case FSCTL_REQUEST_FILTER_OPLOCK:
@@ -352,7 +353,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 	}
 		break;
-		/*
+		*/
 	case FSCTL_REQUEST_FILTER_OPLOCK:
 	{
 		AcquireFcb = FsAcquireExclusiveFcb(IrpContext, Fcb);
@@ -391,7 +392,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		ExReleaseFastMutex(Fcb->Header.FastMutex);
 	}
 		break;
-		*/
+		
 	default:
 		ntStatus = STATUS_INVALID_PARAMETER;
 		break;

@@ -12,7 +12,7 @@ typedef struct tagREG_KEY_INFO
 	USHORT length;
 }REG_KEY_INFO, *PREG_KEY_INFO;
 
-extern NPAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
+extern PAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
 
 #ifdef __cplusplus
 extern "C" {

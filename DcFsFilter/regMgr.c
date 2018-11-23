@@ -10,7 +10,7 @@
 #define FILE_KEY_NAME L"Key"
 #define CONTROL_SYS_NAME L"ControlSysName"
 
-NPAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
+PAGED_LOOKASIDE_LIST  g_RegKeyLookasideList;
 
 LIST_ENTRY g_ControlProcessList;
 LIST_ENTRY g_ControlFileTypeList;
@@ -36,7 +36,7 @@ void InitReg()
 	USHORT length = sizeof(KEY_VALUE_PARTIAL_INFORMATION) + 1024;
 	PKEY_VALUE_PARTIAL_INFORMATION pKeyInfo = NULL;
 
-	ExInitializeNPagedLookasideList(&g_RegKeyLookasideList, NULL, NULL, 0, sizeof(REG_KEY_INFO), 'rkll', 0);
+	ExInitializePagedLookasideList(&g_RegKeyLookasideList, NULL, NULL, 0, sizeof(REG_KEY_INFO), 'rkll', 0);
 	InitializeListHead(&g_ControlProcessList);
 	InitializeListHead(&g_ControlFileTypeList);
 	InitializeListHead(&g_FilterFileTypeList);
@@ -114,7 +114,7 @@ void UnInitReg()
 	FilterDeleteList(&g_ControlFileTypeList);
 	FilterDeleteList(&g_FilterFileTypeList);
 	FilterDeleteList(&g_ControlSysList);
-	ExDeleteNPagedLookasideList(&g_RegKeyLookasideList);
+	ExDeletePagedLookasideList(&g_RegKeyLookasideList);
 	ExDeleteResourceLite(&g_ControlProcessResource);
 	ExDeleteResourceLite(&g_ControlFileTypeResource);
 	ExDeleteResourceLite(&g_FilterFileTypeResource);
@@ -149,7 +149,7 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 			{
 				if (L'|' == pTmp[nIndex] && nIndex > 0)
 				{
-					pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+					pItem = ExAllocateFromPagedLookasideList(&g_RegKeyLookasideList);
 					if (NULL == pItem)
 					{
 						break;
@@ -158,7 +158,7 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 					pItem->length = (nIndex - (nFind > 0 ? nFind + 1 : nFind)) * sizeof(WCHAR);
 					if (pItem->length < sizeof(WCHAR))//空的情况,像||这样
 					{
-						ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+						ExFreeToPagedLookasideList(&g_RegKeyLookasideList, pItem);
 						nFind = nIndex;
 						nIndex++;
 						continue;
@@ -175,7 +175,7 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 			{
 				if (nIndex > 1)
 				{
-					pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+					pItem = ExAllocateFromPagedLookasideList(&g_RegKeyLookasideList);
 					if (NULL != pItem)
 					{
 						RtlZeroMemory(pItem, sizeof(REG_KEY_INFO));
@@ -187,7 +187,7 @@ NTSTATUS InitListByKeyInfo(__in HANDLE KeyHandle,
 			}
 			else
 			{
-				pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+				pItem = ExAllocateFromPagedLookasideList(&g_RegKeyLookasideList);
 				if (NULL != pItem)
 				{
 					RtlZeroMemory(pItem, sizeof(REG_KEY_INFO));
@@ -276,7 +276,7 @@ NTSTATUS FilterDeleteList(__in PLIST_ENTRY pListEntry)
 		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
 		if (pItem)
 		{
-			ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+			ExFreeToPagedLookasideList(&g_RegKeyLookasideList, pItem);
 			pItem = NULL;
 		}
 	}
@@ -457,7 +457,7 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 
 	if (!bFind)
 	{
-		pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+		pItem = ExAllocateFromPagedLookasideList(&g_RegKeyLookasideList);
 		if (NULL == pItem)
 		{
 			if (bAcquireResource)
@@ -495,7 +495,7 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 		 {
 			 bFind = TRUE;
 			 RemoveEntryList(listEntry);
-			 ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+			 ExFreeToPagedLookasideList(&g_RegKeyLookasideList, pItem);
 			 break;
 		 }
 	 }
@@ -527,7 +527,7 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 
 	 if (!bFind)
 	 {
-		 pItem = ExAllocateFromNPagedLookasideList(&g_RegKeyLookasideList);
+		 pItem = ExAllocateFromPagedLookasideList(&g_RegKeyLookasideList);
 		 if (NULL == pItem)
 		 {
 			 if (bAcquireResource)
@@ -564,7 +564,7 @@ BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length)
 		 {
 			 bFind = TRUE;
 			 RemoveEntryList(listEntry);
-			 ExFreeToNPagedLookasideList(&g_RegKeyLookasideList, pItem);
+			 ExFreeToPagedLookasideList(&g_RegKeyLookasideList, pItem);
 			 break;
 		 }
 	 }

@@ -211,13 +211,14 @@ typedef struct tagDEFFCB
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
-	FILE_OBJECT DestCacheObject;
+	HANDLE DestCacheHandle;
+	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;
 	ULONG FileAcessType;
 	HANDLE CcFileHandle;//sys
-	PVOID CcFileObject;//sys
+	PFILE_OBJECT CcFileObject;//sys
 	PVOID Ccb;
 	PKEVENT MoveFileEvent;
 	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
@@ -364,14 +365,13 @@ typedef struct tagIRP_CONTEXT
 	//  Originating Device (required for workque algorithms)
 	//
 	FLT_RELATED_OBJECTS FltObjects;
-	PFILE_OBJECT   Fileobject;
+	PFILE_OBJECT   FileObject;
 
 	CREATE_INFO createInfo;
 	ULONG ulSectorSize;
 	ULONG uSectorsPerAllocationUnit;
 
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
-	PFILE_OBJECT FileObject;
 
 	PMDL AllocateMdl;
 	PDEF_IO_CONTEXT pIoContext;

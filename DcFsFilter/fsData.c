@@ -281,6 +281,7 @@ PDEF_IRP_CONTEXT FsCreateIrpContext(IN PFLT_CALLBACK_DATA Data, IN PCFLT_RELATED
 		{
 			SetFlag(pIrpContext->Flags, IRP_CONTEXT_FLAG_RECURSIVE_CALL);
 		}
+		pIrpContext->FileObject = pFileObject;
 	}
 
 	return pIrpContext;
@@ -1499,6 +1500,7 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	FILE_BASIC_INFORMATION fileInfo = { 0 };
 	BOOLEAN bSetBasicInfo = FALSE;
 	RemoveFcbList(Fcb->wszFile);
+	FsFreeCcFileObjectInfo(Fcb);
 	if (NULL != Fcb->CcFileObject)
 	{
 		if (!BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
@@ -2548,6 +2550,11 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 
 		if (FlagOn(ulMinifilterEnvType, MINIFILTER_ENV_TYPE_SAFE_DATA))
 		{
+			if (GetDogId())
+			{
+				bRet = TRUE;
+				__leave;
+			}
 			if (!g_bSafeDataReady)
 				__leave;
 		}
@@ -3341,4 +3348,64 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS
 	}
 
 	return ntStatus;
+}
+
+NTSTATUS FsSetCcFileObjectInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb)
+{
+	PFILE_OBJECT FileObject = FltObjects->FileObject;
+	PFILE_OBJECT CcFileObject = NULL;
+	if (Fcb->DestCacheObject)
+	{
+		return STATUS_SUCCESS;
+	}
+	Fcb->DestCacheObject = ExAllocatePoolWithTag(NonPagedPool, sizeof(FILE_OBJECT), 'ccfo');
+	if (NULL == Fcb->DestCacheObject)
+	{
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
+	RtlZeroMemory(Fcb->DestCacheObject, sizeof(FILE_OBJECT));
+	CcFileObject = Fcb->DestCacheObject;
+
+	CcFileObject->Type = Fcb->CcFileObject->Type;
+	CcFileObject->Size = Fcb->CcFileObject->Size;
+	CcFileObject->DeviceObject = Fcb->CcFileObject->DeviceObject;
+	CcFileObject->Flags = Fcb->CcFileObject->Flags;
+	CcFileObject->DeleteAccess = Fcb->CcFileObject->DeleteAccess;
+	CcFileObject->DeletePending = Fcb->CcFileObject->DeletePending;
+	CcFileObject->ReadAccess = Fcb->CcFileObject->ReadAccess;
+	CcFileObject->WriteAccess = Fcb->CcFileObject->WriteAccess;
+	CcFileObject->SharedRead = Fcb->CcFileObject->SharedRead;
+	CcFileObject->SharedWrite = Fcb->CcFileObject->SharedWrite;
+	CcFileObject->SharedDelete = Fcb->CcFileObject->SharedDelete;
+
+	CcFileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
+
+	CcFileObject->FileName.Length = Fcb->CcFileObject->FileName.Length;
+	CcFileObject->FileName.MaximumLength = CcFileObject->FileName.Length + sizeof(WCHAR);
+	CcFileObject->FileName.Buffer = ExAllocatePoolWithTag(NonPagedPool, CcFileObject->FileName.MaximumLength, 'ccfn');
+	RtlCopyMemory(CcFileObject->FileName.Buffer, Fcb->CcFileObject->FileName.Buffer, CcFileObject->FileName.Length);
+
+	CcFileObject->FsContext = FileObject->FsContext;
+	CcFileObject->FsContext2 = FileObject->FsContext2;
+	CcFileObject->IrpList.Blink = FileObject->IrpList.Blink;
+	CcFileObject->IrpList.Flink = FileObject->IrpList.Flink;
+
+	RtlCopyMemory(&CcFileObject->Event.Header, &FileObject->Event.Header, sizeof(DISPATCHER_HEADER));
+	return STATUS_SUCCESS;
+}
+
+VOID FsFreeCcFileObjectInfo(__inout PDEFFCB Fcb)
+{
+	PFILE_OBJECT CcFileObject = Fcb->DestCacheObject;
+	if (NULL == CcFileObject)
+	{
+		return;
+	}
+	if (NULL != CcFileObject->FileName.Buffer)
+	{
+		ExFreePoolWithTag(CcFileObject->FileName.Buffer, 'ccfn');
+		CcFileObject->FileName.Buffer = NULL;
+	}
+	ExFreePoolWithTag(CcFileObject, 'ccfo');
+	Fcb->DestCacheObject = NULL;
 }

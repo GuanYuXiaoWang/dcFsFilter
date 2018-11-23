@@ -16,6 +16,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdPrint(("PtPreFlush begin......\n"));
 	__try
 	{
 		bTopLevelIrp = IsTopLevelIRP(Data);
@@ -47,7 +48,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			IoSetTopLevelIrp(NULL);
 		}
 	}
-
+	KdPrint(("PtPreFlush end......\n"));
 	FsRtlExitFileSystem();
 	return FltStatus;
 }

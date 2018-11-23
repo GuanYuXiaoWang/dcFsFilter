@@ -145,6 +145,9 @@ extern "C" {
 	NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject, __in BOOLEAN NetWork);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
 	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in BOOLEAN NetWork);
+	NTSTATUS FsSetCcFileObjectInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb);
+	VOID FsFreeCcFileObjectInfo(__inout PDEFFCB Fcb);
+
 #ifdef __cplusplus
 }
 #endif
