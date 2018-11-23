@@ -73,7 +73,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					}
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 				}
-				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+				if (/*FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE)*/TRUE)
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 					if (bAcquire)
@@ -81,9 +81,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 						ExReleaseResourceLite(Fcb->Resource);
 						bAcquire = FALSE;
 					}
-					FsFreeCcb(Ccb);
-					FltObjects->FileObject->FsContext2 = NULL;
+					FsFreeCcb(Ccb);	
 					Fcb->Ccb = NULL;
+					FltObjects->FileObject->FsContext2 = NULL;
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}

@@ -159,7 +159,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					}
 				}
 			
-				SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 				if (Fcb->bAddHeaderLength)
 				{
 					Fcb->bAddHeaderLength = FALSE;
@@ -209,6 +208,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				Fcb->DestCacheObject = NULL;
 			}
 		}
+		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
