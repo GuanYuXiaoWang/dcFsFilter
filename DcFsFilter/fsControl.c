@@ -295,6 +295,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 	return FltStatus;
 }
 
+#ifndef FSCTL_REQUEST_OPLOCK
+#define FSCTL_REQUEST_OPLOCK                CTL_CODE(FILE_DEVICE_FILE_SYSTEM, 144, METHOD_BUFFERED, FILE_ANY_ACCESS)
+#endif
+
 NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
@@ -341,10 +345,11 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Data->IoStatus.Information = 64;
 	}
 		break;
-		/*
+		
 	case FSCTL_SET_OBJECT_ID:
 	case FSCTL_GET_RETRIEVAL_POINTERS:
 	case FSCTL_REQUEST_FILTER_OPLOCK:
+	case FSCTL_REQUEST_OPLOCK:
 	{
 		ntStatus = FsPostUnderlyingDriverControl(Data, FltObjects, Fcb->CcFileObject);
 		if (!NT_SUCCESS(ntStatus))
@@ -353,8 +358,9 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 	}
 		break;
-		*/
+		/*
 	case FSCTL_REQUEST_FILTER_OPLOCK:
+	case FSCTL_REQUEST_OPLOCK:
 	{
 		AcquireFcb = FsAcquireExclusiveFcb(IrpContext, Fcb);
 		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
@@ -392,7 +398,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		ExReleaseFastMutex(Fcb->Header.FastMutex);
 	}
 		break;
-		
+		*/
 	default:
 		ntStatus = STATUS_INVALID_PARAMETER;
 		break;

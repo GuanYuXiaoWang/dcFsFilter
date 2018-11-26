@@ -1280,6 +1280,11 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			}
 			else
 			{
+				//test
+				if (STATUS_OBJECT_NAME_NOT_FOUND == Status)
+				{
+					try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+				}
 #ifdef REAL_ENCRYPTE
 				Data->IoStatus.Status = Status;
 				IrpContext->FltStatus = FLT_PREOP_COMPLETE;
@@ -1311,12 +1316,12 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//非加密文件不过滤
-#ifndef REAL_ENCRYPTE
+//#ifndef REAL_ENCRYPTE
  		if (!IrpContext->createInfo.bEnFile)
  		{
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
  		}
-#endif
+//#endif
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
 			Status = STATUS_ACCESS_DENIED;
