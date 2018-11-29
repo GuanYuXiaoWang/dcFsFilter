@@ -495,6 +495,10 @@ NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	{
 		NewData->Iopb->MajorFunction = Data->Iopb->MajorFunction;
 		NewData->Iopb->MinorFunction = Data->Iopb->MinorFunction;
+
+		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject;
+		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb;
+
 		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
 		NewData->Iopb->Parameters.FileSystemControl.Common.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.InputBufferLength;
 		NewData->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength;
