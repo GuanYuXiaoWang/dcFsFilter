@@ -39,12 +39,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 				FsRaiseStatus(IrpContext, STATUS_INSUFFICIENT_RESOURCES);
 				__leave;
 			}
-			ntStatus = FsControl(Data, FltObjects, IrpContext);
-			if (!NT_SUCCESS(ntStatus))
-			{
-				Data->IoStatus.Status = ntStatus;
-				Data->IoStatus.Information = 0;
-			}
+			ntStatus = FsCommonFileSystemControl(Data, FltObjects, IrpContext);
 		}
 		__finally
 		{
@@ -52,7 +47,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 			{
 				IoSetTopLevelIrp(NULL);
 			}
-			FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
+			if (ntStatus == STATUS_PENDING && FSCTL_REQUEST_OPLOCK == Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode)
+			{
+				FltStatus = FLT_PREOP_PENDING;
+			}
+			else
+			{
+				Data->IoStatus.Status = ntStatus;
+				Data->IoStatus.Information = 0;
+			}
 		}	
 	}
 	else if (FLT_IS_FASTIO_OPERATION(Data))
@@ -80,7 +83,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostFileSystemControl(__inout PFLT_CALLBACK_DATA Da
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-NTSTATUS FsControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
+NTSTATUS FsCommonFileSystemControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
@@ -95,6 +98,7 @@ NTSTATUS FsControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS F
 
 	default:
 		ntStatus = STATUS_INVALID_DEVICE_REQUEST;
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 		break;
 	}
 	
@@ -308,7 +312,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	PFILE_OBJECT FileObject = NULL;
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
-	BOOLEAN AcquireFcb = FALSE;
+	
 	if (NULL == FltObjects)
 	{
 		FltObjects = &IrpContext->FltObjects;
@@ -340,73 +344,49 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	case FSCTL_GET_OBJECT_ID:
 	//case FSCTL_CREATE_OR_GET_OBJECT_ID:
 	{
-		RtlCopyMemory(&pBuf->ObjectId, &Fcb->FileObjectIdInfo.ObjectId, 16);
-		RtlCopyMemory(&pBuf->ExtendedInfo, &Fcb->FileObjectIdInfo.ExtendedInfo, 48);
+		FILE_OBJECTID_BUFFER FileObjectIdInfo = { 0 };
+		ULONG Length = sizeof(FILE_OBJECTID_BUFFER);
+		ntStatus = FltFsControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, NULL, 0, &FileObjectIdInfo, Length, &Length);
+		if (!NT_SUCCESS(ntStatus))
+		{
+			KdPrint(("[%s] FltFsControlFile failed(0x%x)....\n", __FUNCTION__, ntStatus));
+		}
+		RtlCopyMemory(&pBuf->ObjectId, &FileObjectIdInfo.ObjectId, 16);
+		RtlCopyMemory(&pBuf->ExtendedInfo, &FileObjectIdInfo.ExtendedInfo, 48);
 		Data->IoStatus.Information = 64;
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 	}
 		break;
-		
 	case FSCTL_SET_OBJECT_ID:
 	case FSCTL_GET_RETRIEVAL_POINTERS:
-	case FSCTL_REQUEST_FILTER_OPLOCK:
-	case FSCTL_REQUEST_OPLOCK:
 	{
 		ntStatus = FsPostUnderlyingDriverControl(Data, FltObjects, Fcb->CcFileObject);
 		if (!NT_SUCCESS(ntStatus))
 		{
 			KdPrint(("[%s]FsPostUnderlyingDriverControl failed(0x%x), line=%d....\n", __FUNCTION__, ntStatus, __LINE__));
 		}
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 	}
 		break;
-		/*
+		
 	case FSCTL_REQUEST_FILTER_OPLOCK:
 	case FSCTL_REQUEST_OPLOCK:
 	{
-		AcquireFcb = FsAcquireExclusiveFcb(IrpContext, Fcb);
-		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+		ntStatus = FsOplockRequest(Data, IrpContext, Fcb);
+		if (!NT_SUCCESS(ntStatus))
 		{
-			ntStatus = STATUS_DELETE_PENDING;
-			break;
+			KdPrint(("[%s] FsOplockRequest failed(0x%x)....\n", __FUNCTION__, ntStatus));
 		}
-
-		FltOplockFsctrl(&Fcb->Oplock, IrpContext->OriginatingData, Fcb->OpenCount);
-		if (IrpContext->OriginatingData->IoStatus.Status != STATUS_SUCCESS &&
-			IrpContext->OriginatingData->IoStatus.Status != STATUS_OPLOCK_BREAK_IN_PROGRESS)
-		{
-			ntStatus = IrpContext->OriginatingData->IoStatus.Status;
-			KdPrint(("[%s] FltOplockFsctrl failed(0x%x)....\n", __FUNCTION__, ntStatus));
-			break;
-		}
-
-		ExAcquireFastMutex(Fcb->Header.FastMutex);
-		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
-		{
-			if (Fcb->FileLock &&
-				Fcb->FileLock->FastIoIsQuestionable)
-			{
-				Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
-			}
-			else
-			{
-				Fcb->Header.IsFastIoPossible = FastIoIsPossible;
-			}
-		}
-		else
-		{
-			Fcb->Header.IsFastIoPossible = FastIoIsNotPossible;
-		}
-		ExReleaseFastMutex(Fcb->Header.FastMutex);
 	}
 		break;
-		*/
+		
+		
 	default:
 		ntStatus = STATUS_INVALID_PARAMETER;
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 		break;
 	}
-	if (AcquireFcb)
-	{
-		FsReleaseFcb(IrpContext, Fcb);
-	}
+
 	return ntStatus;
 }
 
@@ -496,8 +476,8 @@ NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		NewData->Iopb->MajorFunction = Data->Iopb->MajorFunction;
 		NewData->Iopb->MinorFunction = Data->Iopb->MinorFunction;
 
-		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject;
-		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb;
+// 		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.DeviceObject;
+// 		NewData->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb = Data->Iopb->Parameters.FileSystemControl.VerifyVolume.Vpb;
 
 		NewData->Iopb->Parameters.FileSystemControl.Common.FsControlCode = Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode;
 		NewData->Iopb->Parameters.FileSystemControl.Common.InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.InputBufferLength;
@@ -521,8 +501,9 @@ NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer = Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer;
 		NewData->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress = Data->Iopb->Parameters.FileSystemControl.Neither.OutputMdlAddress;
-
+//
 		NewData->Iopb->TargetFileObject = FileObject;
+
 		SetFlag(NewData->Iopb->IrpFlags, IRP_SYNCHRONOUS_API);
 		FltPerformSynchronousIo(NewData);
 		Status = NewData->IoStatus.Status;
@@ -534,3 +515,187 @@ NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	}
 	return Status;
 }
+
+NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PDEFFCB Fcb)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	BOOLEAN AcquireFcb = FALSE;
+	ULONG OplockCount = 0;
+	FLT_PREOP_CALLBACK_STATUS FltStatus;
+	PFLT_CALLBACK_DATA OrgData = IrpContext->OriginatingData;
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+	PREQUEST_OPLOCK_INPUT_BUFFER InputBuffer = NULL; //REQUEST_OPLOCK_INPUT_FLAG_REQUEST
+	ULONG InputBufferLength;
+	ULONG OutputBufferLength; //OPLOCK_LEVEL_CACHE_READ OPLOCK_LEVEL_CACHE_HANDLE OPLOCK_LEVEL_CACHE_WRITE
+#endif
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+
+	//
+	//  Get the input & output buffer lengths and pointers.
+	//
+	InputBufferLength = Data->Iopb->Parameters.FileSystemControl.Buffered.InputBufferLength;
+	InputBuffer = (PREQUEST_OPLOCK_INPUT_BUFFER)Data->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer;
+
+	OutputBufferLength = Data->Iopb->Parameters.FileSystemControl.Buffered.OutputBufferLength;
+
+	//
+	//  Check for a minimum length on the input and ouput buffers.
+	//
+
+	if ((InputBufferLength < sizeof(REQUEST_OPLOCK_INPUT_BUFFER)) ||
+		(OutputBufferLength < sizeof(REQUEST_OPLOCK_OUTPUT_BUFFER))) 
+	{
+		FsCompleteRequest(&IrpContext, &Data, STATUS_BUFFER_TOO_SMALL, FALSE);
+		return STATUS_BUFFER_TOO_SMALL;
+	}
+	
+#endif
+
+	
+	__try
+	{
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+		if (FlagOn(InputBuffer->Flags, REQUEST_OPLOCK_INPUT_FLAG_REQUEST))
+		{
+			AcquireFcb = FsAcquireExclusiveFcb(IrpContext, Fcb);
+
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+			if (FltOplockIsSharedRequest(Data)) {
+#else
+			if (FsControlCode == FSCTL_REQUEST_OPLOCK_LEVEL_2) {
+#endif
+
+// #if (NTDDI_VERSION >= NTDDI_WIN8)
+//  				OplockCount = (ULONG) !g_DYNAMIC_FUNCTION_POINTERS.pFsRtlCheckLockForOplockRequest(Fcb->FileLock, &Fcb->Header.AllocationSize );
+				if (/*!IsFltFileLock()*/TRUE)
+				{
+#if (NTDDI_VERSION >= NTDDI_WIN7)
+					OplockCount = (ULONG)FsRtlAreThereCurrentOrInProgressFileLocks(Fcb->FileLock);
+#else
+					OplockCount = (ULONG)FsRtlAreThereCurrentFileLocks(&Fcb->Specific.Fcb.FileLock);
+#endif
+				}
+				else
+				{
+					OplockCount = Fcb->UncleanCount;
+				}
+			}
+			else {
+
+				OplockCount = Fcb->UncleanCount;
+			}
+		}
+
+		if (FlagOn(InputBuffer->RequestedOplockLevel, OPLOCK_LEVEL_CACHE_HANDLE) && FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+		{
+			ntStatus = STATUS_DELETE_PENDING;
+			__leave;
+		}
+
+		if (g_DYNAMIC_FUNCTION_POINTERS.OplockFsctrlEx)
+		{
+			FltStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockFsctrlEx(&Fcb->Oplock, OrgData, OplockCount, /*OPLOCK_FSCTRL_FLAG_ALL_KEYS_MATCH*/0);
+		}
+		else
+		{
+			FltStatus = FltOplockFsctrl(&Fcb->Oplock, OrgData, OplockCount);
+		}
+		
+		if (OrgData->IoStatus.Status != STATUS_SUCCESS &&
+			OrgData->IoStatus.Status != STATUS_OPLOCK_BREAK_IN_PROGRESS)
+		{
+			ntStatus = OrgData->IoStatus.Status;
+			KdPrint(("[%s] FltOplockFsctrl failed(0x%x)....\n", __FUNCTION__, ntStatus));
+			__leave;
+		}
+		if (FltStatus == FLT_PREOP_PENDING)
+		{
+			ntStatus = STATUS_PENDING;
+		}
+
+		ExAcquireFastMutex(Fcb->Header.FastMutex);
+		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
+		{
+			if (Fcb->FileLock &&
+				Fcb->FileLock->FastIoIsQuestionable)
+			{
+				Fcb->Header.IsFastIoPossible = FastIoIsQuestionable;
+			}
+			else
+			{
+				Fcb->Header.IsFastIoPossible = FastIoIsPossible;
+			}
+		}
+		else
+		{
+			Fcb->Header.IsFastIoPossible = FastIoIsNotPossible;
+		}
+		ExReleaseFastMutex(Fcb->Header.FastMutex);
+		Data = NULL;
+#endif
+	}
+	__finally
+	{
+		if (AcquireFcb)
+		{
+			FsReleaseFcb(IrpContext, Fcb);
+		}
+		FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
+	}
+	return ntStatus;
+}
+
+FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
+{
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
+	BOOLEAN bTopIrp = FALSE;
+	ULONG RetLength = 0;
+
+	UNREFERENCED_PARAMETER(CompletionContext);
+
+	PAGED_CODE();
+
+	FsRtlEnterFileSystem();
+	if (!IsMyFakeFcb(FltObjects->FileObject))
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
+	Fcb = FltObjects->FileObject->FsContext;
+	Ccb = FltObjects->FileObject->FsContext2;
+	__try
+	{
+		bTopIrp = IsTopLevelIRP(Data);
+		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DeviceIoControl.Common.IoControlCode,
+			Data->Iopb->Parameters.DeviceIoControl.Buffered.SystemBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.InputBufferLength,
+			Data->Iopb->Parameters.DeviceIoControl.Direct.OutputBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.OutputBufferLength, &RetLength);
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+		Data->IoStatus.Information = RetLength;
+		if (bTopIrp)
+		{
+			IoSetTopLevelIrp(NULL);
+		}
+	}
+
+	FsRtlExitFileSystem();
+	return FltStatus;
+}
+
+FLT_POSTOP_CALLBACK_STATUS PtPostDeviceControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in_opt PVOID CompletionContext, __in FLT_POST_OPERATION_FLAGS Flags)
+{
+	UNREFERENCED_PARAMETER(Data);
+	UNREFERENCED_PARAMETER(FltObjects);
+	UNREFERENCED_PARAMETER(CompletionContext);
+	UNREFERENCED_PARAMETER(Flags);
+
+	return FLT_POSTOP_FINISHED_PROCESSING;
+}
+

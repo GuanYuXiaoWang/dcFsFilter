@@ -13,12 +13,10 @@ Global
 		Debug|x64 = Debug|x64
 		RE_Release|Win32 = RE_Release|Win32
 		RE_Release|x64 = RE_Release|x64
-		Release_RE|Win32 = Release_RE|Win32
-		Release_RE|x64 = Release_RE|x64
 		Release|Win32 = Release|Win32
 		Release|x64 = Release|x64
-		ReleaseRE|Win32 = ReleaseRE|Win32
-		ReleaseRE|x64 = ReleaseRE|x64
+		win7orLater|Win32 = win7orLater|Win32
+		win7orLater|x64 = win7orLater|x64
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.Check_32|Win32.ActiveCfg = Check_32|Win32
@@ -33,18 +31,14 @@ Global
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.RE_Release|Win32.Build.0 = RE_Release|Win32
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.RE_Release|x64.ActiveCfg = RE_Release|x64
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.RE_Release|x64.Build.0 = RE_Release|x64
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release_RE|Win32.ActiveCfg = Release_RE|Win32
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release_RE|Win32.Build.0 = Release_RE|Win32
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release_RE|x64.ActiveCfg = Release_RE|x64
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release_RE|x64.Build.0 = Release_RE|x64
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release|Win32.ActiveCfg = Release|Win32
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release|Win32.Build.0 = Release|Win32
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release|x64.ActiveCfg = Release|x64
 		{53FFCAFE-D673-46B8-9207-649E25D10183}.Release|x64.Build.0 = Release|x64
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.ReleaseRE|Win32.ActiveCfg = ReleaseRE|Win32
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.ReleaseRE|Win32.Build.0 = ReleaseRE|Win32
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.ReleaseRE|x64.ActiveCfg = ReleaseRE|x64
-		{53FFCAFE-D673-46B8-9207-649E25D10183}.ReleaseRE|x64.Build.0 = ReleaseRE|x64
+		{53FFCAFE-D673-46B8-9207-649E25D10183}.win7orLater|Win32.ActiveCfg = win7orLater|Win32
+		{53FFCAFE-D673-46B8-9207-649E25D10183}.win7orLater|Win32.Build.0 = win7orLater|Win32
+		{53FFCAFE-D673-46B8-9207-649E25D10183}.win7orLater|x64.ActiveCfg = win7orLater|x64
+		{53FFCAFE-D673-46B8-9207-649E25D10183}.win7orLater|x64.Build.0 = win7orLater|x64
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

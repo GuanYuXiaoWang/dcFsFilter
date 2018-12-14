@@ -105,8 +105,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_DEVICE_CONTROL,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreDeviceControl,
+	PtPostDeviceControl },
 
 	{ IRP_MJ_INTERNAL_DEVICE_CONTROL,
 	0,

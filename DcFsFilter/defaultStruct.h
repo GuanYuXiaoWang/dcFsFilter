@@ -211,14 +211,13 @@ typedef struct tagDEFFCB
 
 	SECTION_OBJECT_POINTERS SectionObjectPointers;
 	ULONG CacheType;
-	HANDLE DestCacheHandle;
 	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
 	ULONG FileHeaderLength;
 	ULONG FileAcessType;
-	HANDLE CcFileHandle;//sys
-	PFILE_OBJECT CcFileObject;//sys
+	HANDLE CcFileHandle;
+	PVOID CcFileObject;
 	PVOID Ccb;
 	PKEVENT MoveFileEvent;
 	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
@@ -226,61 +225,9 @@ typedef struct tagDEFFCB
 	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
 	HANDLE ProcessID;
+	HANDLE ThreadID;
+	ERESOURCE_THREAD ThreadEresource;
 }DEFFCB, *PDEFFCB;
-
-//////////////////////////////////////////////////////////////////////////
-//下面的数据结构 记录了每个进程的那些的类型的文件需要加密的（读和写）
-//////////////////////////////////////////////////////////////////////////
-#define FILETYPELEN 50
-typedef struct _tagFILETYPE
-{
-	LIST_ENTRY	list;
-
-	WCHAR 		FileExt[50];// 文件类型，也就是文件的后缀
-	BOOLEAN		bBackUp;
-	BOOLEAN		bSelected;
-}FILETYPE, *PFILETYPE;
-
-////////////////////////////////////////////////////////////////////////////
-// 下面这个结构也写在磁盘上，初始化的时候要从磁盘文件读进来
-//1：初始化的时候要从磁盘文件读进来
-//2：程序在用户设置以后，会立即更新磁盘上的数据
-//	(1):用户添加一个进程
-//	(2):用户删除一个进程
-//	(3):用户对一个进程删除一个或多个文件类型
-//	(4):用户对一个进程添加一个或多个文件类型
-//////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-//访问这个数据结构的时候是同步的 ，所以没有必要使用同步方式的数据
-//////////////////////////////////////////////////////////////////////////
-#define PROCESSHASHVALULENGTH  512
-typedef struct _tagPROCESSINFO
-{
-	LIST_ENTRY		list;
-
-	HANDLE			hProcess;			//每个当前在运行的进程的ID,每个进程在创建的时候 
-	LIST_ENTRY		hProcessList;
-	FAST_MUTEX      HandleMutex;
-	//我们要把这个进程的句柄放到这个内存数据段中，这个值是不保存到磁盘上的
-
-	UNICODE_STRING	ProcessName;		// ！！！！为了方便，现在只检测进程的名字来判断它访问的文件类型是不是加密的
-
-	UCHAR			ProcessHashValue[PROCESSHASHVALULENGTH];	//每个进程的hash 值 用来判断是不是伪造的进程。！！！！
-	//产品中应该使用进程的Image的一部分的hash值来判断
-	BOOLEAN			bAllowInherent;
-
-	FAST_MUTEX      FileTypesMutex;
-	LIST_ENTRY		FileTypes;			//此进程所访问或者创建的需要加密的文件类型
-	LIST_ENTRY		FileTypesForBrowser[5];
-	LONG			nRef;
-	BOOLEAN			bNeedBackUp;
-	BOOLEAN			bEnableEncrypt;
-	BOOLEAN			bForceEncryption;
-	BOOLEAN			bAlone;
-	BOOLEAN			bBowser;
-	BOOLEAN			bAllCreateExeFile;
-	ULONG			nEncryptTypes;
-}PROCESSINFO, *PPROCESSINFO;
 
 typedef struct tagCREATE_INFO
 {
@@ -359,7 +306,7 @@ typedef struct tagIRP_CONTEXT
 	PIO_WORKITEM	WorkItem;
 
 	PFLT_CALLBACK_DATA OriginatingData;
-	ERESOURCE_THREAD ProcessId;
+	ERESOURCE_THREAD ResourceThread;
 
 	//
 	//  Originating Device (required for workque algorithms)
@@ -452,6 +399,16 @@ typedef NTSTATUS (*fsQueryInformationProcess)(
 	__out_opt     PULONG ReturnLength
 	);
 
+typedef FLT_PREOP_CALLBACK_STATUS
+(*fltOplockFsctrlEx)(
+__in POPLOCK Oplock,
+__in PFLT_CALLBACK_DATA CallbackData,
+__in ULONG OpenCount,
+__in ULONG Flags
+);
+
+typedef BOOLEAN (*fsRtlCheckLockForOplockRequest)(__in PFILE_LOCK FileLock, __in PLARGE_INTEGER AllocationSize);
+
 
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
 {
@@ -462,6 +419,8 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fsGetVersion pGetVersion;
 	fltQueryDirectoryFile  QueryDirectoryFile;
 	fsQueryInformationProcess QueryInformationProcess;
+	fltOplockFsctrlEx OplockFsctrlEx;
+	fsRtlCheckLockForOplockRequest pFsRtlCheckLockForOplockRequest;
 }DYNAMIC_FUNCTION_POINTERS;
 
 #define NAMED_PIPE_PREFIX                "\\\\.\\Pipe"
@@ -483,6 +442,18 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 
 #define FsReleaseFcb(IRPCONTEXT,Fcb) {                 \
 	ExReleaseResourceLite((Fcb)->Header.Resource);    \
+}
+
+#define FsReleasePagingIoResouce(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceLite((Fcb)->Header.PagingIoResource);    \
+}
+
+#define FsReleaseFcbEx(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceForThreadLite((Fcb)->Header.Resource, ExGetCurrentResourceThread());    \
+}
+
+#define FsReleasePagingIoResouceEx(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceForThreadLite((Fcb)->Header.PagingIoResource, Fcb->ThreadEresource);    \
 }
 
 typedef struct _KLDR_DATA_TABLE_ENTRY{

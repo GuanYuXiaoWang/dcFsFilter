@@ -149,7 +149,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
 	PFILE_OBJECT FileObject = NULL;
-	PFILE_OBJECT CcFileObject = NULL;
 	PDEFFCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	PFSRTL_ADVANCED_FCB_HEADER Header = NULL;
@@ -194,7 +193,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	PVOID SystemBuffer = NULL;
 	PVOLUMECONTEXT volCtx = NULL;
 
-	DEF_IO_CONTEXT IoContext;
+	DEF_IO_CONTEXT IoContext = {0};
 
 	StartByte = Iopb->Parameters.Write.ByteOffset;
 	ByteCount = Iopb->Parameters.Write.Length;
@@ -225,7 +224,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	bNonCachedIo = BooleanFlagOn(Iopb->IrpFlags, IRP_NOCACHE);
 	bSynchronousIo = BooleanFlagOn(FileObject->Flags, FO_SYNCHRONOUS_IO);
 	bWriteToEndOfFile = ((FILE_WRITE_TO_END_OF_FILE == StartByte.LowPart) && (-1 == StartByte.HighPart));
-	CcFileObject = FileObject;
 	if (FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 	{
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_NETWORK_FILE);
@@ -250,7 +248,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	}
 	// 处理延迟写请求(非缓存跟pagingio 均不支持延迟写入)
 	if (!bPagingIo && !bNonCachedIo && 
-		!CcCanIWrite(CcFileObject,
+		!CcCanIWrite(FileObject, 
 					ByteCount, 
 					(BOOLEAN)(FlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT) &&
 					!FlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_IN_FSP)),
@@ -259,7 +257,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		BOOLEAN bRetry = BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_DEFERRED_WRITE);
 		FsPrePostIrp(Data, IrpContext);
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_DEFERRED_WRITE);
-		CcDeferWrite(CcFileObject,
+		CcDeferWrite(FileObject,
 			(PCC_POST_DEFERRED_WRITE)FsAddToWorkQueue,
 			Data,
 			IrpContext,
@@ -300,13 +298,13 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			IrpContext->pIoContext->bPagingIo = bPagingIo;
 			IrpContext->pIoContext->Wait.Async.ResourceThreadId = ExGetCurrentResourceThread();
 			IrpContext->pIoContext->Wait.Async.RequestedByteCount = ByteCount;
-			IrpContext->pIoContext->Wait.Async.FileObject = CcFileObject;
+			IrpContext->pIoContext->Wait.Async.FileObject = FileObject;
 		}
 	}
 	__try
 	{
 		if ((bNonCachedIo /*|| FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)*/) && !bPagingIo && 
-			(NULL != CcFileObject->SectionObjectPointer->DataSectionObject))
+			(NULL != FileObject->SectionObjectPointer->DataSectionObject))
 		{
 			if (!FsAcquireExclusiveFcb(IrpContext, Fcb))
 			{
@@ -315,7 +313,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			bFcbAcquired = TRUE;
 			bFcbAcquredExclusive = TRUE;
 			bPagingIoResourceAcquired = ExAcquireSharedStarveExclusive(Header->PagingIoResource, TRUE);
-			CcFlushCache(CcFileObject->SectionObjectPointer,
+			CcFlushCache(FileObject->SectionObjectPointer,
 				bWriteToEndOfFile ? &Header->FileSize : (PLARGE_INTEGER)&StartByte,
 				ByteCount,
 				&Data->IoStatus);
@@ -328,7 +326,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 			bPagingIoResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
-			CcPurgeCacheSection(CcFileObject->SectionObjectPointer, bWriteToEndOfFile ? &Header->FileSize : (PLARGE_INTEGER)&StartByte, ByteCount, FALSE);
+			CcPurgeCacheSection(FileObject->SectionObjectPointer, bWriteToEndOfFile ? &Header->FileSize : (PLARGE_INTEGER)&StartByte, ByteCount, FALSE);
 			bFcbCanDemoteToShared = TRUE;
 		}
 		if (bPagingIo)
@@ -352,6 +350,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					try_return(bPostIrp = TRUE);
 				}
 				IrpContext->pIoContext->Wait.Async.Resource = Header->Resource;
+				IrpContext->pIoContext->Wait.Async.ResourceThreadId = ((ULONG_PTR)IrpContext->pIoContext) | 3;
 				if (bFcbCanDemoteToShared)
 				{
 					IrpContext->pIoContext->Wait.Async.Resource2 = Header->PagingIoResource;
@@ -550,7 +549,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			ExReleaseFastMutex(Fcb->Header.FastMutex);
 		}
-		if (TRUE/*IS_FLT_FILE_LOCK()*/)
+		if (IsFltFileLock())
 		{
 			if (!bPagingIo &&(Fcb->FileLock != NULL) && !FltCheckLockForWriteAccess(Fcb->FileLock, Data))
 			{
@@ -595,9 +594,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 
 			Fcb->Header.FileSize.QuadPart = FileSize.QuadPart;
-			if (CcIsFileCached(CcFileObject))
+			if (CcIsFileCached(FileObject))
 			{
-				CcSetFileSizes(CcFileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
+				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
 			}
 			else
 				bFileSizeChanged = TRUE;
@@ -632,7 +631,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			if (NULL == Fcb->CcFileObject)
 			{
-				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
 				if (!NT_SUCCESS(Status))
 				{
 					try_return(NOTHING);
@@ -645,7 +644,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			//WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen,CRYPT_UNIT); error
 
 			WriteLen = (ULONG)ROUND_TO_SIZE(WriteLen, SectorSize);
-			if (((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
+			if (Fcb->DestCacheObject && ((((ULONG)StartByte.QuadPart) & (SectorSize - 1)) ||
 				((WriteLen != ByteCount) && (StartByte.QuadPart + (LONGLONG)ByteCount < ValidDataLength.QuadPart))))
 			{
 				try_return(Status = STATUS_NOT_IMPLEMENTED);
@@ -655,7 +654,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			{
 				FsZeroData(IrpContext,
 					Fcb,
-					CcFileObject,
+					FileObject,
 					ValidDataLength.QuadPart,
 					StartByte.QuadPart - ValidDataLength.QuadPart,
 					volCtx->ulSectorSize);
@@ -696,7 +695,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 						Fcb->bWriteHead = TRUE;
 						Fcb->bAddHeaderLength = TRUE;
 						SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
-						SetFlag(CcFileObject->Flags, FO_FILE_SIZE_CHANGED);
 						SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
 					}
 					else
@@ -735,8 +733,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			else if (NT_SUCCESS(Status))
 			{
 				bUnwindOutstandingAsync = FALSE;
-				bWait = TRUE;
-				SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 				bNonCachedIoPending = TRUE;
 				IrpContext->pIoContext = NULL;
 				volCtx = NULL;
@@ -760,7 +756,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 // 		}
 // 		else
 		{
-			if (NULL == CcFileObject->PrivateCacheMap)
+			if (NULL == FileObject->PrivateCacheMap)
 			{
 				if (Fcb->Header.AllocationSize.QuadPart == FCB_LOOKUP_ALLOCATIONSIZE_HINT)
 				{
@@ -773,7 +769,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					FsRaiseStatus(IrpContext, STATUS_FILE_CORRUPT_ERROR);
 				}
 				CcInitializeCacheMap(
-					CcFileObject,
+					FileObject,
 					(PCC_FILE_SIZES)&Header->AllocationSize,
 					FALSE,
 					&g_CacheManagerCallbacks,
@@ -782,12 +778,12 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 				if (bFileSizeChanged)
 				{
-					CcSetFileSizes(CcFileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
+					CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
 				}
 
-				CcSetReadAheadGranularity(CcFileObject, READ_AHEAD_GRANULARITY);
+				CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
 				//CcSetAdditionalCacheAttributes(FileObject, FALSE, TRUE);
-				//Fcb->DestCacheObject = FileObject;
+				Fcb->DestCacheObject = FileObject;
 			}
 
 			//如果写入的时候大小超过了有效数据范围我们需要清0
@@ -797,7 +793,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				if (!FsZeroData(
 					IrpContext,
 					Fcb,
-					CcFileObject,
+					FileObject,
 					ValidDataLength.QuadPart,
 					FileSizeOld,
 					volCtx->ulSectorSize))
@@ -809,7 +805,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 			{
 				SystemBuffer = FsMapUserBuffer(Data, NULL);
-				if (!CcCopyWrite(CcFileObject,
+				if (!CcCopyWrite(FileObject,
 					(PLARGE_INTEGER)&StartByte,
 					(ULONG)ByteCount,
 					BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT),
@@ -824,7 +820,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			else
 			{
 				ASSERT(FlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT));
-				CcPrepareMdlWrite(CcFileObject,
+				CcPrepareMdlWrite(FileObject,
 					(PLARGE_INTEGER)&StartByte,
 					(ULONG)ByteCount,
 					&Iopb->Parameters.Write.MdlAddress,
@@ -841,8 +837,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				ULONG ActualBytesWrote = (ULONG)Data->IoStatus.Information;
 				if (bSynchronousIo && !bPagingIo)
 				{
-					CcFileObject->CurrentByteOffset.QuadPart = StartByte.QuadPart + ActualBytesWrote;
-					FileObject->CurrentByteOffset.QuadPart = CcFileObject->CurrentByteOffset.QuadPart;
+					FileObject->CurrentByteOffset.QuadPart = StartByte.QuadPart + ActualBytesWrote;
 				}
 
 				if (NT_SUCCESS(Status))
@@ -850,13 +845,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					if (!bPagingIo)
 					{
 						SetFlag(FileObject->Flags, FO_FILE_MODIFIED);
-						SetFlag(CcFileObject->Flags, FO_FILE_MODIFIED);
 					}
 
 					if (bExtendingFile /*&& !bWriteFileSizeToDirent*/)
 					{
 						SetFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
-						SetFlag(CcFileObject->Flags, FO_FILE_SIZE_CHANGED);
 					}
 
 					if (bExtendingValidData)
@@ -873,9 +866,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 							Fcb->Header.ValidDataLength.QuadPart = EndingVboWritten.QuadPart;
 						}
 
-						if (bNonCachedIo && CcIsFileCached(CcFileObject))  //更新下缓存中的记录
+						if (bNonCachedIo && CcIsFileCached(FileObject))  //更新下缓存中的记录
 						{
-							CcSetFileSizes(CcFileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
+							CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
 						}
 					}
 				}
@@ -891,9 +884,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 							(VOID)ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 						}
 						Fcb->Header.FileSize.QuadPart = InitialFileSize.QuadPart;
-						if (CcFileObject->SectionObjectPointer->SharedCacheMap != NULL) 
+						if (FileObject->SectionObjectPointer->SharedCacheMap != NULL) 
 						{
-							CcGetFileSizePointer(CcFileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;
+							CcGetFileSizePointer(FileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;
 						}
 						if (Fcb->Header.PagingIoResource != NULL)
 						{
@@ -914,9 +907,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			{
 				Fcb->Header.FileSize.QuadPart = InitialFileSize.QuadPart;
 				Fcb->Header.ValidDataLength.QuadPart = InitialValidDataLength.QuadPart;
-				if (CcFileObject->SectionObjectPointer->SharedCacheMap != NULL)
+				if (FileObject->SectionObjectPointer->SharedCacheMap != NULL)
 				{
-					CcGetFileSizePointer(CcFileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;
+					CcGetFileSizePointer(FileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;
 				}
 			}
 		}
@@ -1008,11 +1001,6 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))
 	{
-#ifdef CHANGE_TOP_IRP
-		PIRP TopLevelIrp = IoGetTopLevelIrp();
-		IoSetTopLevelIrp(NULL);
-#endif	
-
 		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
 		NewData->Iopb->Parameters.Write.ByteOffset = ByteOffset;
 		NewData->Iopb->Parameters.Write.Length = ByteCount;
@@ -1030,12 +1018,23 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 		}
 		else
 		{
+			if (FlagOn(IrpContext->pIoContext->Wait.Async.ResourceThreadId, 3))
+			{
+				if (IrpContext->pIoContext->Wait.Async.Resource != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+				if (IrpContext->pIoContext->Wait.Async.Resource2 != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource2, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+				if (IrpContext->pIoContext->Wait.Async.FO_Resource != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.FO_Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+			}
 			Status = FltPerformAsynchronousIo(NewData, FsWriteFileAsyncCompletionRoutine, IrpContext->pIoContext);
 		}
-
-#ifdef	CHANGE_TOP_IRP			
-		IoSetTopLevelIrp(TopLevelIrp);
-#endif
 	}
 
 	if (NewData != NULL && Wait)

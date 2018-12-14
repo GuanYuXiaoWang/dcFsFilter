@@ -218,3 +218,8 @@ PDRV_DATA GetDrvData()
 {
 	return &g_SafeData;
 }
+
+ULONG GetClientProcessId()
+{
+	return g_SafeData.SystemUser.dwClientProcessID;
+}

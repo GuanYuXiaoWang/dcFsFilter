@@ -58,6 +58,7 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data,
 							__in BOOLEAN bNetWork,
 							__inout PDEF_VPB Vpb
 							);
+
 #ifdef __cplusplus
 }
 #endif

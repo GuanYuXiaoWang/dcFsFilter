@@ -158,7 +158,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileAllInfo->StandardInformation.DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileAllInfo->StandardInformation.Directory = Fcb->Directory;
 			FileAllInfo->StandardInformation.NumberOfLinks = Fcb->LinkCount;
-			FileAllInfo->StandardInformation.EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
+			FileAllInfo->StandardInformation.EndOfFile.QuadPart = Fcb->bEnFile? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 		case FileStandardInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
@@ -172,7 +172,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileStandardInfo->DeletePending = BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			FileStandardInfo->Directory = Fcb->Directory;
 			FileStandardInfo->NumberOfLinks = Fcb->LinkCount;
-			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
+			FileStandardInfo->EndOfFile.QuadPart = Fcb->bEnFile? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			break;
 		case FileNetworkOpenInformation:
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
@@ -185,7 +185,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			FileNetInfo->AllocationSize.QuadPart = Fcb->Header.AllocationSize.QuadPart;
 			FileNetInfo->ChangeTime.QuadPart = Fcb->LastChangeTime;
 			FileNetInfo->CreationTime.QuadPart = Fcb->CreationTime;
-			FileNetInfo->EndOfFile.QuadPart = Fcb->bEnFile ? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
+			FileNetInfo->EndOfFile.QuadPart = Fcb->bEnFile? Fcb->Header.FileSize.QuadPart - ENCRYPT_HEAD_LENGTH : Fcb->Header.FileSize.QuadPart;
 			FileNetInfo->LastAccessTime.QuadPart = Fcb->LastAccessTime;
 			FileNetInfo->LastWriteTime.QuadPart = Fcb->LastWriteTime;
 			FileNetInfo->FileAttributes = Fcb->Attribute;
@@ -317,6 +317,9 @@ FLT_POSTOP_CALLBACK_STATUS PtPostSetInformation(__inout PFLT_CALLBACK_DATA Data,
 
 FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -332,6 +335,17 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PreQueryEa......\n"));
+	__try
+	{
+		Fcb = FltObjects->FileObject->FsContext;
+		ntStatus = FltQueryEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
+			Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
+			TRUE, &Data->IoStatus.Information);
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+	}
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -348,6 +362,9 @@ FLT_POSTOP_CALLBACK_STATUS PtPostQueryEA(__inout PFLT_CALLBACK_DATA Data, __in P
 
 FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -365,6 +382,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	}
 	
 	KdPrint(("PreSetEa......\n"));
+	__try
+	{
+		Fcb = FltObjects->FileObject->FsContext;
+		ntStatus = FltSetEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+	}
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -690,7 +716,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 				OrgFileSize = Fcb->Header.FileSize.LowPart;
 				OrgValidDataLength = Fcb->Header.ValidDataLength.LowPart;
 
-				bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
+				bResourceAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
 
 				Fcb->Header.FileSize.LowPart = NewAllocationSize;
 
@@ -729,7 +755,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 		}
 		if (bResourceAcquired)
 		{
-			ExReleaseResourceLite(Fcb->Header.Resource);
+			FsReleaseFcb(IrpContext, Fcb);
 		}
 	}
 	return Status;

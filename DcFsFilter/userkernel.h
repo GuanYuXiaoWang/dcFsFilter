@@ -233,6 +233,7 @@ typedef struct tagUSER_PROCESSINFO
 		int	  nPolicyType;		//策略的类型  (暂时无效)
 		int	  nPolicyCount;		//策略的实际个数
 		int	  arrPolicy[1000];  //支持1000个等级的打开策略
+		ULONG dwClientProcessID;
 	}SystemApi32Use, *PSystemApi32Use;
 
 	typedef struct _DRV_DATA

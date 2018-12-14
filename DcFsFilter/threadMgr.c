@@ -751,7 +751,7 @@ BOOLEAN IsInControlSysNameList(__in ULONG ulTid, __in PETHREAD pEThread)
 				if (!&lpEntry->BaseDllName)
 					__leave;
 
-				KdPrint(("sys name=%S...\n"), lpEntry->BaseDllName.Buffer);
+				KdPrint(("sys name=%S...\n", lpEntry->BaseDllName.Buffer));
 
 				if (IsControlSys(lpEntry->BaseDllName.Buffer, lpEntry->BaseDllName.Length))
 				{

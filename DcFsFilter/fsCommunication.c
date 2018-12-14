@@ -185,6 +185,12 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 			ntStatus = STATUS_SUCCESS;
 		}
 			break;
+		case eSetKenlPID:
+		{
+			pSyatem = (PSystemApi32Use)(((PCommandMsg)InputBuffer)->MsgInfo);
+			DrvData->SystemUser.dwClientProcessID = pSyatem->dwClientProcessID;
+		}
+			break;
 		default:
 		{
 			KdPrint(("cmdType error. cmdType(%d)", cmdType));

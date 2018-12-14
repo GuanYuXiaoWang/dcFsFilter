@@ -42,6 +42,16 @@ extern DYNAMIC_FUNCTION_POINTERS g_DYNAMIC_FUNCTION_POINTERS;
 extern LARGE_INTEGER  Li0;
 extern KSPIN_LOCK g_GeneralSpinLock;
 
+
+typedef struct  tagTHREAD_PARAM
+{
+	PFLT_FILTER Filter;
+	PFLT_INSTANCE Instance;
+	BOOLEAN NetFile;
+	ULONG Length;
+	WCHAR * FilePath;
+}THREAD_PARAM;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,6 +61,7 @@ extern "C" {
 
 	BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType);
 	BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID);
+	BOOLEAN IsFltFileLock();
 
 	PERESOURCE FsdAllocateResource();
 	BOOLEAN FsIsIrpTopLevel(IN PFLT_CALLBACK_DATA Data);
@@ -124,7 +135,7 @@ extern "C" {
 
 	BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout USHORT* nLength);
 	NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_CCB Ccb);
-	NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PLARGE_INTEGER RealFileSize, __in WCHAR * FileFullName);
+	NTSTATUS FsWriteFileHeader(__in PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __inout PVOID HeadBuf);
 	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
 	BOOLEAN FsZeroData(IN PDEF_IRP_CONTEXT IrpContext,
 		IN PDEFFCB Fcb,
@@ -142,12 +153,13 @@ extern "C" {
 
 	NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
-	NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject, __in BOOLEAN NetWork);
+	NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject, __in BOOLEAN NetWork);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
-	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in BOOLEAN NetWork);
-	NTSTATUS FsSetCcFileObjectInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb);
-	VOID FsFreeCcFileObjectInfo(__inout PDEFFCB Fcb);
+	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN NetWork);
+	VOID LogFile(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PVOID Buffer, __in ULONG Length);
 
+	NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
+	VOID KeSleep(LONG MilliSecond);
 #ifdef __cplusplus
 }
 #endif

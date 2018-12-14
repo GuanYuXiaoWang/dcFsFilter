@@ -131,6 +131,7 @@ BOOLEAN IsUserCanAccess(int* arrPolicy, int count, ULONG dwCryptLevel, ULONG dwF
 
 ULONG GetDogId();
 PDRV_DATA GetDrvData();
+ULONG GetClientProcessId();
 
 
 #ifdef __cplusplus
