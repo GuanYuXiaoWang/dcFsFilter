@@ -40,6 +40,14 @@ BOOLEAN IsControlFileType(__in PWCHAR pFileExt, __in USHORT Length);
 BOOLEAN IsFilterFileType(__in PWCHAR pFileExt, __in USHORT Length);
 BOOLEAN IsControlSys(__in PWCHAR pFileExt, __in USHORT Length);
 
+BOOLEAN InsertControlProcess(__in PWCHAR pProcessName, __in USHORT Length);
+BOOLEAN DeleteControlProcess(__in PWCHAR pProcessName, __in USHORT Length);
+void ClearControlProcess();
+
+BOOLEAN InsertControlFileType(__in PWCHAR pFileType, __in USHORT Length);
+BOOLEAN DeleteControlFileType(__in PWCHAR pFileType, __in USHORT Length);
+void ClearControlFileType();
+
 #ifdef __cplusplus
 }
 #endif

@@ -16,6 +16,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	KdPrint(("PtPreFlush begin......\n"));
 	__try
 	{
 		bTopLevelIrp = IsTopLevelIRP(Data);
@@ -47,7 +48,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			IoSetTopLevelIrp(NULL);
 		}
 	}
-
+	KdPrint(("PtPreFlush end......\n"));
 	FsRtlExitFileSystem();
 	return FltStatus;
 }
@@ -91,7 +92,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			{
 				break;
 			}
-			bAcquiredResource = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
+			bAcquiredResource = FsAcquireExclusiveFcb(IrpContext, Fcb);
 			SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 			CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
 		}
@@ -102,7 +103,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 		}
 		if (bAcquiredResource)
 		{
-			ExReleaseResourceLite(Fcb->Header.Resource);
+			FsReleaseFcb(IrpContext, Fcb);
 		}
 	} while (STATUS_CANT_WAIT == IoStatus.Status || STATUS_LOG_FILE_FULL == IoStatus.Status);
 

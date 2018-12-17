@@ -178,7 +178,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	BOOLEAN bPagingIoResourceAcquired = FALSE;
 
 	BOOLEAN bFcbAcquired = FALSE;
-	BOOLEAN bCcFileSizeChangeDue = FALSE;
 	BOOLEAN bFcbAcquredExclusive = FALSE;
 	BOOLEAN bFOResourceAcquired = FALSE;
 	BOOLEAN bNonCachedIoPending = FALSE;
@@ -194,7 +193,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	PVOID SystemBuffer = NULL;
 	PVOLUMECONTEXT volCtx = NULL;
 
-	DEF_IO_CONTEXT IoContext;
+	DEF_IO_CONTEXT IoContext = {0};
 
 	StartByte = Iopb->Parameters.Write.ByteOffset;
 	ByteCount = Iopb->Parameters.Write.Length;
@@ -351,6 +350,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					try_return(bPostIrp = TRUE);
 				}
 				IrpContext->pIoContext->Wait.Async.Resource = Header->Resource;
+				IrpContext->pIoContext->Wait.Async.ResourceThreadId = ((ULONG_PTR)IrpContext->pIoContext) | 3;
 				if (bFcbCanDemoteToShared)
 				{
 					IrpContext->pIoContext->Wait.Async.Resource2 = Header->PagingIoResource;
@@ -549,7 +549,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			ExReleaseFastMutex(Fcb->Header.FastMutex);
 		}
-		if (TRUE/*IS_FLT_FILE_LOCK()*/)
+		if (IsFltFileLock())
 		{
 			if (!bPagingIo &&(Fcb->FileLock != NULL) && !FltCheckLockForWriteAccess(Fcb->FileLock, Data))
 			{
@@ -631,7 +631,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 			if (NULL == Fcb->CcFileObject)
 			{
-				Status = FsGetCcFileInfo(FltObjects, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject);
+				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
 				if (!NT_SUCCESS(Status))
 				{
 					try_return(NOTHING);
@@ -684,8 +684,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			bResouceAcquired = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
 			IrpContext->pIoContext->Wait.Async.Resource2 = Fcb->Resource;
 
-			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
-
 			if (Fcb->bEnFile)
 			{
 				if (!Fcb->bWriteHead)
@@ -693,6 +691,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, volCtx->ulSectorSize, Fcb);
 					if (NT_SUCCESS(Status))
 					{
+						Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 						Fcb->bWriteHead = TRUE;
 						Fcb->bAddHeaderLength = TRUE;
 						SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
@@ -707,8 +706,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				//¼ÓÃÜnewBuf
 				EncBuf(newBuf, ByteCount, Fcb->szFileHead);
 			}
+			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = Fcb->CcFileObject/* BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject*/;
+			IrpContext->FileObject = Fcb->CcFileObject;
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
@@ -733,8 +733,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			else if (NT_SUCCESS(Status))
 			{
 				bUnwindOutstandingAsync = FALSE;
-				bWait = TRUE;
-				SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 				bNonCachedIoPending = TRUE;
 				IrpContext->pIoContext = NULL;
 				volCtx = NULL;
@@ -1003,11 +1001,6 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))
 	{
-#ifdef CHANGE_TOP_IRP
-		PIRP TopLevelIrp = IoGetTopLevelIrp();
-		IoSetTopLevelIrp(NULL);
-#endif	
-
 		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
 		NewData->Iopb->Parameters.Write.ByteOffset = ByteOffset;
 		NewData->Iopb->Parameters.Write.Length = ByteCount;
@@ -1025,12 +1018,23 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 		}
 		else
 		{
+			if (FlagOn(IrpContext->pIoContext->Wait.Async.ResourceThreadId, 3))
+			{
+				if (IrpContext->pIoContext->Wait.Async.Resource != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+				if (IrpContext->pIoContext->Wait.Async.Resource2 != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource2, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+				if (IrpContext->pIoContext->Wait.Async.FO_Resource != NULL)
+				{
+					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.FO_Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+				}
+			}
 			Status = FltPerformAsynchronousIo(NewData, FsWriteFileAsyncCompletionRoutine, IrpContext->pIoContext);
 		}
-
-#ifdef	CHANGE_TOP_IRP			
-		IoSetTopLevelIrp(TopLevelIrp);
-#endif
 	}
 
 	if (NewData != NULL && Wait)

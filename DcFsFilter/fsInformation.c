@@ -208,7 +208,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileStreamInformation:
 		case FileNameInformation:
 		case FileEaInformation:
-			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject, 
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject,
 				Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, 
 				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
 			if (!NT_SUCCESS(ntStatus))
@@ -317,6 +317,9 @@ FLT_POSTOP_CALLBACK_STATUS PtPostSetInformation(__inout PFLT_CALLBACK_DATA Data,
 
 FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -332,6 +335,25 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PreQueryEa......\n"));
+	__try
+	{
+		Fcb = FltObjects->FileObject->FsContext;
+		if (g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile)
+		{
+			 ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
+				Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
+				TRUE, &Data->IoStatus.Information);
+		}
+		else
+		{
+
+		}
+		
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+	}
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -348,6 +370,9 @@ FLT_POSTOP_CALLBACK_STATUS PtPostQueryEA(__inout PFLT_CALLBACK_DATA Data, __in P
 
 FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PDEFFCB Fcb = NULL;
+
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -365,6 +390,22 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	}
 	
 	KdPrint(("PreSetEa......\n"));
+	__try
+	{
+		Fcb = FltObjects->FileObject->FsContext;
+		if (g_DYNAMIC_FUNCTION_POINTERS.SetEaFile)
+		{
+			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.SetEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
+		}
+		else
+		{
+
+		}
+	}
+	__finally
+	{
+		Data->IoStatus.Status = ntStatus;
+	}
 
 	return FLT_PREOP_COMPLETE;
 }
@@ -689,7 +730,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 				OrgFileSize = Fcb->Header.FileSize.LowPart;
 				OrgValidDataLength = Fcb->Header.ValidDataLength.LowPart;
 
-				bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Header.Resource, TRUE);
+				bResourceAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
 
 				Fcb->Header.FileSize.LowPart = NewAllocationSize;
 
@@ -728,7 +769,7 @@ NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT
 		}
 		if (bResourceAcquired)
 		{
-			ExReleaseResourceLite(Fcb->Header.Resource);
+			FsReleaseFcb(IrpContext, Fcb);
 		}
 	}
 	return Status;
@@ -1338,9 +1379,9 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 		}
 	try_exit:NOTHING;
 		
-		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
-		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
-		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
+// 		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
+// 		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
+// 		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
 		
 		//如果是未受控的文件类型？？解密？？
 	}

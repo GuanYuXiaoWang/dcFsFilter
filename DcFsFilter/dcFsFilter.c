@@ -105,8 +105,8 @@ CONST FLT_OPERATION_REGISTRATION Callbacks[] = {
 
 	{ IRP_MJ_DEVICE_CONTROL,
 	0,
-	PtPreOperationPassThrough,
-	PtPostOperationPassThrough },
+	PtPreDeviceControl,
+	PtPostDeviceControl },
 
 	{ IRP_MJ_INTERNAL_DEVICE_CONTROL,
 	0,
@@ -532,11 +532,6 @@ Returns the final status of this operation.
 	g_bUnloading = TRUE;
 	g_bAllModuleInitOk = FALSE;
 
-	UnInitThreadMgr();
-
-	UnInitData();
-	UnInitCommunication();
-
 	PT_DBG_PRINT(PTDBG_TRACE_ROUTINES,
 		("PassThrough!PtUnload: Entered\n"));
 	if (gFilterHandle)
@@ -544,6 +539,9 @@ Returns the final status of this operation.
 		FltUnregisterFilter(gFilterHandle);
 	}
 
+	UnInitData();
+	UnInitCommunication();
+	UnInitThreadMgr();
 	return STATUS_SUCCESS;
 }
 

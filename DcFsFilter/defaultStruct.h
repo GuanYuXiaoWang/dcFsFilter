@@ -226,61 +226,8 @@ typedef struct tagDEFFCB
 	DEF_VPB Vpb;
 	HANDLE ProcessID;
 	HANDLE ThreadID;
+	ERESOURCE_THREAD ThreadEresource;
 }DEFFCB, *PDEFFCB;
-
-//////////////////////////////////////////////////////////////////////////
-//下面的数据结构 记录了每个进程的那些的类型的文件需要加密的（读和写）
-//////////////////////////////////////////////////////////////////////////
-#define FILETYPELEN 50
-typedef struct _tagFILETYPE
-{
-	LIST_ENTRY	list;
-
-	WCHAR 		FileExt[50];// 文件类型，也就是文件的后缀
-	BOOLEAN		bBackUp;
-	BOOLEAN		bSelected;
-}FILETYPE, *PFILETYPE;
-
-////////////////////////////////////////////////////////////////////////////
-// 下面这个结构也写在磁盘上，初始化的时候要从磁盘文件读进来
-//1：初始化的时候要从磁盘文件读进来
-//2：程序在用户设置以后，会立即更新磁盘上的数据
-//	(1):用户添加一个进程
-//	(2):用户删除一个进程
-//	(3):用户对一个进程删除一个或多个文件类型
-//	(4):用户对一个进程添加一个或多个文件类型
-//////////////////////////////////////////////////////////////////////////
-///////////////////////////////////////////////////////////////////////////
-//访问这个数据结构的时候是同步的 ，所以没有必要使用同步方式的数据
-//////////////////////////////////////////////////////////////////////////
-#define PROCESSHASHVALULENGTH  512
-typedef struct _tagPROCESSINFO
-{
-	LIST_ENTRY		list;
-
-	HANDLE			hProcess;			//每个当前在运行的进程的ID,每个进程在创建的时候 
-	LIST_ENTRY		hProcessList;
-	FAST_MUTEX      HandleMutex;
-	//我们要把这个进程的句柄放到这个内存数据段中，这个值是不保存到磁盘上的
-
-	UNICODE_STRING	ProcessName;		// ！！！！为了方便，现在只检测进程的名字来判断它访问的文件类型是不是加密的
-
-	UCHAR			ProcessHashValue[PROCESSHASHVALULENGTH];	//每个进程的hash 值 用来判断是不是伪造的进程。！！！！
-	//产品中应该使用进程的Image的一部分的hash值来判断
-	BOOLEAN			bAllowInherent;
-
-	FAST_MUTEX      FileTypesMutex;
-	LIST_ENTRY		FileTypes;			//此进程所访问或者创建的需要加密的文件类型
-	LIST_ENTRY		FileTypesForBrowser[5];
-	LONG			nRef;
-	BOOLEAN			bNeedBackUp;
-	BOOLEAN			bEnableEncrypt;
-	BOOLEAN			bForceEncryption;
-	BOOLEAN			bAlone;
-	BOOLEAN			bBowser;
-	BOOLEAN			bAllCreateExeFile;
-	ULONG			nEncryptTypes;
-}PROCESSINFO, *PPROCESSINFO;
 
 typedef struct tagCREATE_INFO
 {
@@ -359,24 +306,22 @@ typedef struct tagIRP_CONTEXT
 	PIO_WORKITEM	WorkItem;
 
 	PFLT_CALLBACK_DATA OriginatingData;
-	ERESOURCE_THREAD ProcessId;
+	ERESOURCE_THREAD ResourceThread;
 
 	//
 	//  Originating Device (required for workque algorithms)
 	//
 	FLT_RELATED_OBJECTS FltObjects;
-	PFILE_OBJECT   Fileobject;
+	PFILE_OBJECT   FileObject;
 
 	CREATE_INFO createInfo;
 	ULONG ulSectorSize;
 	ULONG uSectorsPerAllocationUnit;
 
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
-	PFILE_OBJECT FileObject;
 
 	PMDL AllocateMdl;
 	PDEF_IO_CONTEXT pIoContext;
-	BOOLEAN IrpOperation;
 }DEF_IRP_CONTEXT, *PDEF_IRP_CONTEXT;
 
 
@@ -454,6 +399,33 @@ typedef NTSTATUS (*fsQueryInformationProcess)(
 	__out_opt     PULONG ReturnLength
 	);
 
+typedef NTSTATUS (*fltSetEaFile)(
+__in PFLT_INSTANCE Instance,
+__in PFILE_OBJECT FileObject,
+__in_bcount(Length) PVOID EaBuffer,
+__in ULONG Length
+);
+
+typedef NTSTATUS (*fltQueryEaFile)(
+__in PFLT_INSTANCE Instance,
+__in PFILE_OBJECT FileObject,
+__out_bcount_part(Length, *LengthReturned) PVOID ReturnedEaData,
+__in ULONG Length,
+__in BOOLEAN ReturnSingleEntry,
+__in_bcount_opt(EaListLength) PVOID EaList,
+__in ULONG EaListLength,
+__in_opt PULONG EaIndex,
+__in BOOLEAN RestartScan,
+__out_opt PULONG LengthReturned
+);
+
+typedef BOOLEAN (*fltOplockIsSharedRequest)(
+__in PFLT_CALLBACK_DATA CallbackData
+);
+
+typedef BOOLEAN (*fsRtlAreThereCurrentOrInProgressFileLocks)(
+__in PFILE_LOCK FileLock
+);
 
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
 {
@@ -464,6 +436,10 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fsGetVersion pGetVersion;
 	fltQueryDirectoryFile  QueryDirectoryFile;
 	fsQueryInformationProcess QueryInformationProcess;
+	fltSetEaFile SetEaFile;
+	fltQueryEaFile QueryEaFile;
+	fltOplockIsSharedRequest OplockIsSharedRequest;
+	fsRtlAreThereCurrentOrInProgressFileLocks RtlAreThereCurrentOrInProgressFileLocks;
 }DYNAMIC_FUNCTION_POINTERS;
 
 #define NAMED_PIPE_PREFIX                "\\\\.\\Pipe"

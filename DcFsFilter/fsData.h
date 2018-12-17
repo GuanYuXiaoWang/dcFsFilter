@@ -42,6 +42,16 @@ extern DYNAMIC_FUNCTION_POINTERS g_DYNAMIC_FUNCTION_POINTERS;
 extern LARGE_INTEGER  Li0;
 extern KSPIN_LOCK g_GeneralSpinLock;
 
+
+typedef struct  tagTHREAD_PARAM
+{
+	PFLT_FILTER Filter;
+	PFLT_INSTANCE Instance;
+	BOOLEAN NetFile;
+	ULONG Length;
+	WCHAR * FilePath;
+}THREAD_PARAM;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -51,6 +61,7 @@ extern "C" {
 
 	BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType);
 	BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID);
+	BOOLEAN IsFltFileLock();
 
 	PERESOURCE FsdAllocateResource();
 	BOOLEAN FsIsIrpTopLevel(IN PFLT_CALLBACK_DATA Data);
@@ -143,7 +154,7 @@ extern "C" {
 
 	NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
-	NTSTATUS FsGetCcFileInfo(__in PCFLT_RELATED_OBJECTS FltObject, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject);
+	NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout  PVOID * CcFileObject, __in BOOLEAN NetWork);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR FilePath, __in USHORT Length);
 
