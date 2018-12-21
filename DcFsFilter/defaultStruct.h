@@ -29,9 +29,9 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define CACHE_DISABLE		0x004
 #define CACHE_ALLOW			0x008
 
-#define FILE_ACCESS_PROCESS_READ 0x001
-#define FILE_ACCESS_PROCESS_RW 0x002
-#define FILE_ACCESS_PROCESS_DISABLE 0x004
+#define FILE_ACCESS_PROCESS_READ 0x0010
+#define FILE_ACCESS_PROCESS_RW 0x0020
+#define FILE_ACCESS_PROCESS_DISABLE 0x0040
 
 #ifndef ENCRYPT_HEAD_LENGTH
 #define ENCRYPT_HEAD_LENGTH 1024
@@ -44,6 +44,13 @@ typedef struct tagFILE_OPEN_INFO
 	PVOID FileObject;
 	HANDLE FileHandle;
 }FILE_OPEN_INFO, *PFILE_OPEN_INFO;
+
+typedef struct tagEXPLORER_PROCESS_FILE
+{
+	ULONG ProcessId;
+	PVOID FileOBject;
+	PVOID Fcb;
+}EXPLORER_PROCESS_FILE, *PEXPLORER_PROCESS_FILE;
 
 typedef struct tagDEF_IO_CONTEXT
 {
@@ -214,8 +221,9 @@ typedef struct tagDEFFCB
 	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
+	BOOLEAN bRecycleBinFile;
 	ULONG FileHeaderLength;
-	ULONG FileAcessType;
+	ULONG ProcessAcessType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
 	PVOID Ccb;
@@ -226,7 +234,6 @@ typedef struct tagDEFFCB
 	DEF_VPB Vpb;
 	HANDLE ProcessID;
 	HANDLE ThreadID;
-	ERESOURCE_THREAD ThreadEresource;
 }DEFFCB, *PDEFFCB;
 
 typedef struct tagCREATE_INFO
@@ -328,7 +335,8 @@ typedef struct tagIRP_CONTEXT
 typedef enum tagPROCETYPE
 {
 	PROCESS_ACCESS_ALLOW,
-	PROCESS_ACCESS_DISABLE
+	PROCESS_ACCESS_DISABLE,
+	PROCESS_ACCESS_EXPLORER
 }PROCETYPE;
 
 #define NTFS_NTC_DATA_HEADER             ((NODE_TYPE_CODE)0x0700)
@@ -399,8 +407,7 @@ typedef NTSTATUS (*fsQueryInformationProcess)(
 	__out_opt     PULONG ReturnLength
 	);
 
-typedef FLT_PREOP_CALLBACK_STATUS
-(*fltOplockFsctrlEx)(
+typedef FLT_PREOP_CALLBACK_STATUS (*fltOplockFsctrlEx)(
 __in POPLOCK Oplock,
 __in PFLT_CALLBACK_DATA CallbackData,
 __in ULONG OpenCount,
@@ -408,6 +415,34 @@ __in ULONG Flags
 );
 
 typedef BOOLEAN (*fsRtlCheckLockForOplockRequest)(__in PFILE_LOCK FileLock, __in PLARGE_INTEGER AllocationSize);
+
+typedef NTSTATUS(*fltSetEaFile)(
+	__in PFLT_INSTANCE Instance,
+	__in PFILE_OBJECT FileObject,
+	__in_bcount(Length) PVOID EaBuffer,
+	__in ULONG Length
+	);
+
+typedef NTSTATUS(*fltQueryEaFile)(
+	__in PFLT_INSTANCE Instance,
+	__in PFILE_OBJECT FileObject,
+	__out_bcount_part(Length, *LengthReturned) PVOID ReturnedEaData,
+	__in ULONG Length,
+	__in BOOLEAN ReturnSingleEntry,
+	__in_bcount_opt(EaListLength) PVOID EaList,
+	__in ULONG EaListLength,
+	__in_opt PULONG EaIndex,
+	__in BOOLEAN RestartScan,
+	__out_opt PULONG LengthReturned
+	);
+
+typedef BOOLEAN(*fltOplockIsSharedRequest)(
+	__in PFLT_CALLBACK_DATA CallbackData
+	);
+
+typedef BOOLEAN(*fsRtlAreThereCurrentOrInProgressFileLocks)(
+	__in PFILE_LOCK FileLock
+	);
 
 
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
@@ -421,6 +456,10 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fsQueryInformationProcess QueryInformationProcess;
 	fltOplockFsctrlEx OplockFsctrlEx;
 	fsRtlCheckLockForOplockRequest pFsRtlCheckLockForOplockRequest;
+	fltSetEaFile SetEaFile;
+	fltQueryEaFile QueryEaFile;
+	fltOplockIsSharedRequest OplockIsSharedRequest;
+	fsRtlAreThereCurrentOrInProgressFileLocks RtlAreThereCurrentOrInProgressFileLocks;
 }DYNAMIC_FUNCTION_POINTERS;
 
 #define NAMED_PIPE_PREFIX                "\\\\.\\Pipe"
@@ -432,6 +471,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 #define LAYER_NTC_FCB -32768
 #define CCB_FLAG_NETWORK_FILE 0x0010
 #define CCB_FLAG_FILE_CHANGED 0x0020
+#define CCB_FLAG_RECYCLE_BIN_FILE 0x0040
 
 #ifndef OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY //win7及以后的系统才支持
 #define OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY   0x00000002
@@ -450,10 +490,6 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 
 #define FsReleaseFcbEx(IRPCONTEXT,Fcb) {                 \
 	ExReleaseResourceForThreadLite((Fcb)->Header.Resource, ExGetCurrentResourceThread());    \
-}
-
-#define FsReleasePagingIoResouceEx(IRPCONTEXT,Fcb) {                 \
-	ExReleaseResourceForThreadLite((Fcb)->Header.PagingIoResource, Fcb->ThreadEresource);    \
 }
 
 typedef struct _KLDR_DATA_TABLE_ENTRY{

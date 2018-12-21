@@ -60,8 +60,10 @@ extern "C" {
 	VOID UnInitData();
 
 	BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PULONG pProcType);
-	BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID);
+	BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * ProcessType);
 	BOOLEAN IsFltFileLock();
+	BOOLEAN IsNeedEncrypted();
+	VOID FsSetExplorerInfo(__in  PFILE_OBJECT FileObject, __in PDEFFCB Fcb);
 
 	PERESOURCE FsdAllocateResource();
 	BOOLEAN FsIsIrpTopLevel(IN PFLT_CALLBACK_DATA Data);
@@ -80,6 +82,7 @@ extern "C" {
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);
+	VOID ClearFcbList();
 	BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pFcb);
 	BOOLEAN UpdateFcbList(WCHAR * pwszFile, PDEFFCB * pFcb);
 
@@ -134,7 +137,6 @@ extern "C" {
 	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
 	BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout USHORT* nLength);
-	NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_CCB Ccb);
 	NTSTATUS FsWriteFileHeader(__in PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __inout PVOID HeadBuf);
 	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
 	BOOLEAN FsZeroData(IN PDEF_IRP_CONTEXT IrpContext,
@@ -160,6 +162,7 @@ extern "C" {
 
 	NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
 	VOID KeSleep(LONG MilliSecond);
+	BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length);
 #ifdef __cplusplus
 }
 #endif

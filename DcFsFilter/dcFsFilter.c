@@ -874,8 +874,7 @@ NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObjec
 	{
 		if (IsMyFakeFcb(FileObject))
 		{
-			ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
-			bEncryptResource = TRUE;
+			bEncryptResource = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
 			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) || Ccb->StreamFileInfo.StreamObject == NULL)
 			{
 				try_return(Status = STATUS_FILE_DELETED);

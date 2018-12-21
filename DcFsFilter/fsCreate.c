@@ -146,11 +146,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 #endif
 	PAGED_CODE();
 	//test wps
-//  	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
-// 	{		
-// 	 	return FLT_PREOP_DISALLOW_FASTIO;
-// 	}
-// 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+//   	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
+//  	{		
+//  	 	return FLT_PREOP_DISALLOW_FASTIO;
+//  	}
+//  	return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	//
 	if (!IsFilterProcess(Data, &Status, &ProcType))
 	{
@@ -391,7 +391,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 			{
 				PDEF_CCB Ccb = pFcb->Ccb;
 				KdPrint(("[%s]proces or thread changed....\n", __FUNCTION__));
-				//pFcb = NULL;
 			}
 		}
 		KdPrint(("............ProcessId:%d, ThreadId:%d.......\n", PsGetCurrentProcessId(), PsGetCurrentThreadId()));
@@ -493,6 +492,24 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				FltStatus = FLT_PREOP_COMPLETE;
 			}
 		}
+		if (PROCESS_ACCESS_EXPLORER == IrpContext->createInfo.uProcType)
+		{
+			if (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus)
+			{
+				FsSetExplorerInfo(NULL, NULL);
+			}
+			else
+			{
+				if (pFcb && pFcb->bEnFile)
+				{
+					FsSetExplorerInfo(pFileObject, pFcb);
+				}
+				else if (!bPostIrp)
+				{
+					FsSetExplorerInfo(NULL, NULL);
+				}
+			}
+		}	
 
 		Data->IoStatus.Status = (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status);
 		Data->IoStatus.Information = (NT_SUCCESS(Data->IoStatus.Status) && FLT_PREOP_COMPLETE == FltStatus) ? FILE_OPENED : 0;
@@ -930,7 +947,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = STATUS_USER_MAPPED_FILE);
 			}
 		}
-		if (IrpContext->createInfo.bNetWork && Fcb->CcFileObject)
+		if ((Fcb->bRecycleBinFile || IrpContext->createInfo.bNetWork) && Fcb->CcFileObject)
 		{
 			for (i; i < Fcb->FileAllOpenCount; i++)
 			{
@@ -1072,7 +1089,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
-		if (IrpContext->createInfo.bNetWork)
+		if (IrpContext->createInfo.bNetWork || Fcb->bRecycleBinFile)
 		{
 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
  			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
@@ -1099,17 +1116,15 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 		}
 
-		Ccb = Fcb->Ccb ? Fcb->Ccb : FsCreateCcb();
+		Ccb = FsCreateCcb();
 		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
 		Ccb->StreamFileInfo.StreamObject = IrpContext->createInfo.pStreamObject;
-		if (NULL == Fcb->Ccb)
-		{
-			Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
-		}
+		Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
+		
 		
 		Ccb->ProcType = IrpContext->createInfo.uProcType;
 		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
-		Fcb->FileAcessType = IrpContext->createInfo.uProcType;
+		Fcb->ProcessAcessType = IrpContext->createInfo.uProcType;
 	
 		if (Fcb->FileAllOpenCount < SUPPORT_OPEN_COUNT_MAX)
 		{
@@ -1284,6 +1299,11 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 	__try
 	{
+		if ((FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition) && !IsNeedEncrypted())
+		{
+			Status = STATUS_UNSUCCESSFUL;
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+		}
 		Status = FsCreateFileLimitation(Data, FltObjects, &IrpContext->createInfo.nameInfo->Name, &IrpContext->createInfo.hStreamHanle,
 			&IrpContext->createInfo.pStreamObject, &Data->IoStatus, IrpContext->createInfo.bNetWork, &IrpContext->createInfo.Vpb);
 		if (!NT_SUCCESS(Status))
@@ -1331,12 +1351,18 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
 		//非加密文件不过滤
-//#ifndef REAL_ENCRYPTE
+#ifndef REAL_ENCRYPTE
  		if (!IrpContext->createInfo.bEnFile)
  		{
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
  		}
-//#endif
+#else
+		if (!IrpContext->createInfo.bEnFile && !(FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition))
+		{
+			KdPrint(("is note EnFile \n"));
+			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+		}
+#endif
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
 		{
 			Status = STATUS_ACCESS_DENIED;

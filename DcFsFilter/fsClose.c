@@ -43,7 +43,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			KdPrint(("close:openCount=%d, uncleanup=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->wszFile));
 			if (0 == Fcb->OpenCount)
 			{
-				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || Fcb->bRecycleBinFile)
 				{
 					for (i = 0; i < Fcb->FileAllOpenCount; i++)
 					{

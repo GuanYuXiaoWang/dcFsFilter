@@ -25,7 +25,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+	
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -562,17 +562,24 @@ NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 			AcquireFcb = FsAcquireExclusiveFcb(IrpContext, Fcb);
 
 #if (NTDDI_VERSION >= NTDDI_WIN7)
-			if (FltOplockIsSharedRequest(Data)) {
+			if (g_DYNAMIC_FUNCTION_POINTERS.OplockIsSharedRequest && g_DYNAMIC_FUNCTION_POINTERS.OplockIsSharedRequest(Data)) {
 #else
 			if (FsControlCode == FSCTL_REQUEST_OPLOCK_LEVEL_2) {
 #endif
 
 // #if (NTDDI_VERSION >= NTDDI_WIN8)
 //  				OplockCount = (ULONG) !g_DYNAMIC_FUNCTION_POINTERS.pFsRtlCheckLockForOplockRequest(Fcb->FileLock, &Fcb->Header.AllocationSize );
-				if (/*!IsFltFileLock()*/TRUE)
+				if (IsFltFileLock())
 				{
 #if (NTDDI_VERSION >= NTDDI_WIN7)
-					OplockCount = (ULONG)FsRtlAreThereCurrentOrInProgressFileLocks(Fcb->FileLock);
+					if (g_DYNAMIC_FUNCTION_POINTERS.RtlAreThereCurrentOrInProgressFileLocks)
+					{
+						OplockCount = g_DYNAMIC_FUNCTION_POINTERS.RtlAreThereCurrentOrInProgressFileLocks(Fcb->FileLock);
+					}
+					else
+					{
+						OplockCount = 0;
+					}
 #else
 					OplockCount = (ULONG)FsRtlAreThereCurrentFileLocks(&Fcb->Specific.Fcb.FileLock);
 #endif

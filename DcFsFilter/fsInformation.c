@@ -338,9 +338,17 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	__try
 	{
 		Fcb = FltObjects->FileObject->FsContext;
-		ntStatus = FltQueryEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
-			Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
-			TRUE, &Data->IoStatus.Information);
+		if (g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile)
+		{
+			 ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
+				Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
+				TRUE, &Data->IoStatus.Information);
+		}
+		else
+		{
+
+		}
+		
 	}
 	__finally
 	{
@@ -385,7 +393,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	__try
 	{
 		Fcb = FltObjects->FileObject->FsContext;
-		ntStatus = FltSetEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
+		if (g_DYNAMIC_FUNCTION_POINTERS.SetEaFile)
+		{
+			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.SetEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
+		}
+		else
+		{
+
+		}
 	}
 	__finally
 	{
@@ -560,18 +575,24 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		{
 			FILE_DISPOSITION_INFORMATION FileDisPosition;
 			FileDisPosition.DeleteFile = TRUE;
-			Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, 
-				&FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
-			if (NT_SUCCESS(Status))
+			if (!Fcb->bRecycleBinFile && FlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
 			{
-				SetFlag(FileObject->Flags, FO_DELETE_ON_CLOSE);
 				SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			}
 			else
 			{
-				KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
+				Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject,
+					&FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
+				if (NT_SUCCESS(Status))
+				{
+					SetFlag(FileObject->Flags, FO_DELETE_ON_CLOSE);
+					SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+				}
+				else
+				{
+					KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
+				}
 			}
-			
 		}
 			break;
 		case FileRenameInformation:
@@ -1303,18 +1324,10 @@ BOOLEAN GetVolDevNameByQueryObj(__in UNICODE_STRING * pSymName, __out UNICODE_ST
 
 NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
 {
-	PFLT_CALLBACK_DATA NewData = NULL;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFILE_OBJECT FileObject = Fcb->CcFileObject;
 	PFILE_RENAME_INFORMATION FileRenameInfo = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
 	IO_STATUS_BLOCK IoStatus = {0};
-	WCHAR * pFileName = NULL;
-	ULONG Length = 0;
-	WCHAR wszDosName[32] = { 0 };//磁盘路径，C:、D:等
-	WCHAR wszNtName[FILE_PATH_LENGTH_MAX] = { 0 };
-	UNICODE_STRING strDosName;
-	UNICODE_STRING strNtName;
-
 	__try
 	{
 		if (CcIsFileCached(FileObject))
@@ -1325,6 +1338,8 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 				KdPrint(("[%s]CcFlushCache failed(0x%x)...\n", __FUNCTION__, IoStatus.Status));
 			}
 		}
+	
+		//更新fcb，更新相关文件信息（已打开文件的相关关闭）或设置Flag，close时判断处理
 		ntStatus = FltSetInformationFile(FltObjects->Instance, FileObject, Data->Iopb->Parameters.SetFileInformation.InfoBuffer,
 			Data->Iopb->Parameters.SetFileInformation.Length, Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
 		if (!NT_SUCCESS(ntStatus))
@@ -1332,51 +1347,14 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 			KdPrint(("FltSetInformationFile failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
-		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);//是否要保留部分信息？？
-		//更新fcb，更新相关文件信息（已打开文件的相关关闭）或设置Flag，close时判断处理
-		//完整路径\??\c:\1.doc
-		RtlCopyMemory(wszDosName, FileRenameInfo->FileName, 6 * sizeof(WCHAR));
-		RtlInitUnicodeString(&strDosName, wszDosName);
-		strNtName.Buffer = wszNtName;
-		strNtName.Length = FILE_PATH_LENGTH_MAX;
-		strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-		if (GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
-		{
-			try_return(NOTHING);
-		}
-		if (0 == Length)
-		{
-			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
-			__leave;
-		}
-		pFileName = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, Length + sizeof(WCHAR), 'refn');
-		if (NULL == pFileName)
-		{
-			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);//close时清除该fcb
-			__leave;
-		}
-		strNtName.Buffer = pFileName;
-		strNtName.Length = FILE_PATH_LENGTH_MAX;
-		strNtName.MaximumLength = FILE_PATH_LENGTH_MAX;
-		if (!GetVolDevNameByQueryObj(&strDosName, &strNtName, &Length))
-		{
-			SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
-			__leave;
-		}
+		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+		
 	try_exit:NOTHING;
-		
-// 		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
-// 		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
-// 		RtlCopyMemory(Fcb->wszFile + strNtName.Length / sizeof(WCHAR), FileRenameInfo->FileName + 6, FileRenameInfo->FileNameLength - 6 * sizeof(WCHAR));
-		
-		//如果是未受控的文件类型？？解密？？
+//  		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
+//  		RtlCopyMemory(Fcb->wszFile, strNtName.Buffer, strNtName.Length);
 	}
 	__finally
 	{
-		if (pFileName != NULL)
-		{
-			FltFreePoolAlignedWithTag(FltObjects->Instance, pFileName, 'refn');
-		}
 	}
 	return ntStatus;
 }
