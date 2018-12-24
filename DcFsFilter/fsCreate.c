@@ -494,19 +494,22 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		}
 		if (PROCESS_ACCESS_EXPLORER == IrpContext->createInfo.uProcType)
 		{
-			if (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus)
+			//if (!(STATUS_OBJECT_NAME_NOT_FOUND == Status && IrpContext->createInfo.bNetWork))
 			{
-				FsSetExplorerInfo(NULL, NULL);
-			}
-			else
-			{
-				if (pFcb && pFcb->bEnFile)
-				{
-					FsSetExplorerInfo(pFileObject, pFcb);
-				}
-				else if (!bPostIrp)
+				if (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus)
 				{
 					FsSetExplorerInfo(NULL, NULL);
+				}
+				else
+				{
+					if (pFcb && pFcb->bEnFile)
+					{
+						FsSetExplorerInfo(pFileObject, pFcb);
+					}
+					else if (!bPostIrp)
+					{
+						FsSetExplorerInfo(NULL, NULL);
+					}
 				}
 			}
 		}	

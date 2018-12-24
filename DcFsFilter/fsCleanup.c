@@ -188,7 +188,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
 					if (/*!Fcb->bEnFile*/FALSE)
 					{
-						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), NULL);
 						if (NT_SUCCESS(Status))
 						{
 							Fcb->bEnFile = TRUE;

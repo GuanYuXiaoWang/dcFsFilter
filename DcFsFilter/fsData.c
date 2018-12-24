@@ -200,11 +200,17 @@ BOOLEAN IsNeedEncrypted()
 	return TRUE;
 }
 
+BOOLEAN IsLastAccessNetWorkFile()
+{
+	return g_LastProcessInfo.NetWork;
+}
+
 VOID FsSetExplorerInfo(__in  PFILE_OBJECT FileObject, __in PDEFFCB Fcb)
 {
 	g_LastProcessInfo.FileOBject = FileObject;
 	g_LastProcessInfo.Fcb = Fcb;
 	g_LastProcessInfo.ProcessId = PsGetCurrentProcessId();
+	g_LastProcessInfo.NetWork = Fcb ? Fcb->bNetWork : FALSE;
 }
 
 VOID InitData()
@@ -1386,6 +1392,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb->bWriteHead = IrpContext->createInfo.bWriteHeader;
 		Fcb->CacheType = CACHE_ALLOW;
 		Fcb->ProcessAcessType = IrpContext->createInfo.uProcType;
+		Fcb->bNetWork = IrpContext->createInfo.bNetWork;
 
 		if (Fcb->bEnFile)
 		{
@@ -1395,10 +1402,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 				RtlCopyMemory(Fcb->szOrgFileHead, IrpContext->createInfo.OrgFileHeader, ENCRYPT_HEAD_LENGTH);
 			}
 			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
-		}
-		else
-		{
-			SetFlag(Fcb->ProcessAcessType, FILE_ACCESS_PROCESS_RW);
 		}
 		
 		if (IsFltFileLock())
@@ -2762,7 +2765,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				ntStatus = FsDelayEncrypteFile(FltObjects, strFullPath.Buffer, strFullPath.Length, bNetWork);
 			}
 			else 
-				FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, NULL, 0, FALSE);
+				FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, NULL, 0, FALSE, NULL);
 		}
 	}
 	__finally
@@ -2937,7 +2940,7 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 	*CcFileHandle = NULL;
 }
 
-NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN Network)
+NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN Network, __in PFILE_OBJECT CcFileObject)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	WCHAR * pFileName = NULL;
@@ -2993,12 +2996,19 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 			RtlZeroMemory(pFileName, LengthTmpPath);
 			RtlCopyMemory(pFileName, FilePath, LengthPathOrg);
 		}
-		
-		ntStatus = FsGetCcFileInfo(Filter, Instance, pFileName, &Handle, &FileObject, Network);
-		if (!NT_SUCCESS(ntStatus))
+		if (CcFileObject)
 		{
-			__leave;
+			FileObject = CcFileObject;
 		}
+		else
+		{
+			ntStatus = FsGetCcFileInfo(Filter, Instance, pFileName, &Handle, &FileObject, Network);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+		}
+
 		ntStatus = FltQueryInformationFile(Instance, FileObject, &FileInfo, sizeof(FILE_STANDARD_INFORMATION), FileStandardInformation, NULL);
 		if (!NT_SUCCESS(ntStatus))
 		{
@@ -3390,7 +3400,7 @@ void EncrypteFileThread(PVOID Context)
 		}
 		else
 		{
-			ntStatus = FsEncrypteFile(NULL, Param->Filter, Param->Instance, Param->FilePath, Param->Length - sizeof(WCHAR), Param->NetFile);
+			ntStatus = FsEncrypteFile(NULL, Param->Filter, Param->Instance, Param->FilePath, Param->Length - sizeof(WCHAR), Param->NetFile, NULL);
 			if (NT_SUCCESS(ntStatus))
 			{
 				break;

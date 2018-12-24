@@ -50,6 +50,7 @@ typedef struct tagEXPLORER_PROCESS_FILE
 	ULONG ProcessId;
 	PVOID FileOBject;
 	PVOID Fcb;
+	BOOLEAN NetWork;
 }EXPLORER_PROCESS_FILE, *PEXPLORER_PROCESS_FILE;
 
 typedef struct tagDEF_IO_CONTEXT
@@ -221,6 +222,7 @@ typedef struct tagDEFFCB
 	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
+	BOOLEAN bNetWork;
 	BOOLEAN bRecycleBinFile;
 	ULONG FileHeaderLength;
 	ULONG ProcessAcessType;

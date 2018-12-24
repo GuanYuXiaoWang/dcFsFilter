@@ -238,7 +238,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	//如果一个非加密文件收到了写请求转变他成为加密文件
 	if (!bPagingIo && !Fcb->bEnFile&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
 	{
-		Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+		Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, Fcb);
+		//Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), Ccb->StreamFileInfo.StreamObject);
 		if (!NT_SUCCESS(Status))
 		{
 			Data->IoStatus.Status = Status;
@@ -247,7 +248,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		}	
 		Fcb->bEnFile = TRUE;
 		Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
-		//Fcb->Header.FileSize.QuadPart += ENCRYPT_HEAD_LENGTH;
+		Fcb->bWriteHead = TRUE;
 		SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
 	}
 	// 处理延迟写请求(非缓存跟pagingio 均不支持延迟写入)
@@ -692,7 +693,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			{
 				if (!Fcb->bWriteHead)
 				{
-					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, volCtx->ulSectorSize, Fcb);
+					Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, Fcb);
 					if (NT_SUCCESS(Status))
 					{
 						Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
@@ -1211,7 +1212,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForModWrite(__inout PFLT_CALLBACK_DATA D
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in ULONG SectorSize, __in PDEFFCB Fcb)
+NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PDEFFCB Fcb)
 {
 	NTSTATUS Status;
 	PFLT_CALLBACK_DATA NewData = NULL;
@@ -1239,11 +1240,6 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))
 	{
-#ifdef CHANGE_TOP_IRP
-		PIRP TopLevelIrp = IoGetTopLevelIrp();
-		IoSetTopLevelIrp(NULL);
-#endif	
-
 		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
 		NewData->Iopb->MinorFunction = IRP_MN_NORMAL;
 		NewData->Iopb->Parameters.Write.ByteOffset.QuadPart = 0;
@@ -1254,10 +1250,6 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 		NewData->Iopb->IrpFlags = IRP_WRITE_OPERATION | IRP_NOCACHE | IRP_SYNCHRONOUS_API;
 		FltPerformSynchronousIo(NewData);
 		Status = NewData->IoStatus.Status;
-
-#ifdef	CHANGE_TOP_IRP			
-		IoSetTopLevelIrp(TopLevelIrp);
-#endif
 	}
 
 	if (NewData != NULL)
