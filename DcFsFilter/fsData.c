@@ -487,6 +487,19 @@ BOOLEAN IsVistaOrLater()
 	return FALSE;
 }
 
+BOOLEAN IsWin10()
+{
+	if (0 == g_OsMajorVersion)
+	{
+		GetVersion();
+	}
+	if (g_OsMajorVersion >= 10 && g_OsMinorVersion >= 0)
+	{
+		return TRUE;
+	}
+	return FALSE;
+}
+
 BOOLEAN InsertFcbList(PDEFFCB *Fcb)
  {
 	BOOLEAN bAcquireResource = FALSE;
@@ -502,7 +515,6 @@ BOOLEAN InsertFcbList(PDEFFCB *Fcb)
 		RtlZeroMemory(pFileFcb, sizeof(ENCRYPT_FILE_FCB));
 		pFileFcb->Fcb = *Fcb;
 		pFileFcb->uType = LAYER_NTC_FCB;
-		FsRtlEnterFileSystem();
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		bAcquireResource = TRUE;
 		InsertTailList(&g_FcbEncryptFileList, &pFileFcb->listEntry);
@@ -513,7 +525,6 @@ BOOLEAN InsertFcbList(PDEFFCB *Fcb)
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 	return bRet;
@@ -539,7 +550,6 @@ BOOLEAN RemoveFcbList(WCHAR * pwszFile)
 			bRet = TRUE;
 			__leave;
 		}
-		FsRtlEnterFileSystem();
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		bAcquireResource = TRUE;
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
@@ -559,7 +569,6 @@ BOOLEAN RemoveFcbList(WCHAR * pwszFile)
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 	return bRet;
@@ -573,7 +582,6 @@ VOID ClearFcbList()
 	PENCRYPT_FILE_FCB pContext = NULL;
 	__try
 	{
-		FsRtlEnterFileSystem();
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
 		{
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
@@ -587,7 +595,6 @@ VOID ClearFcbList()
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 }
@@ -604,7 +611,6 @@ BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pF
 	WCHAR * pTempFile = NULL;
 	ULONG FileLength = 0;
 
-	FsRtlEnterFileSystem();
 	__try
 	{
 		if (NULL == pFcb)
@@ -681,7 +687,6 @@ BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pF
 			ExFreePoolWithTag(pTempFile, 'fnff');
 		}
 	}
-	FsRtlExitFileSystem();
 	return bRet;
 }
 
@@ -1559,7 +1564,7 @@ PDEFFCB FsCreateFcb()
 		Fcb->Header.FastMutex = ExAllocateFromNPagedLookasideList(&g_FastMutexInFCBLookasideList);
 		ExInitializeFastMutex(Fcb->Header.FastMutex);
 		ExInitializeFastMutex(&Fcb->AdvancedFcbHeaderMutex);
-		FsRtlSetupAdvancedHeader(&Fcb->Header, &Fcb->AdvancedFcbHeaderMutex);
+		FsRtlSetupAdvancedHeader(&Fcb->Header, Fcb->Header.FastMutex);
 	
 		Fcb->Header.IsFastIoPossible = FastIoIsNotPossible;
 		Fcb->Header.AllocationSize.QuadPart = -1;
@@ -1614,7 +1619,7 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	FsFreeResource(Fcb->Resource);
 	if (Fcb->Header.FastMutex)
 	{
-		ExFreeToNPagedLookasideList(&g_FastMutexInFCBLookasideList, Fcb->Header.FastMutex);
+		ExFreePool(Fcb->Header.FastMutex);
 		Fcb->Header.FastMutex = NULL;
 	}
 	if (Fcb->OutstandingAsyncEvent != NULL)
@@ -2751,7 +2756,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		{
 			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			//如果文件正在被其他程序打开，create时是否有权限？
-			if (FileDispositionInformation == FileInfoClass && 0 == pFcb->OpenCount)
+			if (FileDispositionInformation == FileInfoClass && 0 == pFcb->OpenCount && !FlagOn(pFcb->FcbState, FCB_STATE_DELAY_CLOSE))
 			{
 				FsFreeFcb(pFcb, NULL);
 			}

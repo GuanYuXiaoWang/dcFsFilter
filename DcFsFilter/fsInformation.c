@@ -20,12 +20,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	}
 #endif
 
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass));
 #ifdef TEST
 	KdBreakPoint();
@@ -809,7 +808,15 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 		{
 			try_return(Status = STATUS_INVALID_DEVICE_REQUEST);
 		}
-		NewFileSize = Fcb->bEnFile ? Buffer->EndOfFile.LowPart + Fcb->FileHeaderLength : Buffer->EndOfFile.LowPart;
+		if (IsWin10() && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+		{
+			NewFileSize = Buffer->EndOfFile.LowPart + ENCRYPT_HEAD_LENGTH;
+		}
+		else
+		{
+			NewFileSize = Fcb->bEnFile ? Buffer->EndOfFile.LowPart + Fcb->FileHeaderLength : Buffer->EndOfFile.LowPart;
+		}
+		
 		if (FCB_LOOKUP_ALLOCATIONSIZE_HINT == Fcb->Header.AllocationSize.QuadPart)
 		{
 			FsLookupFileAllocationSize(IrpContext, Fcb, Ccb);
@@ -907,6 +914,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 				}
 
 				Fcb->Header.FileSize.QuadPart = NewFileSize;
+				KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 				//
 				//  Call our common routine to modify the file sizes.  We are now
 				//  done with NewFileSize and NewValidDataLength, and we have
@@ -993,12 +1001,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 	ULONG RetLength = 0;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreQuerySecurity start, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
 
 	Fcb = FltObjects->FileObject->FsContext;
@@ -1060,12 +1067,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 	PDEFFCB Fcb = NULL;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreSetSecurity start....\n"));
 
 	Fcb = FltObjects->FileObject->FsContext;
@@ -1134,12 +1141,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 	ULONG Length = Data->Iopb->Parameters.QueryVolumeInformation.Length;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreQueryVolumeInformation....\n"));
 
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -1212,12 +1218,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA D
 	PDEFFCB Fcb = NULL;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreSetVolumeInformation....\n"));
 
 	Fcb = FltObjects->FileObject->FsContext;

@@ -19,13 +19,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	}
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 #endif
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -116,13 +115,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreLockControl(__inout PFLT_CALLBACK_DATA Data, __in
 	UNREFERENCED_PARAMETER(CompletionContext);
 	
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreLockControl....\n"));
 	bTopLevelIrp = FsIsIrpTopLevel(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -405,12 +403,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	FileClass = Data->Iopb->Parameters.DirectoryControl.QueryDirectory.FileInformationClass;
 	KdPrint(("PtPreDirectoryControl, file class=%d....\n", FileClass));
 
@@ -667,12 +664,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	Ccb = FltObjects->FileObject->FsContext2;
 	__try

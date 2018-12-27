@@ -24,17 +24,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 
 #endif
-
-	FsRtlEnterFileSystem();
-
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 #ifdef TEST
 	KdBreakPoint();
 #endif
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreWrite begin......\n"));
 
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -599,6 +596,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 
 			Fcb->Header.FileSize.QuadPart = FileSize.QuadPart;
+			KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 			if (CcIsFileCached(FileObject))
 			{
 				CcSetFileSizes(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize);
@@ -889,6 +887,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 							(VOID)ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
 						}
 						Fcb->Header.FileSize.QuadPart = InitialFileSize.QuadPart;
+						KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 						if (FileObject->SectionObjectPointer->SharedCacheMap != NULL) 
 						{
 							CcGetFileSizePointer(FileObject)->QuadPart = Fcb->Header.FileSize.QuadPart;

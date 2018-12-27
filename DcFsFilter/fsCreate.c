@@ -145,17 +145,16 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	}
 #endif
 	PAGED_CODE();
-	//test wps
-//   	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
-//  	{		
-//  	 	return FLT_PREOP_DISALLOW_FASTIO;
-//  	}
-//  	return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	//
-	if (!IsFilterProcess(Data, &Status, &ProcType))
-	{
+   	if (!(IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType)))
+  	{		
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	}
+ 	}
+  	//return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	//
+// 	if (!IsFilterProcess(Data, &Status, &ProcType))
+// 	{
+// 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+// 	}
 	KdPrint(("PtPreOperationNetworkQueryOpen begin, data flag=0x%x......\n", Data->Flags));
 	FsRtlEnterFileSystem();
 	__try
@@ -178,6 +177,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 			IrpContext->createInfo.bNetWork = TRUE;
 		}
 		ExReleaseResourceLite(pVolCtx->pEresurce);
+
+		if (IrpContext->createInfo.bNetWork)
+		{
+			__leave;
+		}
 
 		Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, IrpContext->createInfo.nameInfo->Name.Buffer, &IrpContext->createInfo.hStreamHanle, 
 			&IrpContext->createInfo.pStreamObject, IrpContext->createInfo.bNetWork);

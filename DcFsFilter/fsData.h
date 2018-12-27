@@ -80,6 +80,7 @@ extern "C" {
 	BOOLEAN GetVersion();
 	BOOLEAN IsWin7OrLater();
 	BOOLEAN IsVistaOrLater();
+	BOOLEAN IsWin10();
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);

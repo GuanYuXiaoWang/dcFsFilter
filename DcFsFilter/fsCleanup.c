@@ -231,6 +231,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				Fcb->bAddHeaderLength = FALSE;
 				Fcb->DestCacheObject = NULL;
 			}
+			SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 		}
 		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
