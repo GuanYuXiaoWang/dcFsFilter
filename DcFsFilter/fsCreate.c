@@ -145,6 +145,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 // 		return FLT_PREOP_DISALLOW_FASTIO;
 // 	}
 // 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	
 	if (!IsFilterProcess(Data, &Status, &ProcType))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -450,6 +451,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		if (NULL != IrpContext->createInfo.nameInfo)
 		{
 			FltReleaseFileNameInformation(IrpContext->createInfo.nameInfo);
+			IrpContext->createInfo.nameInfo = NULL;
 		}
 		if (bAcquireResource)
 		{

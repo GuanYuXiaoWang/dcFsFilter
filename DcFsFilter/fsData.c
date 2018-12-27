@@ -122,7 +122,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		//KdPrint(("PID=%d, ProcessName=%s,FileName=%S,Extension=%S....\n", ProcessId, ProcessName ? ProcessName : "none", FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
+		KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 		*pStatus = STATUS_SUCCESS;
 	}
@@ -147,9 +147,9 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID)
 	if (4 == ProcessID)
 	{
 #ifndef REAL_ENCRYPTE
-		if (!IsIn(PsGetCurrentThreadId()))
+		if (IsIn(PsGetCurrentThreadId()))
 		{
-			bControl = FALSE;
+			bControl = TRUE;
 		}
 #endif
 	}
@@ -172,7 +172,6 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID)
 			return FALSE;
 		}
 		bControl = TRUE;
-		//KdPrint(("process:%s....\n", ProcessName));
 	}
 
 	if (Process != NULL)
@@ -475,7 +474,6 @@ BOOLEAN InsertFcbList(PDEFFCB *Fcb)
 		RtlZeroMemory(pFileFcb, sizeof(ENCRYPT_FILE_FCB));
 		pFileFcb->Fcb = *Fcb;
 		pFileFcb->uType = LAYER_NTC_FCB;
-		FsRtlEnterFileSystem();
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		bAcquireResource = TRUE;
 		InsertTailList(&g_FcbEncryptFileList, &pFileFcb->listEntry);
@@ -486,7 +484,6 @@ BOOLEAN InsertFcbList(PDEFFCB *Fcb)
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 	return bRet;
@@ -512,7 +509,6 @@ BOOLEAN RemoveFcbList(WCHAR * pwszFile)
 			bRet = TRUE;
 			__leave;
 		}
-		FsRtlEnterFileSystem();
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		bAcquireResource = TRUE;
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
@@ -532,7 +528,6 @@ BOOLEAN RemoveFcbList(WCHAR * pwszFile)
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 	return bRet;
@@ -546,7 +541,6 @@ VOID ClearFcbList()
 	PENCRYPT_FILE_FCB pContext = NULL;
 	__try
 	{
-		FsRtlEnterFileSystem();
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
 		{
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
@@ -559,7 +553,6 @@ VOID ClearFcbList()
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_FcbResource);
-			FsRtlExitFileSystem();
 		}
 	}
 }
@@ -576,7 +569,6 @@ BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pF
 	WCHAR * pTempFile = NULL;
 	ULONG FileLength = 0;
 
-	FsRtlEnterFileSystem();
 	__try
 	{
 		if (NULL == pFcb)
@@ -653,7 +645,6 @@ BOOLEAN FindFcb(IN PFLT_CALLBACK_DATA Data, IN WCHAR * pwszFile, IN PDEFFCB * pF
 			ExFreePoolWithTag(pTempFile, 'fnff');
 		}
 	}
-	FsRtlExitFileSystem();
 	return bRet;
 }
 
@@ -965,12 +956,10 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 	SetFlag(IrpContext->Flags, IRP_CONTEXT_FLAG_IN_FSP);
 
 	KdPrint(("DispatchWorkItem,function=0x%x......\n", IrpContext->MajorFunction));
-
+	FsRtlEnterFileSystem();
 	while (TRUE)
 	{
-		FsRtlEnterFileSystem();
 		Retry = FALSE;
-
 		if (FlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_RECURSIVE_CALL))
 		{
 			IoSetTopLevelIrp((PIRP)FSRTL_FSP_TOP_LEVEL_IRP);
@@ -1054,12 +1043,12 @@ VOID FsDispatchWorkItem(IN PDEVICE_OBJECT DeviceObject, IN PVOID Context)
 		}
 		
 		IoSetTopLevelIrp(NULL);
-		FsRtlExitFileSystem();
 		if (!Retry)
 		{
 			break;
 		}
 	}
+	FsRtlExitFileSystem();
 }
 
 NTSTATUS FsPostRequest(IN OUT PFLT_CALLBACK_DATA Data, IN PDEF_IRP_CONTEXT IrpContext)

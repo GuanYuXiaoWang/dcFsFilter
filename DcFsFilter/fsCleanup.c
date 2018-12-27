@@ -23,7 +23,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		}
 	}
 #endif
-
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;

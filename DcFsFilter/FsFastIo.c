@@ -11,14 +11,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreFastIoCheckPossible(__inout PFLT_CALLBACK_DATA Da
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
-
-	if (!IsMyFakeFcb(FltObjects->FileObject) || !IsFilterProcess(Data, &Status, &ProcessType))
+	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFastIoCheckPossible....\n"));
 
 	FsRtlExitFileSystem();

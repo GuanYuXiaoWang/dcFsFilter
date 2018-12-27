@@ -20,17 +20,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	}
 #endif
 
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass));
-#ifdef TEST
-	KdBreakPoint();
-#endif
-
+	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -250,18 +245,16 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	
 #endif
 
-	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		FsFileInfoChangedNotify(Data, FltObjects);
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass));
 #ifdef TEST
 	KdBreakPoint();
 #endif
-
+	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -986,14 +979,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 	ULONG RetLength = 0;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
-
+	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -1053,14 +1045,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 	PDEFFCB Fcb = NULL;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreSetSecurity start....\n"));
-
+	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -1127,14 +1118,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 	ULONG Length = Data->Iopb->Parameters.QueryVolumeInformation.Length;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreQueryVolumeInformation....\n"));
-
+	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
@@ -1205,14 +1195,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA D
 	PDEFFCB Fcb = NULL;
 
 	PAGED_CODE();
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreSetVolumeInformation....\n"));
-
+	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	if (FLT_IS_IRP_OPERATION(Data))
 	{

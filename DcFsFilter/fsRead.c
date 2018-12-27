@@ -34,10 +34,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	
 #endif
 
-	FsRtlEnterFileSystem();
+	
  	if (!IsMyFakeFcb(FltObjects->FileObject))
  	{
- 		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
  	}
 #ifdef TEST
@@ -45,7 +44,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 #endif
 
 	KdPrint(("PtPreRead begin......\n"));
-
+	FsRtlEnterFileSystem();
 	bTopLevel = FsIsIrpTopLevel(Data);
 	__try
 	{

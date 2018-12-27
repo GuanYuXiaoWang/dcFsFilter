@@ -21,22 +21,17 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 		KdBreakPoint();
 	}
-
-
 #endif
-
-	FsRtlEnterFileSystem();
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 #ifdef TEST
 	KdBreakPoint();
 #endif
 	KdPrint(("PtPreWrite begin......\n"));
-
+	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try

@@ -20,15 +20,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	}
 	
 #endif
-	FsRtlEnterFileSystem();
-
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}	
 	KdPrint(("PtPreClose......\n"));
-
+	FsRtlEnterFileSystem();
 	bTopLevelIrp = IsTopLevelIRP(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -73,7 +70,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					}
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 				}
-				if (/*FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE)*/TRUE)
+				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 					if (bAcquire)
@@ -81,9 +78,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 						ExReleaseResourceLite(Fcb->Resource);
 						bAcquire = FALSE;
 					}
-					FsFreeCcb(Ccb);	
-					Fcb->Ccb = NULL;
-					FltObjects->FileObject->FsContext2 = NULL;
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
@@ -93,6 +87,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					//解决方法：监控非受控进程的文件行为，如果存在删除、移动、重命名情况，直接删除从FCB链表里摧毁该FCB
 					//
 				}
+				FsFreeCcb(Ccb);
+				Fcb->Ccb = NULL;
+				FltObjects->FileObject->FsContext2 = NULL;
 			}
 		}
 		__finally

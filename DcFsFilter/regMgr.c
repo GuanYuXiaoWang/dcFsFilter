@@ -303,7 +303,7 @@ BOOLEAN IsControlProcess(__in PUCHAR pProcessName)
 	for (listEntry = g_ControlProcessList.Flink; listEntry != &g_ControlProcessList; listEntry = listEntry->Flink)
 	{
 		pItem = CONTAINING_RECORD(listEntry, REG_KEY_INFO, listEntry);
-		if (pItem && 0 == wcsnicmp(strControlProcess.Buffer, pItem->keyValue, strControlProcess.Length))
+		if (pItem && 0 == wcsicmp(strControlProcess.Buffer, pItem->keyValue))
 		{
 			bFind = TRUE;
 			break;

@@ -10,12 +10,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 
 	PAGED_CODE();
 
-	FsRtlEnterFileSystem();
+	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
-		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFlush begin......\n"));
 	__try
 	{
