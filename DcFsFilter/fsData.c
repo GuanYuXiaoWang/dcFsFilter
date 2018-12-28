@@ -467,7 +467,7 @@ BOOLEAN IsWin7OrLater()
 	{
 		GetVersion();
 	}
-	if (g_OsMajorVersion >= 6 && g_OsMinorVersion >=1)
+	if ((g_OsMajorVersion == 6 && g_OsMinorVersion >= 1) || g_OsMajorVersion > 6)
 	{
 		return TRUE;
 	}
