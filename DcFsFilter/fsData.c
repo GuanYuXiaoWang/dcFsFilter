@@ -439,7 +439,7 @@ BOOLEAN IsWin7OrLater()
 	{
 		GetVersion();
 	}
-	if (g_OsMajorVersion >= 6 && g_OsMinorVersion >=1)
+	if ((g_OsMajorVersion == 6 && g_OsMinorVersion >= 1) || g_OsMajorVersion > 6)
 	{
 		return TRUE;
 	}
@@ -545,6 +545,7 @@ VOID ClearFcbList()
 		{
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
 			RemoveEntryList(&pContext->listEntry);
+			FsFreeFcb(pContext->Fcb, NULL);
 			ExFreeToPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
 		}
 	}
@@ -1525,7 +1526,7 @@ PDEFFCB FsCreateFcb()
 		Fcb->Header.FastMutex = ExAllocateFromNPagedLookasideList(&g_FastMutexInFCBLookasideList);
 		ExInitializeFastMutex(Fcb->Header.FastMutex);
 		ExInitializeFastMutex(&Fcb->AdvancedFcbHeaderMutex);
-		FsRtlSetupAdvancedHeader(&Fcb->Header, &Fcb->AdvancedFcbHeaderMutex);
+		FsRtlSetupAdvancedHeader(&Fcb->Header, Fcb->Header.FastMutex);
 	
 		Fcb->Header.IsFastIoPossible = FastIoIsNotPossible;
 		Fcb->Header.AllocationSize.QuadPart = -1;
@@ -1578,6 +1579,11 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	FsFreeResource(Fcb->Header.PagingIoResource);
 	FsFreeResource(Fcb->Header.Resource);
 	FsFreeResource(Fcb->Resource);
+	if (Fcb->Header.FastMutex)
+	{
+		ExFreePool(Fcb->Header.FastMutex);
+		Fcb->Header.FastMutex = NULL;
+	}
 	if (Fcb->OutstandingAsyncEvent != NULL)
 	{
 		ExFreePool(Fcb->OutstandingAsyncEvent);
@@ -1602,11 +1608,13 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 		{
 			FsRtlUninitializeFileLock(Fcb->FileLock);
 		}
+		Fcb->FileLock = NULL;
 	}
 	
 	if (Fcb->NtfsFcb)
 	{
 		ExFreeToNPagedLookasideList(&g_NTFSFCBLookasideList, Fcb->NtfsFcb);
+		Fcb->NtfsFcb = NULL;
 	}
 	ExFreeToNPagedLookasideList(&g_FcbLookasideList, Fcb);
 	Fcb = NULL;
