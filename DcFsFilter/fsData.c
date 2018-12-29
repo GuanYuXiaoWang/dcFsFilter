@@ -58,7 +58,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	WCHAR szExName[32] = { 0 };
 	USHORT length = 0;
 	WCHAR szProcessName[MAX_PATH] = { 0 };
-	UNICODE_STRING strProcessName;
+	UNICODE_STRING strProcessName = {0};
 	
 
 	UNREFERENCED_PARAMETER(pProcType);
@@ -81,10 +81,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			*pStatus = STATUS_UNSUCCESSFUL;
 			__leave;
 		}
-		/*
-		RtlInitUnicodeString(&strProcessName, szProcessName);
-		strProcessName.Length = (MAX_PATH - 1)* sizeof(WCHAR);
-		strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
+		//
 		*pStatus = FsGetProcessName(ProcessId, &strProcessName);
 		if (!NT_SUCCESS(*pStatus))
 		{
@@ -94,7 +91,12 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		*/
+		if (pProcType)
+		{
+			*pProcType = (0 == wcsicmp(strProcessName.Buffer, L"explorer.exe") ? PROCESS_ACCESS_EXPLORER : 0);
+		}
+		//
+		/*
 		if (0 == ProcessId)
 		{
 			__leave;
@@ -103,7 +105,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		
+		*/
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
 		{
@@ -129,6 +131,10 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		if (FileInfo != NULL)
 		{
 			FltReleaseFileNameInformation(FileInfo);
+		}
+		if (strProcessName.Buffer != NULL)
+		{
+			ExFreePoolWithTag(strProcessName.Buffer, 'proc');
 		}
 	}
 
@@ -2835,13 +2841,13 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 			__leave;
 		}
 
-		if (RetLength > MAX_PATH || RetLength <= sizeof (UNICODE_STRING))
+		if (/*RetLength > MAX_PATH || */RetLength <= sizeof (UNICODE_STRING))
 		{
-			KdPrint(("QueryInformationProcess:Retlength > %d...\n", MAX_PATH));
+			KdPrint(("QueryInformationProcess:Retlength < %d...\n", sizeof (UNICODE_STRING)));
 			__leave;
 		}
 		BufferLength = RetLength - sizeof (UNICODE_STRING);
-		Buffer = ExAllocatePoolWithTag(PagedPool, RetLength, 'proc');
+		Buffer = ExAllocatePoolWithTag(NonPagedPool, RetLength, 'proc');
 		if (NULL == Buffer)
 		{
 			ntStatus = STATUS_INSUFFICIENT_RESOURCES;
@@ -2851,18 +2857,19 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 		if (NT_SUCCESS(ntStatus) && Buffer != NULL)
 		{
 			ImagePath = (PUNICODE_STRING)Buffer;
-			//RtlCopyUnicodeString(ProcessImagePath, ImagePath);
-			if (ImagePath->Length / sizeof(WCHAR) > MAX_PATH)
-			{
-				__leave;
-			}
 			//取进程名
 			pTmp = ImagePath->Buffer + ImagePath->Length / sizeof(WCHAR);
 			for (i = 0; i < ImagePath->Length / sizeof(WCHAR); i++)
 			{
 				if (L'\\' == pTmp[0])
 				{
-					RtlCopyMemory(ProcessImageName->Buffer, pTmp + 1, ProcessNameLength * sizeof(WCHAR));
+					ProcessNameLength *= sizeof(WCHAR);
+					ProcessImageName->Length = ProcessNameLength;
+					ProcessImageName->MaximumLength = ProcessNameLength + sizeof(WCHAR);
+					ProcessImageName->Buffer = ExAllocatePoolWithTag(NonPagedPool, ProcessImageName->MaximumLength, 'proc');
+					RtlZeroMemory(ProcessImageName->Buffer, ProcessImageName->MaximumLength);
+					
+					RtlCopyMemory(ProcessImageName->Buffer, pTmp + 1, ProcessNameLength);
 					break;
 				}
 				pTmp -= 1;
