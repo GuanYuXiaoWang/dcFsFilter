@@ -150,10 +150,10 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 
 	if (4 == ProcessID)
 	{
-#ifndef REAL_ENCRYPTE
- 		if (!IsIn(PsGetCurrentThreadId()))
+#ifdef REAL_ENCRYPTE
+ 		if (IsIn(PsGetCurrentThreadId()))
  		{
- 			bControl = FALSE;
+ 			bControl = TRUE;
  		}		
 #endif
 	}
@@ -2626,6 +2626,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	PDEFFCB pFcb = NULL;
 	PVOLUMECONTEXT pVolCtx = NULL;
 	BOOLEAN bNetWork = FALSE;
+	ULONG ProcessType = 0;
 	
 	ULONG NetVolumeLength = 0;
 
@@ -2643,7 +2644,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		if (FileRenameInformation == FileInfoClass)
 		{
-			if (!IsControlProcessByProcessId(PsGetCurrentProcessId(), NULL))
+			if (!IsControlProcessByProcessId(PsGetCurrentProcessId(), &ProcessType))
 			{
 				__leave;
 			}
@@ -2767,11 +2768,11 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				FsFreeFcb(pFcb, NULL);
 			}
 		}
-		else if (FileRenameInformation == FileInfoClass)
+		else if (FileRenameInformation == FileInfoClass && PROCESS_ACCESS_EXPLORER != ProcessType)
 		{
 			//受控进程把一个文件重命名为受控类型文件，对此文件进行加密
 			KdPrint(("ReName file.....\n"));
-			if (Network)
+			if (bNetWork)
 			{
 				ntStatus = FsDelayEncrypteFile(FltObjects, strFullPath.Buffer, strFullPath.Length, bNetWork);
 			}
@@ -2952,7 +2953,7 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 	*CcFileHandle = NULL;
 }
 
-NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN Network, __in PFILE_OBJECT CcFileObject)
+NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN NetWork, __in PFILE_OBJECT CcFileObject)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	WCHAR * pFileName = NULL;
@@ -2976,6 +2977,7 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 	PUCHAR pBuffer = NULL;
 	PUCHAR pHeader = NULL;
 	ULONG RetReadLength = 0;
+	ULONG BufLenth = 0;
 
 	__try
 	{
@@ -3014,7 +3016,7 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 		}
 		else
 		{
-			ntStatus = FsGetCcFileInfo(Filter, Instance, pFileName, &Handle, &FileObject, Network);
+			ntStatus = FsGetCcFileInfo(Filter, Instance, pFileName, &Handle, &FileObject, NetWork);
 			if (!NT_SUCCESS(ntStatus))
 			{
 				__leave;
@@ -3130,7 +3132,7 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 			ntStatus = STATUS_INSUFFICIENT_RESOURCES;
 			__leave;
 		}
-
+		//BufLenth = ENCRYPT_HEAD_LENGTH * 4;
 		OrgByteOffset.QuadPart = 0;
 		ByteOffset.QuadPart += ENCRYPT_HEAD_LENGTH;
 		//这里是否该考虑写失败情况？

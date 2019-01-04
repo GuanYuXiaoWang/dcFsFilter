@@ -149,6 +149,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
   	{		
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
  	}
+	//if (ProcType != PROCESS_ACCESS_EXPLORER)
+	{
+		return FLT_PREOP_DISALLOW_FASTIO;
+	}
   	//return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	//
 // 	if (!IsFilterProcess(Data, &Status, &ProcType))
@@ -212,13 +216,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 		Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->LastWriteTime.QuadPart = IrpContext->createInfo.BaseInfo.LastWriteTime.QuadPart;
 		Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->EndOfFile.QuadPart = IrpContext->createInfo.FileSize.QuadPart;
 		Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->AllocationSize.QuadPart = IrpContext->createInfo.FileAllocationSize.QuadPart;
-		if (0 == Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->FileAttributes)
+		//if (0 == Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->FileAttributes)
 		{
 			Data->Iopb->Parameters.NetworkQueryOpen.NetworkInformation->FileAttributes = IrpContext->createInfo.BaseInfo.FileAttributes;
 		}
+		Data->IoStatus.Information = sizeof(FILE_NETWORK_OPEN_INFORMATION);
 	}
 	__finally
 	{
+		Data->IoStatus.Status = Status;
 		if (NULL != pVolCtx)
 		{
 			FltReleaseContext(pVolCtx);
@@ -1306,7 +1312,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 	__try
 	{
-		if ((FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition) && !IsNeedEncrypted())
+		if (PROCESS_ACCESS_EXPLORER == IrpContext->createInfo.uProcType && (FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition) && !IsNeedEncrypted())
 		{
 			Status = STATUS_UNSUCCESSFUL;
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
@@ -1364,7 +1370,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
  			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
  		}
 #else
-		if (!IrpContext->createInfo.bEnFile && !(FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition))
+		if (PROCESS_ACCESS_EXPLORER == IrpContext->createInfo.uProcType && !IrpContext->createInfo.bEnFile && !(FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition))
 		{
 			KdPrint(("is note EnFile \n"));
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);

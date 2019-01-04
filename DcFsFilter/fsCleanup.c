@@ -186,7 +186,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
-					if (/*!Fcb->bEnFile*/FALSE)
+					if (PROCESS_ACCESS_EXPLORER != Ccb->ProcType && !Fcb->bEnFile)
 					{
 						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), NULL);
 						if (NT_SUCCESS(Status))
