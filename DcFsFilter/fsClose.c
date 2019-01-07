@@ -88,10 +88,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
-				FsFreeCcb(Ccb);
-				FltObjects->FileObject->FsContext2 = NULL;
-				Fcb->Ccb = NULL;
 			}
+			FsFreeCcb(Ccb);
+			FltObjects->FileObject->FsContext2 = NULL;
+			Fcb->Ccb = NULL;
 		}
 		__finally
 		{

@@ -82,6 +82,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			__leave;
 		}
 		//
+		/*
 		*pStatus = FsGetProcessName(ProcessId, &strProcessName);
 		if (!NT_SUCCESS(*pStatus))
 		{
@@ -95,8 +96,9 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			*pProcType = (0 == wcsicmp(strProcessName.Buffer, L"explorer.exe") ? PROCESS_ACCESS_EXPLORER : 0);
 		}
+		*/
 		//
-		/*
+
 		if (0 == ProcessId)
 		{
 			__leave;
@@ -105,7 +107,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		*/
 		//判断文件后缀名
 		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
 		{
@@ -150,12 +151,14 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 
 	if (4 == ProcessID)
 	{
-#ifdef REAL_ENCRYPTE
  		if (IsIn(PsGetCurrentThreadId()))
  		{
  			bControl = TRUE;
+			if (ProcessType)
+			{
+				*ProcessType = PROCESS_ACCESS_ANTIS;
+			}
  		}		
-#endif
 	}
 	else
 	{
@@ -173,7 +176,20 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 		}
 		if (ProcessType)
 		{
-			*ProcessType = (0 == _stricmp(ProcessName, "explorer.exe") ? PROCESS_ACCESS_EXPLORER : 0);
+			//*ProcessType = (0 == _stricmp(ProcessName, "explorer.exe") ? PROCESS_ACCESS_EXPLORER : 0);
+			if (0 == _stricmp(ProcessName, "explorer.exe"))
+			{
+				*ProcessType = PROCESS_ACCESS_EXPLORER;
+			}
+			else if (0 == _stricmp(ProcessName, "ntrtscan.exe"))
+			{
+				*ProcessType = PROCESS_ACCESS_ANTIS;
+			}
+			else
+			{
+				*ProcessType = 0;
+			}
+
 		}
 		if (!IsControlProcess(ProcessName))
 		{

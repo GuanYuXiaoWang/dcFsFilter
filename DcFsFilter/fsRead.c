@@ -544,7 +544,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 							}
 							ExFreePoolWithTag(Buffer, 'buff');
 						}
-					}					
+					}			
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}
