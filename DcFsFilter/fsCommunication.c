@@ -157,7 +157,7 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 				KdPrint(("DogID and Key already set"));
 				g_bSafeDataReady = TRUE;
 			}		
-
+			DrvData->SystemUser.dwClientProcessID = pSyatem->dwClientProcessID;
 			KeLeaveCriticalRegion();
 
 			ntStatus = STATUS_SUCCESS;
@@ -189,6 +189,7 @@ NTSTATUS FLTAPI MessageNotify(__in_opt PVOID PortCookie, __in_bcount_opt(InputBu
 		{
 			pSyatem = (PSystemApi32Use)(((PCommandMsg)InputBuffer)->MsgInfo);
 			DrvData->SystemUser.dwClientProcessID = pSyatem->dwClientProcessID;
+			KdPrint(("client process id:%d.....\n", DrvData->SystemUser.dwClientProcessID));
 		}
 			break;
 		default:

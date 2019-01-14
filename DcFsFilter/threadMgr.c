@@ -30,7 +30,7 @@ __in BOOLEAN	bCreate
 
 BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 {
-#ifndef REAL_ENCRYPTE
+#ifdef REAL_ENCRYPTE
 	return TRUE;
 #endif
 	BOOLEAN		bRet = FALSE;
@@ -72,7 +72,7 @@ BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 
 BOOLEAN UnInitThreadMgr()
 {
-#ifndef REAL_ENCRYPTE
+#ifdef REAL_ENCRYPTE
 	return TRUE;
 #endif
 	BOOLEAN		bRet = FALSE;

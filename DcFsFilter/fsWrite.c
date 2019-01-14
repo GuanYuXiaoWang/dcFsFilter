@@ -233,7 +233,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		return FLT_PREOP_COMPLETE;
 	}
 	//如果一个非加密文件收到了写请求转变他成为加密文件
-	if (!bPagingIo && !Fcb->bEnFile&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
+	if (!bPagingIo && !Fcb->bEnFile/*&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER)*/)
 	{
 		Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, Fcb);
 		//Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), Ccb->StreamFileInfo.StreamObject);
@@ -945,13 +945,13 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				ExReleaseResourceLite(Fcb->Resource);
 			}
 		}
-		else
-		{
-			if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && bFcbAcquired)
-			{
-				FsReleaseFcb(NULL, Fcb);
-			}
-		}
+// 		else
+// 		{
+// 			if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && bFcbAcquired)
+// 			{
+// 				FsReleaseFcb(NULL, Fcb);
+// 			}
+// 		}
 
 		if (volCtx != NULL)
 		{
@@ -1211,54 +1211,3 @@ FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForModWrite(__inout PFLT_CALLBACK_DATA D
 	return FLT_POSTOP_FINISHED_PROCESSING;
 }
 
-NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PDEFFCB Fcb)
-{
-	NTSTATUS Status;
-	PFLT_CALLBACK_DATA NewData = NULL;
-	ULONG WriteLength = ENCRYPT_HEAD_LENGTH;
-	PUCHAR NewBuf = NULL;
-	PUCHAR pHeader = NULL;
-	ULONG ulCryptTpe = 0;
-	
-	if (strlen(Fcb->szOrgFileHead) <= 0)
-	{
-		RtlZeroMemory(Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
-		CreateFileHead(Fcb->szFileHead);
-	}
-
-	NewBuf = FltAllocatePoolAlignedWithTag(FltObjects->Instance, NonPagedPool, WriteLength, 'wn');
-	if (NULL == NewBuf)
-	{
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
-
-	RtlZeroMemory(NewBuf, WriteLength);
-	RtlCopyMemory(NewBuf, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
-	EncryptFileHead(NewBuf);
-
-	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
-	if (NT_SUCCESS(Status))
-	{
-		NewData->Iopb->MajorFunction = IRP_MJ_WRITE;
-		NewData->Iopb->MinorFunction = IRP_MN_NORMAL;
-		NewData->Iopb->Parameters.Write.ByteOffset.QuadPart = 0;
-		NewData->Iopb->Parameters.Write.Length = ENCRYPT_HEAD_LENGTH;
-		NewData->Iopb->Parameters.Write.WriteBuffer = NewBuf;
-
-		NewData->Iopb->TargetFileObject = FileObject;
-		NewData->Iopb->IrpFlags = IRP_WRITE_OPERATION | IRP_NOCACHE | IRP_SYNCHRONOUS_API;
-		FltPerformSynchronousIo(NewData);
-		Status = NewData->IoStatus.Status;
-	}
-
-	if (NewData != NULL)
-	{
-		FltFreeCallbackData(NewData);
-	}
-	if (NewBuf != NULL)
-	{
-		FltFreePoolAlignedWithTag(FltObjects->Instance, NewBuf, 'wn');
-	}
-
-	return Status;
-}

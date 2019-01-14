@@ -25,8 +25,6 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects,
 	__in PULONG_PTR RetBytes
 	);
 
-NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PDEFFCB Fcb);
-
 VOID FsWriteFileAsyncCompletionRoutine(__in PFLT_CALLBACK_DATA Data, __in PFLT_CONTEXT Context);
 
 FLT_PREOP_CALLBACK_STATUS PtPreAcquireForModWrite(__inout PFLT_CALLBACK_DATA Data,

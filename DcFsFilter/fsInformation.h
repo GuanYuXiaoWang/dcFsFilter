@@ -73,7 +73,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 
 NTSTATUS FsSetPositionInfo(__in PFLT_CALLBACK_DATA Data, __in PFILE_OBJECT FileObject);
 
-NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
+NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
 
 FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data,
 	__in PCFLT_RELATED_OBJECTS FltObjects,

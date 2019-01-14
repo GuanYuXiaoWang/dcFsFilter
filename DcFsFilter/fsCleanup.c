@@ -109,14 +109,14 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		{
 			__leave;
 		}
-		if (FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
-		{
-			if (FlagOn(FileObject->Flags, FO_FILE_MODIFIED))
-			{
-				//flush cache?
-			}
-			__leave;
-		}
+// 		if (FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
+// 		{
+// 			if (FlagOn(FileObject->Flags, FO_FILE_MODIFIED))
+// 			{
+// 				//flush cache?
+// 			}
+// 			__leave;
+// 		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
 		KdPrint(("clean:processID:%d, openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->ProcessID, Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
 		if (1 == Fcb->OpenCount)
@@ -162,11 +162,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					CACHE_UNINITIALIZE_EVENT Event;
 					KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
 					TruncateSize.QuadPart = Fcb->Header.FileSize.QuadPart;
-					bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize, &Event);
-					if (!bPureCache)
-					{
-						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
-					}
+					bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize,/* &Event*/NULL);
+// 					if (!bPureCache)
+// 					{
+// 						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
+// 					}
 				}
 			
 				if (Fcb->bAddHeaderLength)
@@ -186,9 +186,9 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
-					if (PROCESS_ACCESS_EXPLORER != Ccb->ProcType && !Fcb->bEnFile)
+					if (/*PROCESS_ACCESS_EXPLORER != Ccb->ProcType && !Fcb->bEnFile*/FALSE)
 					{
-						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), NULL);
+						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), NULL);
 						if (NT_SUCCESS(Status))
 						{
 							Fcb->bEnFile = TRUE;
@@ -218,13 +218,13 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO) * SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 
-					if (/*Fcb->CcFileObject*/FALSE)
-					{
-						ObDereferenceObject(Fcb->CcFileObject);
-						FltClose(Fcb->CcFileHandle);
-						Fcb->CcFileObject = NULL;
-						Fcb->CcFileHandle = NULL;
-					}
+// 					if (Fcb->CcFileObject)
+// 					{
+// 						ObDereferenceObject(Fcb->CcFileObject);
+// 						FltClose(Fcb->CcFileHandle);
+// 						Fcb->CcFileObject = NULL;
+// 						Fcb->CcFileHandle = NULL;
+// 					}
 				}
 
 				Fcb->DestCacheObject = NULL;

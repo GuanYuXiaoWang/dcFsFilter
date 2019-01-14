@@ -140,6 +140,7 @@ extern "C" {
 
 	BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout USHORT* nLength);
 	NTSTATUS FsWriteFileHeader(__in PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __inout PVOID HeadBuf);
+	NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PDEFFCB Fcb);
 	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
 	BOOLEAN FsZeroData(IN PDEF_IRP_CONTEXT IrpContext,
 		IN PDEFFCB Fcb,
@@ -160,9 +161,9 @@ extern "C" {
 	NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject, __in BOOLEAN NetWork);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
 	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN NetWork, __in PFILE_OBJECT CcFileObject);
-	VOID LogFile(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PVOID Buffer, __in ULONG Length);
 
 	NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
+	NTSTATUS FsDelayDeleteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
 	VOID KeSleep(LONG MilliSecond);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length);
 #ifdef __cplusplus

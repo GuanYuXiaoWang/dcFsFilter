@@ -530,7 +530,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		}	
 
 		Data->IoStatus.Status = (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status);
-		Data->IoStatus.Information = (NT_SUCCESS(Data->IoStatus.Status) && FLT_PREOP_COMPLETE == FltStatus) ? FILE_OPENED : 0;
+		if (NT_SUCCESS(Data->IoStatus.Status) && FLT_PREOP_COMPLETE == FltStatus)
+		{
+			Data->IoStatus.Information = FILE_OPENED;
+		}
 
 		if (!bPostIrp && !AbnormalTermination())
 		{
@@ -752,6 +755,8 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		KdPrint(("[%s]line=%d.....\n", __FUNCTION__, __LINE__));
 
 		bFcbAcquired = FsAcquireExclusiveFcb(IrpContext, Fcb);
+		bResourceAcquired = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
+
 		if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) && Fcb->OpenCount != 0)
 		{
 			try_return(Status = STATUS_DELETE_PENDING);
@@ -1142,11 +1147,13 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 		}
 
-		Ccb = FsCreateCcb();
+		Ccb = Fcb->Ccb ? Fcb->Ccb : FsCreateCcb();
 		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
 		Ccb->StreamFileInfo.StreamObject = IrpContext->createInfo.pStreamObject;
-		Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
-		
+		if (NULL == Fcb->Ccb)
+		{
+			Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
+		}
 		
 		Ccb->ProcType = IrpContext->createInfo.uProcType;
 		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
@@ -1271,7 +1278,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (bResourceAcquired)
 		{
-			ExReleaseResourceForThreadLite(Fcb->Resource, ExGetCurrentResourceThread());
+			ExReleaseResourceLite(Fcb->Resource);
 		}
 	}
 	return Status;
@@ -1330,6 +1337,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Status = STATUS_UNSUCCESSFUL;
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
+		if (FILE_CREATE == CreateDisposition)
+		{
+			KdPrint(("create new ....\n"));
+		}
 		Status = FsCreateFileLimitation(Data, FltObjects, &IrpContext->createInfo.nameInfo->Name, &IrpContext->createInfo.hStreamHanle,
 			&IrpContext->createInfo.pStreamObject, &Data->IoStatus, IrpContext->createInfo.bNetWork, &IrpContext->createInfo.Vpb, IrpContext->createInfo.uProcType);
 		if (!NT_SUCCESS(Status))
@@ -1350,6 +1361,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				IrpContext->FltStatus = FLT_PREOP_COMPLETE;
 				try_return(NOTHING);
 			}
+		}
+		if (FILE_CREATE == CreateDisposition)
+		{
+			//FsNonCacheWriteFileHeader(FltObjects, IrpContext->createInfo.pStreamObject, NULL);
 		}
 
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
@@ -1387,6 +1402,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				KdPrint(("is note EnFile \n"));
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
+// 			if (FILE_CREATE != CreateDisposition && !IrpContext->createInfo.bEnFile)
+// 			{
+// 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+// 			}
 		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)

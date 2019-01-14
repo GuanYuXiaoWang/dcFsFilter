@@ -37,6 +37,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			{
 				__leave;
 			}
+
 			KdPrint(("close:openCount=%d, uncleanup=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->wszFile));
 			if (0 == Fcb->OpenCount)
 			{
@@ -77,21 +78,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
-				else if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
-				{
-					//有一种情况：文件关闭，手动删除，把另一个文件重命名为该文件，那么FCB就需要重新更新了或删除
-					//解决方法：监控非受控进程的文件行为，如果存在删除、移动、重命名情况，直接删除从FCB链表里摧毁该FCB
-					//见：FsFileInfoChangedNotify
-					//
-				}
+				FsFreeCcb(Ccb);
+				FltObjects->FileObject->FsContext2 = NULL;
+				Fcb->Ccb = NULL;
 				if (Fcb)
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
 			}
-			FsFreeCcb(Ccb);
-			FltObjects->FileObject->FsContext2 = NULL;
-			Fcb->Ccb = NULL;
+
 		}
 		__finally
 		{
