@@ -19,11 +19,18 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	}
 	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
 #endif
-	
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
+	if (KeAreApcsDisabled())
+	{
+		return FltStatus;
+	}
+	//other FltDeviceIoControlFile ??
+
 	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
@@ -655,13 +662,19 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 
 	PAGED_CODE();
 
-	if (!IsMyFakeFcb(FltObjects->FileObject))
+	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+
+	if (NULL == FltObjects || !IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	Ccb = FltObjects->FileObject->FsContext2;
+	if (NULL == Fcb || NULL == Fcb->CcFileObject)
+	{
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 	__try
 	{
 		bTopIrp = IsTopLevelIRP(Data);

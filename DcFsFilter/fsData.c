@@ -2578,8 +2578,6 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 
 	__try
 	{
-		KeEnterCriticalRegion();
-
 		if (MINIFILTER_ENV_TYPE_NULL == ulMinifilterEnvType)
 		{
 			KdPrint(("MinifilterEnvType error"));
@@ -2619,7 +2617,6 @@ BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType)
 	}
 	__finally
 	{
-		KeLeaveCriticalRegion();
 	}
 
 	return bRet;

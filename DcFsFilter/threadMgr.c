@@ -605,7 +605,7 @@ BOOLEAN Enum()
 	PETHREAD	pEthread = NULL;
 	ULONG		ulTid = 0;
 
-
+	FsRtlEnterFileSystem();
 	__try
 	{
 		GetLock();
@@ -672,20 +672,18 @@ BOOLEAN Enum()
 
 		FreeLock();
 	}
-
+	FsRtlExitFileSystem();
 	return bRet;
 }
 
 VOID GetLock()
 {
-	KeEnterCriticalRegion();
 	ExAcquireResourceExclusiveLite(&ms_Lock, TRUE);
 }
 
 VOID FreeLock()
 {
 	ExReleaseResourceLite(&ms_Lock);
-	KeLeaveCriticalRegion();
 }
 
 BOOLEAN IsInControlSysNameList(__in ULONG ulTid, __in PETHREAD pEThread)
@@ -822,7 +820,7 @@ BOOLEAN Insert(__in ULONG ulTid)
 
 	LPTHREAD_INFO	lpThreadInfo = NULL;
 
-
+	FsRtlEnterFileSystem();
 	__try
 	{
 		GetLock();
@@ -852,10 +850,10 @@ BOOLEAN Insert(__in ULONG ulTid)
 			ExFreePoolWithTag(lpThreadInfo, THREAD_TBL_TAG);
 			lpThreadInfo = NULL;
 		}
-
 		FreeLock();
-	}
 
+	}
+	FsRtlExitFileSystem();
 	return bResult;
 }
 

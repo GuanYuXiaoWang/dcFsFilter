@@ -25,7 +25,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 		KdPrint(("Is test...\n"));
 	}
 #endif
-	
+	FsRtlEnterFileSystem();
 	if (!IsFilterProcess(Data, &status, &uProcType))
 	{
 		if (NT_SUCCESS(status))
@@ -34,12 +34,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 			{
 				Data->IoStatus.Status = STATUS_ACCESS_DENIED;
 				Data->IoStatus.Information = 0;
+				FsRtlExitFileSystem();
 				return FLT_PREOP_COMPLETE;
 			}
 			if (IsMyFakeFcb(FileObject))
 			{
 				Data->IoStatus.Status = STATUS_ACCESS_DENIED;
 				Data->IoStatus.Information = 0;
+				FsRtlExitFileSystem();
 				return FLT_PREOP_COMPLETE;
 			}
 			if (IsMyFakeFcb(FileObject->RelatedFileObject))
@@ -53,23 +55,25 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 				{
 					Data->IoStatus.Status = STATUS_ACCESS_DENIED;
 					Data->IoStatus.Information = 0;
+					FsRtlExitFileSystem();
 					return FLT_PREOP_COMPLETE;
 				}
 			}
+			FsRtlExitFileSystem();
 			return FLT_PREOP_SUCCESS_NO_CALLBACK;
 		}
-		else
-		{
-			Data->IoStatus.Status = 0;
-			Data->IoStatus.Information = 0;
-			return FLT_PREOP_SUCCESS_NO_CALLBACK;
-		}
+
+		Data->IoStatus.Status = 0;
+		Data->IoStatus.Information = 0;
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
 	if (FlagOn(uProcType, PROCESS_ACCESS_DISABLE))
 	{
 		Data->IoStatus.Status = STATUS_ACCESS_DENIED;
 		Data->IoStatus.Information = 0;
+		FsRtlExitFileSystem();
 		return FLT_PREOP_COMPLETE;
 	}
 
@@ -77,7 +81,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 #ifdef TEST
 	KdBreakPoint();
 #endif
-	FsRtlEnterFileSystem();
+	
 	//FsAcquireFilterExclusiveResource();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
 	{
@@ -776,43 +780,44 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			SetFlag(DesiredAccess, DELETE);
 		}
 
-		// 		if (!NT_SUCCESS(Status = IoCheckShareAccess(DesiredAccess,
-		// 			ShareAccess,
-		// 			FileObject,
-		// 			&Fcb->ShareAccess,
-		// 			FALSE)))
-		// 		{
-		// 			if (IsWin7OrLater())
-		// 			{
-		// 				if ((Status == STATUS_SHARING_VIOLATION) &&
-		// 					!FlagOn(OrgData->Iopb->Parameters.Create.Options, FILE_COMPLETE_IF_OPLOCKED))
-		// 				{
-		// 					FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH(&Fcb->Oplock,
-		// 						OrgData,
-		// 						0,
-		// 						IrpContext,
-		// 						FsOplockComplete,
-		// 						FsPrePostIrp);
-		// 
-		// 					if (FltOplockStatus == FLT_PREOP_PENDING) 
-		// 					{
-		// 						Status = STATUS_PENDING;
-		// 						IrpContext->FltStatus = FLT_PREOP_PENDING;
-		// 						IrpContext->createInfo.bOplockPostIrp = TRUE;
-		// 						try_return(Status);
-		// 					}
-		// 					if (FltOplockStatus == FLT_PREOP_COMPLETE)
-		// 					{
-		// 						try_return(Status = OrgData->IoStatus.Status);
-		// 					}
-		// 					else
-		// 					{
-		// 						try_return(Status = STATUS_SHARING_VIOLATION);
-		// 					}
-		// 				}
-		// 			}
-		// 			try_return(Status);
-		// 		}
+		if (!NT_SUCCESS(Status = IoCheckShareAccess(DesiredAccess,
+			ShareAccess,
+			FileObject,
+			&Fcb->ShareAccess,
+			FALSE)))
+		{
+			if (IsWin7OrLater())
+			{
+				if ((Status == STATUS_SHARING_VIOLATION) &&
+					!FlagOn(OrgData->Iopb->Parameters.Create.Options, FILE_COMPLETE_IF_OPLOCKED))
+				{
+					FltOplockStatus = g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH(&Fcb->Oplock,
+						OrgData,
+						0,
+						IrpContext,
+						FsOplockComplete,
+						FsPrePostIrp);
+
+					if (FltOplockStatus == FLT_PREOP_PENDING) 
+					{
+						Status = STATUS_PENDING;
+						IrpContext->FltStatus = FLT_PREOP_PENDING;
+						IrpContext->createInfo.bOplockPostIrp = TRUE;
+						try_return(Status);
+					}
+					if (FltOplockStatus == FLT_PREOP_COMPLETE)
+					{
+						try_return(Status = OrgData->IoStatus.Status);
+					}
+					else
+					{
+						try_return(Status = STATUS_SHARING_VIOLATION);
+					}
+				}
+			}
+			try_return(Status);
+		}
+	
 		if (IsWin7OrLater())
 		{
 			if (Fcb->OpenCount != 0)
@@ -867,7 +872,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = OrgData->IoStatus.Status);
 			}
 		}
-
+		
 		ExAcquireFastMutex(Fcb->Header.FastMutex);
 		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
 		{

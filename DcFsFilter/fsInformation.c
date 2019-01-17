@@ -244,17 +244,18 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	}
 	
 #endif
-
+	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		FsFileInfoChangedNotify(Data, FltObjects);
+		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass));
 #ifdef TEST
 	KdBreakPoint();
 #endif
-	FsRtlEnterFileSystem();
+	
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
