@@ -817,7 +817,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 			try_return(Status);
 		}
-	
+		/*
 		if (IsWin7OrLater())
 		{
 			if (Fcb->OpenCount != 0)
@@ -872,7 +872,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = OrgData->IoStatus.Status);
 			}
 		}
-		
+		*/
 		ExAcquireFastMutex(Fcb->Header.FastMutex);
 		if (FltOplockIsFastIoPossible(&Fcb->Oplock))
 		{

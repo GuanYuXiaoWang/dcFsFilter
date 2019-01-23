@@ -24,7 +24,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	{
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}	
-	KdPrint(("PtPreClose......\n"));
+	KdPrint(("PtPreClose begin......\n"));
 	FsRtlEnterFileSystem();
 	bTopLevelIrp = IsTopLevelIRP(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -115,6 +115,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	{
 		IoSetTopLevelIrp(NULL);
 	}
+	KdPrint(("PtPreClose end......\n"));
 	FsRtlExitFileSystem();
 	return FltStatus;
 }

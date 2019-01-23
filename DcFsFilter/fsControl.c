@@ -24,11 +24,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
-	if (KeAreApcsDisabled())
-	{
-		return FltStatus;
-	}
+	Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
+	return FltStatus;
 	//other FltDeviceIoControlFile ??
 
 	FsRtlEnterFileSystem();

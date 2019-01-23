@@ -66,12 +66,7 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 	}
 	//先判断文件是否为加密文件，再判断访问进程是否为受控进程(可以不区分先后)
 	__try
-	{
-		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
-		if (!NT_SUCCESS(*pStatus))
-		{
-			__leave;
-		}
+	{	
 		ProcessId = PsGetCurrentProcessId();
 		if (NULL == ProcessId)
 		{
@@ -100,9 +95,14 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		
+
+// 		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+// 		if (!NT_SUCCESS(*pStatus))
+// 		{
+// 			__leave;
+// 		}
 		//判断文件后缀名
-		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
+		if (!FsGetFileExtFromFileName(&Data->Iopb->TargetFileObject->FileName, szExName, &length))
 		{
 			__leave;
 		}
@@ -116,15 +116,21 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		if (!IsControlFileType(szExName, length))
 		{
 			__leave;
-		}	
+		}
+		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+		if (!NT_SUCCESS(*pStatus))
+		{
+		 	__leave;
+		}
 		//回收站的文件不处理：$Recycle.Bin
 		if (IsRecycleBinFile(FileInfo->Name.Buffer, FileInfo->Name.Length))
 		{
 			__leave;
 		}
-		KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
+	//	KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 		*pStatus = STATUS_SUCCESS;
+		KdPrint(("[%s]line=%d....\n", __FUNCTION__, __LINE__));
 	}
 	__finally
 	{
@@ -133,7 +139,6 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			FltReleaseFileNameInformation(FileInfo);
 		}
 	}
-
 	return bFilter;
 }
 
@@ -2130,6 +2135,11 @@ BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * 
 
 	pFileName = FilePath->Buffer;
 	nIndex = FilePath->Length / sizeof(WCHAR)-1;
+
+	if (pFileName[0] != L'\\')
+	{
+		return FALSE;
+	}
 
 	while (nIndex >= 0)
 	{
