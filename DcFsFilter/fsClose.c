@@ -41,6 +41,8 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			KdPrint(("close:openCount=%d, uncleanup=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->wszFile));
 			if (0 == Fcb->OpenCount)
 			{
+				bAcquire = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
+				/*
 				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || Fcb->bRecycleBinFile)
 				{
 					for (i = 0; i < Fcb->FileAllOpenCount; i++)
@@ -70,27 +72,34 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					}
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 				}
-				
-				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE)/* || BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)*/)
+				*/
+				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
 				{
 					KdPrint(("file deleted.......\n"));
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
+					if (bAcquire)
+					{
+						ExReleaseResourceLite(Fcb->Resource);
+						bAcquire = FALSE;
+					}
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
-				FsFreeCcb(Ccb);
-				FltObjects->FileObject->FsContext2 = NULL;
-				Fcb->Ccb = NULL;
 				if (Fcb)
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
 			}
-
+			FsFreeCcb(Ccb);
+			FltObjects->FileObject->FsContext2 = NULL;
+			Fcb->Ccb = NULL;
 		}
 		__finally
 		{
-
+			if (bAcquire)
+			{
+				ExReleaseResourceLite(Fcb->Resource);
+			}
 		}
 	}
 	else if (FLT_IS_FASTIO_OPERATION(Data))

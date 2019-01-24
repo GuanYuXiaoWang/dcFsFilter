@@ -970,18 +970,18 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = STATUS_USER_MAPPED_FILE);
 			}
 		}
-		if ((Fcb->bRecycleBinFile || IrpContext->createInfo.bNetWork) && Fcb->CcFileObject)
-		{
-			for (i; i < Fcb->FileAllOpenCount; i++)
-			{
-				ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
-				FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
-			}
-			RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* Fcb->FileAllOpenCount);
-			Fcb->FileAllOpenCount = 0;
-			Fcb->CcFileHandle = NULL;
-			Fcb->CcFileObject = NULL;
-		}
+// 		if ((Fcb->bRecycleBinFile || IrpContext->createInfo.bNetWork) && Fcb->CcFileObject)
+// 		{
+// 			for (i; i < Fcb->FileAllOpenCount; i++)
+// 			{
+// 				ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
+// 				FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
+// 			}
+// 			RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* Fcb->FileAllOpenCount);
+// 			Fcb->FileAllOpenCount = 0;
+// 			Fcb->CcFileHandle = NULL;
+// 			Fcb->CcFileObject = NULL;
+// 		}
 
 		Status = FsCreateFileLimitation(Data,
 			FltObjects,
@@ -1120,12 +1120,12 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
-		if (IrpContext->createInfo.bNetWork || Fcb->bRecycleBinFile)
-		{
-			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
- 			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
-		}
-		else if (NULL == Fcb->CcFileObject)
+// 		if (IrpContext->createInfo.bNetWork || Fcb->bRecycleBinFile)
+// 		{
+// 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
+//  			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+// 		}
+		/*else */if (NULL == Fcb->CcFileObject)
 		{
 			UNICODE_STRING unicodeString;
 			IO_STATUS_BLOCK IoStatus;
@@ -1154,6 +1154,7 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		{
 			Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
 		}
+		//Fcb->Ccb = Ccb;
 		
 		Ccb->ProcType = IrpContext->createInfo.uProcType;
 		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
@@ -1346,7 +1347,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		if (!NT_SUCCESS(Status))
 		{
 			KdPrint(("CreateFileLimitation failed(0x%x)...\n", Status));
-			if (STATUS_FILE_IS_A_DIRECTORY == Status)
+			if (STATUS_FILE_IS_A_DIRECTORY == Status || STATUS_OBJECT_NAME_NOT_FOUND == Status)
 			{
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
@@ -1478,7 +1479,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			{
 				FileObject->Flags |= FO_CACHE_SUPPORTED;
 			}
-			Fcb->Ccb = FileObject->FsContext2;
+			//Fcb->Ccb = FileObject->FsContext2;
 			if (/*!IrpContext->createInfo.bNetWork*/FALSE)
 			{
 				FsGetFileObjectIdInfo(Data, FltObjects, IrpContext->createInfo.pStreamObject, Fcb);
@@ -1606,6 +1607,11 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 				FltClose(*phFile);
 			}
 		}
+	}
+	if (FILE_CREATE == CreateDisposition)
+	{
+		Status = STATUS_OBJECT_NAME_NOT_FOUND;
+		return Status;
 	}
 	Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
 		FltObjects->Instance,

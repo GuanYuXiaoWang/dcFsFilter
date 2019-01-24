@@ -154,7 +154,7 @@ extern "C" {
 	BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType);
 	BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length);
 	NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb);
-	NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb);
+	NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
 
 	NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
@@ -166,6 +166,8 @@ extern "C" {
 	NTSTATUS FsDelayDeleteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
 	VOID KeSleep(LONG MilliSecond);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length);
+	PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb);
+
 #ifdef __cplusplus
 }
 #endif

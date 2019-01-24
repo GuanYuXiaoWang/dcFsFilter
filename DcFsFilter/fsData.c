@@ -2609,12 +2609,12 @@ NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED
 	return ntStatus;
 }
 
-NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb)
+NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	ULONG Length = 0;
 	PFLT_CALLBACK_DATA NewData = NULL;
-	ntStatus = FltAllocateCallbackData(FltObjects->Instance, Fcb->CcFileObject, &NewData);
+	ntStatus = FltAllocateCallbackData(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), &NewData);
 	if (NT_SUCCESS(ntStatus))
 	{
 		NewData->Iopb->MajorFunction = IRP_MJ_QUERY_SECURITY;
@@ -2626,7 +2626,7 @@ NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_
 		NewData->Iopb->Parameters.QuerySecurity.SecurityInformation = Data->Iopb->Parameters.QuerySecurity.SecurityInformation;
 
 		NewData->Iopb->IrpFlags = IRP_SYNCHRONOUS_API;
-		NewData->Iopb->TargetFileObject = Fcb->CcFileObject;
+		NewData->Iopb->TargetFileObject = FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 		FltPerformSynchronousIo(NewData);
 		ntStatus = NewData->IoStatus.Status;
 		Data->IoStatus.Information = NewData->IoStatus.Information;
@@ -3624,5 +3624,18 @@ NTSTATUS FsDelayDeleteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PWCHAR Fi
 		}
 	}
 	return ntStatus;
+}
+
+PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb)
+{
+	if (Ccb && (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || (Fcb && Fcb->bRecycleBinFile)))
+	{
+		return Ccb->StreamFileInfo.StreamObject;
+	}
+	if (Fcb)
+	{
+		return Fcb->CcFileObject;
+	}
+	return NULL;
 }
 

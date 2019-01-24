@@ -501,6 +501,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 // 				//网络文件暂不处理，如果用于加解密，必须处理
 // 			}
 // 			else
+			PMDL newMdl = NULL;
 			{
 				if (NULL == FileObject->PrivateCacheMap)
 				{
@@ -524,27 +525,31 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 					ULONG Length = 0;
 					PVOID Buffer = NULL;
 					SystemBuffer = FsMapUserBuffer(Data, &Length);
-					__try
+// 					if (NULL == Data->Iopb->Parameters.Read.MdlAddress)
+// 					{
+// 						newMdl = IoAllocateMdl(SystemBuffer, Length, FALSE, TRUE, NULL);
+// 						if (NULL == newMdl)
+// 						{
+// 							try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
+// 						}
+// 						MmProbeAndLockPages(newMdl, UserMode, IoWriteAccess);
+// 						SystemBuffer = MmGetSystemAddressForMdlSafe(newMdl, NormalPagePriority);
+// 						if (NULL == SystemBuffer)
+// 						{
+// 							MmUnlockPages(newMdl);
+// 							IoFreeMdl(newMdl);
+// 							try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
+// 						}
+// 					}
+
+					if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
 					{
-						if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
-						{
-							try_return(bPostIrp = TRUE);
-						}
+// 						MmUnlockPages(newMdl);
+// 						IoFreeMdl(newMdl);
+						try_return(bPostIrp = TRUE);
 					}
-					__except (EXCEPTION_EXECUTE_HANDLER)
-					{
-						KdPrint(("CcCopyRead exception...\n"));
-						Buffer = ExAllocatePoolWithTag(NonPagedPool, ByteCount, 'buff');
-						if (Buffer != NULL)
-						{
-							RtlZeroMemory(Buffer, ByteCount);
-							if (CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, Buffer, &Data->IoStatus))
-							{
-								RtlCopyMemory(SystemBuffer, Buffer, ByteCount);
-							}
-							ExFreePoolWithTag(Buffer, 'buff');
-						}
-					}			
+// 					MmUnlockPages(newMdl);
+// 					IoFreeMdl(newMdl);
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}

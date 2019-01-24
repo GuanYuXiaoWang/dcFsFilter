@@ -344,7 +344,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	{
 		FILE_OBJECTID_BUFFER FileObjectIdInfo = { 0 };
 		ULONG Length = sizeof(FILE_OBJECTID_BUFFER);
-		ntStatus = FltFsControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, NULL, 0, &FileObjectIdInfo, Length, &Length);
+		ntStatus = FltFsControlFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), ControlCode, NULL, 0, &FileObjectIdInfo, Length, &Length);
 		if (!NT_SUCCESS(ntStatus))
 		{
 			KdPrint(("[%s] FltFsControlFile failed(0x%x)....\n", __FUNCTION__, ntStatus));
@@ -358,7 +358,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	case FSCTL_SET_OBJECT_ID:
 	case FSCTL_GET_RETRIEVAL_POINTERS:
 	{
-		ntStatus = FsPostUnderlyingDriverControl(Data, FltObjects, Fcb->CcFileObject);
+		ntStatus = FsPostUnderlyingDriverControl(Data, FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb));
 		if (!NT_SUCCESS(ntStatus))
 		{
 			KdPrint(("[%s]FsPostUnderlyingDriverControl failed(0x%x), line=%d....\n", __FUNCTION__, ntStatus, __LINE__));
@@ -674,7 +674,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 	__try
 	{
 		bTopIrp = IsTopLevelIRP(Data);
-		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DeviceIoControl.Common.IoControlCode,
+		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Data->Iopb->Parameters.DeviceIoControl.Common.IoControlCode,
 			Data->Iopb->Parameters.DeviceIoControl.Buffered.SystemBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.InputBufferLength,
 			Data->Iopb->Parameters.DeviceIoControl.Direct.OutputBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.OutputBufferLength, &RetLength);
 	}

@@ -235,7 +235,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	//如果一个非加密文件收到了写请求转变他成为加密文件
 	if (!bPagingIo && !Fcb->bEnFile/*&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER)*/)
 	{
-		Status = FsNonCacheWriteFileHeader(FltObjects, Fcb->CcFileObject, Fcb);
+		Status = FsNonCacheWriteFileHeader(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Fcb);
 		//Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), Ccb->StreamFileInfo.StreamObject);
 		if (!NT_SUCCESS(Status))
 		{
@@ -711,7 +711,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			}
 			NewByteOffset.QuadPart = StartByte.QuadPart + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = Fcb->CcFileObject;
+			IrpContext->FileObject = bFileMap ? Fcb->CcFileObject : FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
