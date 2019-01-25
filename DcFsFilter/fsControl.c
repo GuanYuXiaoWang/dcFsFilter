@@ -1,5 +1,6 @@
 #include "fsControl.h"
 #include "fsData.h"
+#include "threadMgr.h"
 
 FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
@@ -24,8 +25,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	Data->IoStatus.Status = STATUS_INVALID_DEVICE_REQUEST;
-	return FltStatus;
+	while (KeAreApcsDisabled())
+	{
+		Sleep(500);
+		KdPrint(("Apc disbaled...\n"));
+	}
 	//other FltDeviceIoControlFile ??
 
 	FsRtlEnterFileSystem();
