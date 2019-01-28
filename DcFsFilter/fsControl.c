@@ -9,6 +9,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	ULONG uProcessType = 0;
 	BOOLEAN bTopLevelIrp = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
+	BOOLEAN ApcEnable = FALSE;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -25,13 +26,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-	while (KeAreApcsDisabled())
-	{
-		Sleep(500);
-		KdPrint(("Apc disbaled...\n"));
-	}
-	//other FltDeviceIoControlFile ??
 
+	//other FltDeviceIoControlFile ??
+	ApcEnable = KeAreApcsDisabled();
+	if (ApcEnable)
+	{
+		KdBreakPoint();
+	}
 	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
@@ -77,6 +78,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	}
 
 	FsRtlExitFileSystem();
+	
 	return FltStatus;
 }
 
@@ -99,8 +101,6 @@ NTSTATUS FsCommonFileSystemControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_R
 	{
 	case IRP_MN_USER_FS_REQUEST:
 		ntStatus = FsUserRequestControl(Data, FltObjects, IrpContext);
-		break;
-	case IRP_MN_MOUNT_VOLUME:
 		break;
 
 	default:
@@ -388,8 +388,15 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		
 		
 	default:
-		ntStatus = STATUS_INVALID_PARAMETER;
-		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
+	{
+			   ULONG Length = 0;
+			   ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, Data->Iopb->Parameters.FileSystemControl.Neither.InputBuffer,
+				   Data->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength, Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer, 
+				   Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength, &Length);
+			   Data->IoStatus.Information = Length;
+			   FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
+
+	}
 		break;
 	}
 
