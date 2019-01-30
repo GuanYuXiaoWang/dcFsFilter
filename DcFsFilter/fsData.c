@@ -1864,6 +1864,7 @@ FLT_PREOP_CALLBACK_STATUS FsCompleteMdl(__inout PFLT_CALLBACK_DATA Data, __in PC
 
 VOID FsProcessException(IN OUT PDEF_IRP_CONTEXT *IrpContext OPTIONAL, IN OUT PFLT_CALLBACK_DATA *Data OPTIONAL, IN NTSTATUS Status)
 {
+	KdPrint(("[%s]Exception:0x%x....\n", __FUNCTION__, Status));
 	BOOLEAN bPending = FALSE;
 	__try
 	{
@@ -1944,7 +1945,6 @@ PVOID FsMapUserBuffer(__inout PFLT_CALLBACK_DATA Data, __inout PULONG RetLength)
 
 	if (NULL == pMdl)
 	{
-		KdPrint(("[%s]buffer=0x%x, Length=%d...\n", __FUNCTION__, pBuffer, *Length));
 		return pBuffer;
 	}
 	pSystemBuffer = MmGetSystemAddressForMdlSafe(pMdl, NormalPagePriority);
@@ -1956,7 +1956,6 @@ PVOID FsMapUserBuffer(__inout PFLT_CALLBACK_DATA Data, __inout PULONG RetLength)
 	{
 		*RetLength = *Length;
 	}
-	KdPrint(("[%s]buffer=0x%x, SystemBuffer=0x%x, Length=%d...\n", __FUNCTION__, pBuffer, pSystemBuffer, *Length));
 	
 	return pSystemBuffer;
 }
@@ -2939,7 +2938,7 @@ NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, _
 	UNICODE_STRING unicodeString;
 	IO_STATUS_BLOCK IoStatus;
 	OBJECT_ATTRIBUTES ob;
-	ULONG Options = FILE_NON_DIRECTORY_FILE;
+	ULONG Options = 0;
 	SetFlag(Options, FILE_WRITE_THROUGH);
 	ACCESS_MASK DesiredAccess = FILE_SPECIAL_ACCESS;
 	ULONG ShareAccess = 0;
@@ -2948,8 +2947,9 @@ NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, _
 		DesiredAccess = FILE_READ_DATA | FILE_WRITE_DATA | FILE_APPEND_DATA | FILE_READ_EA | FILE_WRITE_EA | FILE_READ_ATTRIBUTES;
 		SetFlag(DesiredAccess, READ_CONTROL);
 		SetFlag(DesiredAccess, SYNCHRONIZE);
-		SetFlag(ShareAccess, FILE_SHARE_READ);
-		Options |= (FILE_SYNCHRONOUS_IO_NONALERT | GENERIC_ALL);
+		ShareAccess = FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE;
+		Options = 0x1200000;
+		SetFlag(Options, FILE_WRITE_THROUGH);
 	}
 
 	__try

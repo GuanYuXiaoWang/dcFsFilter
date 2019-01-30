@@ -42,25 +42,26 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			if (0 == Fcb->OpenCount)
 			{
 				bAcquire = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
-				/*
+				
 				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || Fcb->bRecycleBinFile)
 				{
-					for (i = 0; i < Fcb->FileAllOpenCount; i++)
-					{
-						if (Fcb->FileAllOpenInfo[i].FileObject)
-						{
-							ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
-						}
-						if (Fcb->FileAllOpenInfo[i].FileHandle)
-						{
-							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
-						}
-					}
+// 					for (i = 0; i < Fcb->FileAllOpenCount; i++)
+// 					{
+// 						if (Fcb->FileAllOpenInfo[i].FileObject)
+// 						{
+// 							ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
+// 						}
+// 						if (Fcb->FileAllOpenInfo[i].FileHandle)
+// 						{
+// 							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
+// 						}
+// 					}
 					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
 					Fcb->FileAllOpenCount = 0;
 					Fcb->CcFileObject = NULL;
 					Fcb->CcFileHandle = NULL;
 				}
+				/*
 				if (FlagOn(Fcb->FcbState, FCB_STATE_REAME_INFO))
 				{
 					if (Fcb->CcFileObject)
@@ -89,6 +90,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 				{
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
+			}
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
+			if (Ccb->StreamFileInfo.StreamObject)
+			{
+				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
+				FltClose(Ccb->StreamFileInfo.hStreamHandle);
+				Ccb->StreamFileInfo.StreamObject = NULL;
+				Ccb->StreamFileInfo.hStreamHandle = NULL;
 			}
 			FsFreeCcb(Ccb);
 			FltObjects->FileObject->FsContext2 = NULL;

@@ -1120,12 +1120,12 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		Fcb->LinkCount = IrpContext->createInfo.NumberOfLinks;
 		Fcb->DeletePending = IrpContext->createInfo.DeletePending;
 		Fcb->Directory = IrpContext->createInfo.Directory;
-// 		if (IrpContext->createInfo.bNetWork || Fcb->bRecycleBinFile)
-// 		{
-// 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
-//  			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
-// 		}
-		/*else */if (NULL == Fcb->CcFileObject)
+		if (IrpContext->createInfo.bNetWork || Fcb->bRecycleBinFile)
+		{
+			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
+ 			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
+		}
+		else if (NULL == Fcb->CcFileObject)
 		{
 			UNICODE_STRING unicodeString;
 			IO_STATUS_BLOCK IoStatus;
@@ -1147,10 +1147,10 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			}
 		}
 
-		Ccb = Fcb->Ccb ? Fcb->Ccb : FsCreateCcb();
+		Ccb = /*Fcb->Ccb ? Fcb->Ccb : */FsCreateCcb();
 		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
 		Ccb->StreamFileInfo.StreamObject = IrpContext->createInfo.pStreamObject;
-		if (NULL == Fcb->Ccb)
+		//if (NULL == Fcb->Ccb)
 		{
 			Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
 		}
@@ -1403,10 +1403,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				KdPrint(("is note EnFile \n"));
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
-// 			if (FILE_CREATE != CreateDisposition && !IrpContext->createInfo.bEnFile)
-// 			{
-// 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
-// 			}
+			if (PROCESS_ACCESS_EXPLORER != IrpContext->createInfo.uProcType && !IrpContext->createInfo.bEnFile /*&& !IrpContext->createInfo.bNetWork*/)
+			{
+				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+			}
 		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
@@ -1489,6 +1489,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Fcb->Vpb.VolumeSerialNumber = IrpContext->createInfo.Vpb.VolumeSerialNumber;
 			Fcb->Vpb.VolumeLabelLength = IrpContext->createInfo.Vpb.VolumeLabelLength;
 			RtlCopyMemory(Fcb->Vpb.VolumeLabel, IrpContext->createInfo.Vpb.VolumeLabel, Fcb->Vpb.VolumeLabelLength);
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
 		}
 		
 	try_exit: NOTHING;
@@ -1608,7 +1609,7 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			}
 		}
 	}
-	if (FILE_CREATE == CreateDisposition)
+	if (!bNetWork && FILE_CREATE == CreateDisposition)
 	{
 		Status = STATUS_OBJECT_NAME_NOT_FOUND;
 		return Status;

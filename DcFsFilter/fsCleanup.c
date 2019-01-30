@@ -227,7 +227,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						Fcb->CcFileHandle = NULL;
 					}
 				}
-				
+				else
+				{
+					Fcb->CcFileObject = NULL;
+					Fcb->CcFileHandle = NULL;
+				}				
 
 				Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
@@ -235,12 +239,17 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			}
 			SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 		}
-		if (Ccb->StreamFileInfo.StreamObject)
+		//if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 		{
-			ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
-			FltClose(Ccb->StreamFileInfo.hStreamHandle);
-			Ccb->StreamFileInfo.StreamObject = NULL;
-			Ccb->StreamFileInfo.hStreamHandle = NULL;
+
+			if (Ccb->StreamFileInfo.StreamObject)
+			{
+				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
+				FltClose(Ccb->StreamFileInfo.hStreamHandle);
+				Ccb->StreamFileInfo.StreamObject = NULL;
+				Ccb->StreamFileInfo.hStreamHandle = NULL;
+			}
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
 		}
 		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);

@@ -176,6 +176,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
+	KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb ? Ccb->StreamFileInfo.StreamObject : 0, Ccb));
 
 	Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &volCtx);
 	if (!NT_SUCCESS(Status))
@@ -359,6 +360,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				IrpContext->pIoContext->Wait.Async.RequestedByteCount = (ULONG)RequestedByteCount;
 			}
 		}
+
 		if (bNonCachedIo)
 		{
 			LARGE_INTEGER NewByteOffset;
@@ -373,7 +375,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			if (NULL == Fcb->CcFileObject)
 			{
-				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
 				if (!NT_SUCCESS(Status))
 				{
 					try_return(NOTHING);
@@ -441,7 +443,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = Fcb->CcFileObject/*((Ccb != NULL && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject)*/;
+			IrpContext->FileObject = FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
@@ -459,6 +461,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			{
 				FsFreeCcFileInfo(&Fcb->CcFileHandle, &Fcb->CcFileObject);
 			}
+
 			if (bWait)
 			{
 				if (Fcb->bEnFile)
@@ -501,7 +504,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 // 				//网络文件暂不处理，如果用于加解密，必须处理
 // 			}
 // 			else
-			PMDL newMdl = NULL;
 			{
 				if (NULL == FileObject->PrivateCacheMap)
 				{
@@ -520,36 +522,17 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 					CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
 					Fcb->DestCacheObject = FileObject;
 				}
+
 				if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 				{
 					ULONG Length = 0;
 					PVOID Buffer = NULL;
 					SystemBuffer = FsMapUserBuffer(Data, &Length);
-// 					if (NULL == Data->Iopb->Parameters.Read.MdlAddress)
-// 					{
-// 						newMdl = IoAllocateMdl(SystemBuffer, Length, FALSE, TRUE, NULL);
-// 						if (NULL == newMdl)
-// 						{
-// 							try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
-// 						}
-// 						MmProbeAndLockPages(newMdl, UserMode, IoWriteAccess);
-// 						SystemBuffer = MmGetSystemAddressForMdlSafe(newMdl, NormalPagePriority);
-// 						if (NULL == SystemBuffer)
-// 						{
-// 							MmUnlockPages(newMdl);
-// 							IoFreeMdl(newMdl);
-// 							try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
-// 						}
-// 					}
-
 					if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
 					{
-// 						MmUnlockPages(newMdl);
-// 						IoFreeMdl(newMdl);
 						try_return(bPostIrp = TRUE);
 					}
-// 					MmUnlockPages(newMdl);
-// 					IoFreeMdl(newMdl);
+
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}
