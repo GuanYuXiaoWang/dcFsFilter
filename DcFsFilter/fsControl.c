@@ -29,10 +29,9 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 
 	//other FltDeviceIoControlFile ??
 	ApcEnable = KeAreApcsDisabled();
-	if (ApcEnable)
-	{
-		KdBreakPoint();
-	}
+
+	KdBreakPoint();
+	
 	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
 
