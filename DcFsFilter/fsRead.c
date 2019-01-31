@@ -373,6 +373,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			ULONG_PTR ZeroLength = 0;
 			BOOLEAN bFileMap = FALSE;
 
+			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+			{
+				Fcb->CcFileObject = Ccb->StreamFileInfo.StreamObject;
+			}
+
 			if (NULL == Fcb->CcFileObject)
 			{
 				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
@@ -443,7 +448,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
+			IrpContext->FileObject = bFileMap ? Fcb->CcFileObject : FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;

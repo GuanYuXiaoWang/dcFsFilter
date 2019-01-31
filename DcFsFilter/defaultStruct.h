@@ -230,8 +230,6 @@ typedef struct tagDEFFCB
 	PVOID CcFileObject;
 	PVOID Ccb;
 	PKEVENT MoveFileEvent;
-	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
-	ULONG FileAllOpenCount;
 	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
 	HANDLE ProcessID;

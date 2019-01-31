@@ -631,7 +631,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			ULONG_PTR RetBytes = 0;
 			ULONG SectorSize = volCtx->ulSectorSize;
 			BOOLEAN bFileMap = FALSE;
-
+			
+			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+			{
+				Fcb->CcFileObject = Ccb->StreamFileInfo.StreamObject;
+			}
 			if (NULL == Fcb->CcFileObject)
 			{
 				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));

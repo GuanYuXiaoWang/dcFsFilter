@@ -1504,9 +1504,6 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 			Fcb->CcFileObject = IrpContext->createInfo.pStreamObject;
 			Fcb->CcFileHandle = IrpContext->createInfo.hStreamHanle;
 		}
-		Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileObject = IrpContext->createInfo.pStreamObject;
-		Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileHandle = IrpContext->createInfo.hStreamHanle;
-		Fcb->FileAllOpenCount += 1;
 
 		if (InsertFcbList(&Fcb))
 		{
