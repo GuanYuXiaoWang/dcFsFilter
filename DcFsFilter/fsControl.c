@@ -28,9 +28,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	}
 
 	//other FltDeviceIoControlFile ??
-	ApcEnable = KeAreApcsDisabled();
-
-	KdBreakPoint();
 	
 	FsRtlEnterFileSystem();
 	KdPrint(("PtPreFileSystemControl, control code=0x%x......\n", Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode));
@@ -669,7 +666,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 
 	PAGED_CODE();
 
-	return FLT_PREOP_SUCCESS_NO_CALLBACK;
 
 	if (NULL == FltObjects || !IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -680,12 +676,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 	Ccb = FltObjects->FileObject->FsContext2;
 	if (NULL == Fcb || NULL == Fcb->CcFileObject)
 	{
+		FsRtlExitFileSystem();
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	__try
 	{
 		bTopIrp = IsTopLevelIRP(Data);
-		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.DeviceIoControl.Common.IoControlCode,
+		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Ccb->StreamFileInfo.StreamObject, Data->Iopb->Parameters.DeviceIoControl.Common.IoControlCode,
 			Data->Iopb->Parameters.DeviceIoControl.Buffered.SystemBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.InputBufferLength,
 			Data->Iopb->Parameters.DeviceIoControl.Direct.OutputBuffer, Data->Iopb->Parameters.DeviceIoControl.Common.OutputBufferLength, &RetLength);
 	}

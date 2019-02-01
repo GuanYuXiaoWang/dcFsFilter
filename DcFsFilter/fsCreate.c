@@ -154,6 +154,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
+
 	KdPrint(("PtPreOperationNetworkQueryOpen begin, data flag=0x%x......\n", Data->Flags));
 	FsRtlEnterFileSystem();
 	__try
