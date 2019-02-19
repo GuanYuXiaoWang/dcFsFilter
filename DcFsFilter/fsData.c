@@ -31,8 +31,12 @@ BOOLEAN g_bUnloading = FALSE;
 BOOLEAN g_bAllModuleInitOk = FALSE;
 BOOLEAN g_bSafeDataReady = FALSE;
 PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
+NPAGED_LOOKASIDE_LIST g_EncryptingFilesListLookasideList;
 ERESOURCE g_FcbResource;
+ERESOURCE g_EncryptingNetworkFilesResource;
+
 LIST_ENTRY g_FcbEncryptFileList;
+LIST_ENTRY g_EncryptingNetworkFilesList;
 
 ULONG g_OsMajorVersion = 0;
 ULONG g_OsMinorVersion = 0;
@@ -266,6 +270,7 @@ VOID InitData()
 	ExInitializeNPagedLookasideList(&g_FastMutexInFCBLookasideList, NULL, NULL, 0, sizeof(FAST_MUTEX), 'fsmt', 0);
 	ExInitializeNPagedLookasideList(&g_Npaged64KBList, NULL, NULL, 0, SIZEOF_64KBList, BUF_64KB_TAG, 0);
 	ExInitializeNPagedLookasideList(&g_Npaged4KBList, NULL, NULL, 0, SIZEOF_4KBList, BUF_4KB_TAG, 0);
+	ExInitializeNPagedLookasideList(&g_EncryptingFilesListLookasideList, NULL, NULL, 0, sizeof(ENCRYPTING_FILE_INFO), 'efll', 0);
 
 	g_DYNAMIC_FUNCTION_POINTERS.CheckOplockEx = (fltCheckOplockEx)FltGetRoutineAddress("FltCheckOplockEx");
 	g_DYNAMIC_FUNCTION_POINTERS.OplockBreakH = (fltOplockBreakH)FltGetRoutineAddress("FltOplockBreakH");
@@ -299,8 +304,10 @@ VOID InitData()
 	g_CacheManagerCallbacks.ReleaseFromReadAhead = &FsReleaseFcbFromReadAhead;
 
 	InitializeListHead(&g_FcbEncryptFileList);
+	InitializeListHead(&g_EncryptingNetworkFilesList);
 	KeInitializeSpinLock(&g_GeneralSpinLock);
 	ExInitializeResourceLite(&g_FcbResource);
+	ExInitializeResourceLite(&g_EncryptingNetworkFilesResource);
 	InitReg();
 }
 
@@ -313,6 +320,7 @@ VOID UnInitData()
 	ExDeleteNPagedLookasideList(&g_IrpContextLookasideList);
 	ExDeleteNPagedLookasideList(&g_IoContextLookasideList);
 	ExDeleteResourceLite(&g_FcbResource);
+	ExDeleteResourceLite(&g_EncryptingNetworkFilesResource);
 	UnInitReg();
 }
 
@@ -3323,6 +3331,8 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 
 #define DELAY_ONE_MICROSECOND   (-10)
 #define DELAY_ONE_MILLISECOND   (DELAY_ONE_MICROSECOND*1000)
+#define DELAY_TRY_COUNTS 20
+
 void EncrypteFileThread(PVOID Context)
 {
 	NTSTATUS ntStatus;
@@ -3338,6 +3348,7 @@ void EncrypteFileThread(PVOID Context)
 	ntStatus = PsLookupProcessByProcessId(GetClientProcessId(), &Process);
 	if (!NT_SUCCESS(ntStatus))
 	{
+		FsDeleteEncryptingFilesInfo(Param->FilePath, Param->Length, Param);
 		ExFreePoolWithTag(Param->FilePath, 'tpfp');
 		ExFreePoolWithTag(Param, 'tpfp');
 		KdPrint(("[%s]PsLookupProcessByProcessId failed...\n", __FUNCTION__));
@@ -3348,12 +3359,12 @@ void EncrypteFileThread(PVOID Context)
 
 	while (TRUE)
 	{
-		if (Counts > 3)
+		if (Counts > DELAY_TRY_COUNTS)
 		{
 			break;
 		}
 		Counts++;
-		KeSleep(2000);
+		KeSleep(200);
 		if (FindFcb(NULL, Param->FilePath, &Fcb) && Fcb->OpenCount != 0)
 		{
 			ntStatus = FsEncrypteFile(NULL, Param->Filter, Param->Instance, Param->FilePath, Param->Length - sizeof(WCHAR), Param->NetFile, Fcb->CcFileObject);
@@ -3372,6 +3383,7 @@ void EncrypteFileThread(PVOID Context)
 	{
 		ObDereferenceObject(Process);
 	}
+	FsDeleteEncryptingFilesInfo(Param->FilePath, Param->Length, Param);
 	ExFreePoolWithTag(Param->FilePath, 'tpfp');
 	ExFreePoolWithTag(Param, 'tpfp');
 
@@ -3385,7 +3397,6 @@ NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PWCHAR 
 	CLIENT_ID ID = { 0 };
 	THREAD_PARAM * Param = NULL;
 	OBJECT_ATTRIBUTES ob = { 0 };
-	//PEPROCESS  Process = NULL;
 
 	__try
 	{
@@ -3401,7 +3412,7 @@ NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PWCHAR 
 			KdPrint(("[%s]ExAllocatePoolWithTag failed...\n", __FUNCTION__));
 			__leave;
 		}
-		RtlZeroMemory(Param->FilePath, Length);
+		RtlZeroMemory(Param->FilePath, Param->Length);
 		RtlCopyMemory(Param->FilePath, FilePath, Length);
 		Param->Filter = FltObjects->Filter;
 		Param->Instance = FltObjects->Instance;
@@ -3421,6 +3432,10 @@ NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PWCHAR 
 			{
 				ExFreePoolWithTag(Param, 'tpfp');
 			}
+		}
+		else
+		{
+			FsInsertEncryptingFilesInfo(Param);
 		}
 	}
 
@@ -3520,109 +3535,6 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 	return Status;
 }
 
-void DeleteFileThread(PVOID Context)
-{
-	NTSTATUS ntStatus;
-	THREAD_PARAM * Param = (THREAD_PARAM *)Context;
-	PEPROCESS  Process = NULL;
-	int Counts = 0;
-	if (NULL == Param)
-	{
-		PsTerminateSystemThread(STATUS_SUCCESS);
-		return;
-	}
-	UNICODE_STRING unicodeString;
-	IO_STATUS_BLOCK IoStatus;
-	OBJECT_ATTRIBUTES ob;
-	HANDLE FileHandle = NULL;
-	PFILE_OBJECT FileObject = NULL;
-	FILE_DISPOSITION_INFORMATION info = { 0 };
-	info.DeleteFile = TRUE;
-
-	while (TRUE)
-	{
-		KeSleep(2000);
-
-		RtlInitUnicodeString(&unicodeString, Param->FilePath);
-		InitializeObjectAttributes(&ob, &unicodeString, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, NULL);
-		ntStatus = FltCreateFile(Param->Filter, Param->Instance, &FileHandle, FILE_SPECIAL_ACCESS, &ob, &IoStatus,
-			NULL, FILE_ATTRIBUTE_NORMAL, 0, FILE_OPEN, 0, NULL, 0, 0);
-		if (!NT_SUCCESS(ntStatus))
-		{
-			KdPrint(("[%s]FltCreateFile failed(0x%x)...\n", __FUNCTION__, ntStatus));
-			continue;
-		}
-		ntStatus = ObReferenceObjectByHandle(FileHandle, 0, *IoFileObjectType, KernelMode, &FileObject, NULL);
-		if (!NT_SUCCESS(ntStatus))
-		{
-			FltClose(FileHandle);
-			FileHandle = NULL;
-			continue;
-		}
-
-		ntStatus = FltSetInformationFile(Param->Instance, FileObject, &info, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
-		ObDereferenceObject(FileObject);
-		FltClose(FileHandle);
-		if (NT_SUCCESS(ntStatus))
-		{
-			break;
-		}
-	}
-
-	ExFreePoolWithTag(Param->FilePath, 'tpfp');
-	ExFreePoolWithTag(Param, 'tpfp');
-
-	PsTerminateSystemThread(STATUS_SUCCESS);
-}
-
-NTSTATUS FsDelayDeleteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile)
-{
-	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
-	HANDLE ThreadHandle = NULL;
-	CLIENT_ID ID = { 0 };
-	THREAD_PARAM * Param = NULL;
-	OBJECT_ATTRIBUTES ob = { 0 };
-	//PEPROCESS  Process = NULL;
-
-	__try
-	{
-		Param = ExAllocatePoolWithTag(NonPagedPool, sizeof(THREAD_PARAM), 'tpfp');
-		if (NULL == Param)
-		{
-			__leave;
-		}
-		Param->Length = Length + sizeof(WCHAR);
-		Param->FilePath = ExAllocatePoolWithTag(NonPagedPool, Param->Length, 'tpfp');
-		if (NULL == Param->FilePath)
-		{
-			KdPrint(("[%s]ExAllocatePoolWithTag failed...\n", __FUNCTION__));
-			__leave;
-		}
-		RtlZeroMemory(Param->FilePath, Length);
-		RtlCopyMemory(Param->FilePath, FilePath, Length);
-		Param->Filter = FltObjects->Filter;
-		Param->Instance = FltObjects->Instance;
-		Param->NetFile = NetFile;
-		InitializeObjectAttributes(&ob, NULL, OBJ_KERNEL_HANDLE, NULL, NULL);
-		ntStatus = PsCreateSystemThread(&ThreadHandle, THREAD_ALL_ACCESS, &ob, NULL, NULL, (PKSTART_ROUTINE)DeleteFileThread, (PVOID)Param);
-	}
-	__finally
-	{
-		if (!NT_SUCCESS(ntStatus))
-		{
-			if (Param->FilePath)
-			{
-				ExFreePoolWithTag(Param->FilePath, 'tpfp');
-			}
-			if (Param)
-			{
-				ExFreePoolWithTag(Param, 'tpfp');
-			}
-		}
-	}
-	return ntStatus;
-}
-
 PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb)
 {
 	if (Ccb && (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || (Fcb && Fcb->bRecycleBinFile)))
@@ -3635,4 +3547,185 @@ PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb)
 	}
 	return NULL;
 }
+
+BOOLEAN FsInsertEncryptingFilesInfo(__in THREAD_PARAM * Param)
+{
+	BOOLEAN bAcquireResource = FALSE;
+	PENCRYPTING_FILE_INFO pItem = NULL;
+	if (NULL == Param || NULL == Param->FilePath)
+	{
+		return FALSE;
+	}
+	pItem = ExAllocateFromNPagedLookasideList(&g_EncryptingFilesListLookasideList);
+	if (NULL == pItem)
+	{
+		return FALSE;
+	}
+	RtlZeroMemory(pItem, sizeof(ENCRYPTING_FILE_INFO));
+	pItem->Paream = Param;
+	bAcquireResource = ExAcquireResourceExclusiveLite(&g_EncryptingNetworkFilesResource, TRUE);
+	InsertTailList(&g_EncryptingNetworkFilesList, &pItem->listEntry);
+	if (bAcquireResource)
+	{
+		ExReleaseResourceLite(&g_EncryptingNetworkFilesResource);
+	}
+	return TRUE;
+}
+
+VOID FsDeleteEncryptingFilesInfo(__in WCHAR * FileName, __in ULONG Length, __in THREAD_PARAM * Param)
+{
+	BOOLEAN bAcquireResource = FALSE;
+	PENCRYPTING_FILE_INFO pItem = NULL;
+	PLIST_ENTRY pListEntry;
+	if (NULL == FileName || Length <= 1)
+	{
+		return;
+	}
+	__try
+	{
+		if (IsListEmpty(&g_EncryptingNetworkFilesList))
+		{
+			__leave;
+		}
+		bAcquireResource = ExAcquireResourceExclusiveLite(&g_EncryptingNetworkFilesResource, TRUE);
+		for (pListEntry = g_EncryptingNetworkFilesList.Flink; pListEntry != &g_EncryptingNetworkFilesList; pListEntry = pListEntry->Flink)
+		{
+			pItem = CONTAINING_RECORD(pListEntry, ENCRYPTING_FILE_INFO, listEntry);
+			if (Param)
+			{
+				if (Param == pItem->Paream)
+				{
+					RemoveEntryList(&pItem->listEntry);
+					ExFreeToNPagedLookasideList(&g_EncryptingFilesListLookasideList, pItem);
+					break;
+				}	
+			}
+			else if (pItem && pItem->Paream && pItem->Paream->FilePath && 0 == wcsicmp(FileName, pItem->Paream->FilePath))
+			{
+				RemoveEntryList(&pItem->listEntry);
+				ExFreeToNPagedLookasideList(&g_EncryptingFilesListLookasideList, pItem);
+				break;
+			}
+		}
+	}
+	__finally
+	{
+		if (bAcquireResource)
+		{
+			ExReleaseResourceLite(&g_EncryptingNetworkFilesResource);
+		}
+	}	
+}
+
+BOOLEAN FsFindEncryptingFilesInfo(PFLT_CALLBACK_DATA  Data, __in WCHAR * FileName)
+{
+	BOOLEAN bAcquireResource = FALSE;
+	PENCRYPTING_FILE_INFO pItem = NULL;
+	PLIST_ENTRY pListEntry;
+	BOOLEAN bFind = FALSE;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
+	PFLT_FILE_NAME_INFORMATION NameInfo = NULL;
+	WCHAR * pTempFile = NULL;
+	ULONG FileLength = 0;
+
+	__try
+	{
+		if (IsListEmpty(&g_EncryptingNetworkFilesList))
+		{
+			__leave;
+		}
+		if (NULL != Data)
+		{
+			status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &NameInfo);
+			if (!NT_SUCCESS(status))
+			{
+				__leave;
+			}
+		}
+		else if (NULL == FileName)
+		{
+			__leave;
+		}
+
+		if (NULL != NameInfo && NameInfo->Name.Buffer)
+		{
+			FileLength = NameInfo->Name.Length + sizeof(WCHAR);
+		}
+		else
+		{
+			FileLength = (FileName != NULL ? (wcslen(FileName) + 1) * sizeof(WCHAR) : 0);
+		}
+		if (0 == FileLength)
+		{
+			__leave;
+		}
+
+		pTempFile = ExAllocatePoolWithTag(NonPagedPool, FileLength, 'fnff');
+		if (NULL == pTempFile)
+		{
+			__leave;
+		}
+		RtlZeroMemory(pTempFile, FileLength);
+
+		if (NULL != NameInfo && NameInfo->Name.Buffer)
+		{
+			RtlCopyMemory(pTempFile, NameInfo->Name.Buffer, FileLength - sizeof(WCHAR));
+		}
+		else
+			RtlCopyMemory(pTempFile, FileName, FileLength - sizeof(WCHAR));
+		bAcquireResource = ExAcquireResourceExclusiveLite(&g_EncryptingNetworkFilesResource, TRUE);
+		for (pListEntry = g_EncryptingNetworkFilesList.Flink; pListEntry != &g_EncryptingNetworkFilesList; pListEntry = pListEntry->Flink)
+		{
+			pItem = CONTAINING_RECORD(pListEntry, ENCRYPTING_FILE_INFO, listEntry);
+			KdPrint(("pItem->Paream->FilePath:%S, pTempFile:%S...\n", pItem->Paream->FilePath, pTempFile));
+			if (pItem && pItem->Paream && pItem->Paream->FilePath && 0 == wcsicmp(pTempFile, pItem->Paream->FilePath))
+			{
+				bFind = TRUE;
+				break;
+			}
+		}
+	}
+	__finally
+	{
+		if (bAcquireResource)
+		{
+			ExReleaseResourceLite(&g_EncryptingNetworkFilesResource);
+		}
+		if (NULL != NameInfo)
+		{
+			FltReleaseFileNameInformation(NameInfo);
+		}
+		if (NULL != pTempFile)
+		{
+			ExFreePoolWithTag(pTempFile, 'fnff');
+		}
+	}
+	return bFind;
+}
+
+VOID FsClearEncryptingFilesInfo()
+{
+	BOOLEAN bAcquireResource = FALSE;
+	PENCRYPTING_FILE_INFO pItem = NULL;
+	PLIST_ENTRY pListEntry;
+	__try
+	{
+		bAcquireResource = ExAcquireResourceExclusiveLite(&g_EncryptingNetworkFilesResource, TRUE);
+		for (pListEntry = g_EncryptingNetworkFilesList.Flink; pListEntry != &g_EncryptingNetworkFilesList; pListEntry = pListEntry->Flink)
+		{
+			pItem = CONTAINING_RECORD(pListEntry, ENCRYPTING_FILE_INFO, listEntry);
+			RemoveEntryList(&pItem->listEntry);
+			ExFreeToNPagedLookasideList(&g_EncryptingFilesListLookasideList, pItem);
+		}
+	}
+	__finally
+	{
+		if (bAcquireResource)
+		{
+			ExReleaseResourceLite(&g_EncryptingNetworkFilesResource);
+		}
+	}
+}
+
+
 

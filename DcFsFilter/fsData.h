@@ -52,6 +52,12 @@ typedef struct  tagTHREAD_PARAM
 	WCHAR * FilePath;
 }THREAD_PARAM;
 
+typedef struct tagENCRYPTING_FILE_INFO
+{
+	LIST_ENTRY listEntry;
+	THREAD_PARAM * Paream;
+}ENCRYPTING_FILE_INFO, *PENCRYPTING_FILE_INFO;
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -163,10 +169,14 @@ extern "C" {
 	NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN NetWork, __in PFILE_OBJECT CcFileObject);
 
 	NTSTATUS FsDelayEncrypteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
-	NTSTATUS FsDelayDeleteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in  PWCHAR FilePath, __in ULONG Length, __in BOOLEAN NetFile);
 	VOID KeSleep(LONG MilliSecond);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length);
 	PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb);
+
+	BOOLEAN FsInsertEncryptingFilesInfo(__in THREAD_PARAM * Param);
+	VOID FsDeleteEncryptingFilesInfo(__in WCHAR * FileName, __in ULONG Length, __in THREAD_PARAM * Param);
+	BOOLEAN FsFindEncryptingFilesInfo(__in PFLT_CALLBACK_DATA  Data, __in WCHAR * FileName);
+	VOID FsClearEncryptingFilesInfo();
 
 #ifdef __cplusplus
 }

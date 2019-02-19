@@ -1380,9 +1380,8 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 			KdPrint(("FltSetInformationFile failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
-		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);		
 		
-		/*
 		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
 		if (!NT_SUCCESS(ntStatus))
 		{
@@ -1461,7 +1460,7 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 		RtlInitUnicodeString(&strFullPath, pFileName);
 		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
 		RtlCopyMemory(Fcb->wszFile, strFullPath.Buffer, strFullPath.Length);
-		
+		/*
 		length = bNetWork ? 7 : 6;	
 		pRename = ExAllocatePoolWithTag(NonPagedPool, FileRenameInfo->FileNameLength - length * sizeof(WCHAR) + sizeof(WCHAR), 'rnif');
 		if (NULL == pFileName)
@@ -1475,7 +1474,7 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 		RtlCopyMemory(pRename, FileRenameInfo->FileName + length, Data->Iopb->TargetFileObject->FileName.Length);
 		Data->Iopb->TargetFileObject->FileName.Buffer = pRename;
 		Data->Iopb->TargetFileObject->FileName.MaximumLength = FltObjects->FileObject->FileName.Length + sizeof(WCHAR);
-		*/
+	*/	
 		
 // 		ExFreePool(/*Data->Iopb->Target*/FileObject->FileName.Buffer);
 // 		/*Data->Iopb->Target*/FileObject->FileName.Length = strFullPath.Length;

@@ -157,18 +157,18 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					FsReleaseFcb(IrpContext, Fcb);
 					bAcquireFcb = FALSE;
 				}
-				if (Fcb->DestCacheObject != NULL && FileObject->PrivateCacheMap != NULL)
+				if (FileObject->PrivateCacheMap != NULL)
 				{
 					CACHE_UNINITIALIZE_EVENT Event;
 					KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
 					TruncateSize.QuadPart = Fcb->Header.FileSize.QuadPart;
-					bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize,/* &Event*/NULL);
-// 					if (!bPureCache)
-// 					{
-// 						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
-// 					}
+					bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize, &Event);
+					if (!bPureCache)
+					{
+						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
+					}
 				}
-			
+
 				if (Fcb->bAddHeaderLength)
 				{
 					Fcb->bAddHeaderLength = FALSE;
@@ -186,7 +186,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
-					if (/*PROCESS_ACCESS_EXPLORER != Ccb->ProcType && !Fcb->bEnFile*/FALSE)
+					if (PROCESS_ACCESS_EXPLORER != Ccb->ProcType && !Fcb->bEnFile)
 					{
 						Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), NULL);
 						if (NT_SUCCESS(Status))
@@ -235,6 +235,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				Ccb->StreamFileInfo.hStreamHandle = NULL;
 			}
 		}
+		
 		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);

@@ -400,15 +400,15 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		{
 			FindFcb(Data, pFileObject->FileName.Buffer, &pFcb);
 		}
-		if (pFcb)
+		if (IrpContext->createInfo.bNetWork)
 		{
-			if ((pFcb->ProcessID != PsGetCurrentProcessId() || pFcb->ThreadID != PsGetCurrentThreadId()) && 0 == pFcb->OpenCount)
+			while (FsFindEncryptingFilesInfo(NULL == pFcb ? Data : NULL, NULL == pFcb ? NULL : pFcb->wszFile))
 			{
-				PDEF_CCB Ccb = pFcb->Ccb;
-				KdPrint(("[%s]proces or thread changed....\n", __FUNCTION__));
+				KeSleep(1000);
+				KdPrint(("[%s]sleep......\n", __FUNCTION__));
 			}
 		}
-		KdPrint(("............ProcessId:%d, ThreadId:%d.......\n", PsGetCurrentProcessId(), PsGetCurrentThreadId()));
+
 		if (pFcb)
 		{
 			Status = CreateFileByExistFcb(Data, FltObjects, pFcb, IrpContext);
@@ -1397,10 +1397,10 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				KdPrint(("is note EnFile \n"));
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
-			if (PROCESS_ACCESS_EXPLORER != IrpContext->createInfo.uProcType && !IrpContext->createInfo.bEnFile /*&& !IrpContext->createInfo.bNetWork*/)
-			{
-				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
-			}
+// 			if (PROCESS_ACCESS_EXPLORER != IrpContext->createInfo.uProcType && !IrpContext->createInfo.bEnFile /*&& !IrpContext->createInfo.bNetWork*/)
+// 			{
+// 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
+// 			}
 		}
 
 		if (FILE_NO_ACCESS == IrpContext->createInfo.FileAccess)
@@ -1548,24 +1548,19 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		SetFlag(DesiredAccess, READ_CONTROL);//0x120089
 		SetFlag(DesiredAccess, SYNCHRONIZE);
 		SetFlag(ShareAccess, FILE_SHARE_READ);
-		//SetFlag(DesiredAccess, FILE_READ_DATA);
+		SetFlag(DesiredAccess, FILE_READ_DATA);
 
 		//  
-		//		SetFlag (DesiredAccess , FILE_WRITE_DATA); //???
-		// 		ShareAccess = FILE_SHARE_READ;   //网络文件因为oplock，只能只读，要想解决去参考rdbss.sys
-		// 		ClearFlag(DesiredAccess, FILE_WRITE_DATA);
-		//  	ClearFlag(DesiredAccess, FILE_APPEND_DATA);
+		//SetFlag (DesiredAccess , FILE_WRITE_DATA); //???
+		//ShareAccess = FILE_SHARE_READ;   //网络文件因为oplock，只能只读，要想解决去参考rdbss.sys
+		//ClearFlag(DesiredAccess, FILE_WRITE_DATA);
+		//ClearFlag(DesiredAccess, FILE_APPEND_DATA);
 	}
 #ifdef USE_CACHE_READWRITE
-	if (DesiredAccess & FILE_WRITE_DATA)
-	{
-		SetFlag(Options, FILE_WRITE_THROUGH); //如果缓存写需要加上直接写入文件，否则cccaniwrite内部会导致等待pagingio产生死锁
-	}
+	SetFlag(Options, FILE_WRITE_THROUGH); //如果缓存写需要加上直接写入文件，否则cccaniwrite内部会导致等待pagingio产生死锁
 #endif
 	ClearFlag(Options, FILE_OPEN_BY_FILE_ID);
 	ClearFlag(Options, FILE_OPEN_REQUIRING_OPLOCK);
-	//SetFlag(Options, FILE_OPEN_REQUIRING_OPLOCK);
-	//SetFlag(Options, FILE_COMPLETE_IF_OPLOCKED);
 	CreateDisposition = (Options >> 24) & 0x000000ff;
 	InitializeObjectAttributes(&ob, FileName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, SecurityDescriptor);
 

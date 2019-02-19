@@ -345,7 +345,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			Data->IoStatus.Status = 0;
 			try_return(Status = STATUS_END_OF_FILE);
 		}
-		if (NULL == Fcb->CcFileObject && Ccb != NULL && NULL == Ccb->StreamFileInfo.StreamObject)
+		if (NULL == Fcb->CcFileObject && Ccb != NULL && NULL == Ccb->StreamFileInfo.StreamObject && !FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
 		{
 			try_return(Status = STATUS_FILE_DELETED);
 		}
@@ -522,6 +522,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 						FsPopUpFileCorrupt(IrpContext, Fcb);
 						FsRaiseStatus(IrpContext, STATUS_FILE_CORRUPT_ERROR);
 					}
+
+					KdPrint(("[%s]CcInitializeCacheMap, fileObject:0x%x, size:%d....\n", __FUNCTION__, FileObject, Fcb->Header.AllocationSize.QuadPart));
 
 					CcInitializeCacheMap(FileObject, (PCC_FILE_SIZES)&Fcb->Header.AllocationSize, FALSE, &g_CacheManagerCallbacks, Fcb);
 					CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);

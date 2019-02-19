@@ -331,7 +331,6 @@ typedef struct tagIRP_CONTEXT
 	PDEF_IO_CONTEXT pIoContext;
 }DEF_IRP_CONTEXT, *PDEF_IRP_CONTEXT;
 
-
 typedef enum tagPROCETYPE
 {
 	PROCESS_ACCESS_ALLOW,
