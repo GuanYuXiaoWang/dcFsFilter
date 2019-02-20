@@ -872,6 +872,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 				Fcb->Header.ValidDataLength.QuadPart = InitialValidDataLength;
 				ExReleaseFastMutex(Fcb->Header.FastMutex);
 			}
+			KdPrint(("[%s] file size:%d, allocationSize:%d, ValidDataLength:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, Fcb->Header.ValidDataLength.QuadPart, __LINE__));
 		}
 		else
 		{
@@ -923,7 +924,6 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 				}
 
 				Fcb->Header.FileSize.QuadPart = NewFileSize;
-				KdPrint(("[%s] file size:%d, allocationSize:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, __LINE__));
 				//
 				//  Call our common routine to modify the file sizes.  We are now
 				//  done with NewFileSize and NewValidDataLength, and we have
@@ -940,6 +940,7 @@ NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT 
 					temp1.LowPart &= ~((ULONG)g_SectorSize - 1);//动态获取扇区大小，以后可能会变
 					Fcb->Header.AllocationSize.QuadPart = temp1.QuadPart;
 				}
+				KdPrint(("[%s] file size:%d, allocationSize:%d, ValidDataLength:%d, line=%d....\n", __FUNCTION__, Fcb->Header.FileSize.QuadPart, Fcb->Header.AllocationSize.QuadPart, Fcb->Header.ValidDataLength.QuadPart, __LINE__));
 			}
 			//  If the file size changed then mark this file object as having changed the size.
 			if (bFileSizeChanged)

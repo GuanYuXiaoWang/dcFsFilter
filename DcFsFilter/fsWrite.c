@@ -225,13 +225,15 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	{
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_NETWORK_FILE);
 	}
-	//KdBreakPoint();
+	
 	if (0 == ByteCount)
 	{
 		Data->IoStatus.Status = STATUS_SUCCESS;
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
+	KdPrint(("[%s]read:%d, write:%d, LockOperation:%d, DeletePending:%d, DeleteAccess:%d,SharedRead:%d,SharedWrite:%d,SharedDelete:%d,Flags:0x%x ...\n", __FUNCTION__, 
+		FileObject->ReadAccess, FileObject->WriteAccess, FileObject->LockOperation, FileObject->DeletePending, FileObject->DeleteAccess, FileObject->SharedRead, FileObject->SharedWrite, FileObject->SharedDelete, FileObject->Flags));
 	//如果一个非加密文件收到了写请求转变他成为加密文件
 	if (!bPagingIo && !Fcb->bEnFile/*&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER)*/)
 	{
@@ -730,6 +732,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			if (bFileMap)
 			{
 				FsFreeCcFileInfo(&Fcb->CcFileHandle, &Fcb->CcFileObject);
+			}
+			if (!NT_SUCCESS(Status))
+			{
+				KdPrint(("[%s]FsRealWriteFile ret:0x%x....\n", __FUNCTION__, Status));
 			}
 			if (bWait)
 			{

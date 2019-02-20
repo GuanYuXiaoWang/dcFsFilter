@@ -152,22 +152,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
  					bPureCache = CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, 0);
 					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				}
-				if (bAcquireFcb)
-				{
-					FsReleaseFcb(IrpContext, Fcb);
-					bAcquireFcb = FALSE;
-				}
-				if (FileObject->PrivateCacheMap != NULL)
-				{
-					CACHE_UNINITIALIZE_EVENT Event;
-					KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
-					TruncateSize.QuadPart = Fcb->Header.FileSize.QuadPart;
-					bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize, &Event);
-					if (!bPureCache)
-					{
-						KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
-					}
-				}
 
 				if (Fcb->bAddHeaderLength)
 				{
@@ -240,6 +224,23 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
+		if (bAcquireFcb)
+		{
+			FsReleaseFcb(IrpContext, Fcb);
+			bAcquireFcb = FALSE;
+		}
+		if (FileObject->PrivateCacheMap != NULL)
+		{
+			CACHE_UNINITIALIZE_EVENT Event;
+			KeInitializeEvent(&Event.Event, NotificationEvent, FALSE);
+			TruncateSize.QuadPart = Fcb->Header.FileSize.QuadPart;
+			KdPrint(("CcUninitializeCacheMap, clean:file size =%d...\n", TruncateSize.QuadPart));
+			bPureCache = CcUninitializeCacheMap(FileObject, &TruncateSize, &Event);
+			if (!bPureCache)
+			{
+				KeWaitForSingleObject(&Event.Event, Executive, KernelMode, FALSE, NULL);
+			}
+		}
 	}
 	__finally
 	{
