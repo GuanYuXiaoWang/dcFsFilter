@@ -5,21 +5,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	BOOLEAN bTopLevelIrp = FALSE;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	PLARGE_INTEGER TruncateSize = NULL;
 	BOOLEAN bAcquire = FALSE;
 	ULONG i = 0;
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreClose"))
-	{
-		Fcb = FltObjects->FileObject->FsContext;
-		KdBreakPoint();
-	}
 	
-#endif	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -43,7 +36,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			{
 				bAcquire = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
 				
-				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || Fcb->bRecycleBinFile)
+				if (FlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER) && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_RECYCLE_BIN_FILE) && Fcb->CcFileObject)
+				{
+					ObDereferenceObject(Fcb->CcFileObject);
+					FltClose(Fcb->CcFileHandle);
+					Fcb->CcFileObject = NULL;
+					Fcb->CcFileHandle = NULL;
+				}
+
+				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) /*|| Fcb->bRecycleBinFile*/)
 				{
 					Fcb->CcFileObject = NULL;
 					Fcb->CcFileHandle = NULL;
@@ -66,17 +67,16 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
 			}
-			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
-			if (Ccb->StreamFileInfo.StreamObject)
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamInfo.FileObject, Ccb));
+			if (!(FlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER) && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_RECYCLE_BIN_FILE)) && Ccb->StreamInfo.FileObject)
 			{
-				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
-				FltClose(Ccb->StreamFileInfo.hStreamHandle);
-				Ccb->StreamFileInfo.StreamObject = NULL;
-				Ccb->StreamFileInfo.hStreamHandle = NULL;
+				ObDereferenceObject(Ccb->StreamInfo.FileObject);
+				FltClose(Ccb->StreamInfo.FileHandle);
+				Ccb->StreamInfo.FileObject = NULL;
+				Ccb->StreamInfo.FileHandle = NULL;
 			}
 			FsFreeCcb(Ccb);
 			FltObjects->FileObject->FsContext2 = NULL;
-			Fcb->Ccb = NULL;
 		}
 		__finally
 		{

@@ -37,14 +37,6 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define ENCRYPT_HEAD_LENGTH 1024
 #endif
 
-#define SUPPORT_OPEN_COUNT_MAX 32
-
-typedef struct tagFILE_OPEN_INFO
-{
-	PVOID FileObject;
-	HANDLE FileHandle;
-}FILE_OPEN_INFO, *PFILE_OPEN_INFO;
-
 typedef struct tagEXPLORER_PROCESS_FILE
 {
 	ULONG ProcessId;
@@ -101,7 +93,7 @@ typedef struct tagDEF_IO_CONTEXT
 
 	} Wait;
 
-	PVOLUMECONTEXT volCtx;
+	PVOLUMECONTEXT VolCtx;
 	PFLT_CALLBACK_DATA Data;
 
 	BOOLEAN bPagingIo;
@@ -118,19 +110,12 @@ typedef struct tagDEF_IO_CONTEXT
 
 #define MIN_SECTOR_SIZE 0x200
 
-typedef struct _tagNTFSFCB
-{
-	UCHAR sz[64];
-	PERESOURCE Resource;
-	PERESOURCE PageioResource;
-}NTFS_FCB, *PNTFS_FCB;
-
 typedef struct tagSTREAM_FILE_INFO
 {
-	PFILE_OBJECT StreamObject;
-	PERESOURCE pFO_Resource;
-	HANDLE hStreamHandle;
-	FAST_MUTEX FileObjectMutex;
+	PFILE_OBJECT FileObject;
+	PERESOURCE FoResource;
+	HANDLE FileHandle;
+	FAST_MUTEX FoMutex;
 }STREAM_FILE_INFO;
 
 typedef struct tagDEF_CCB
@@ -138,7 +123,7 @@ typedef struct tagDEF_CCB
 	ULONG ProcType;
 	ULONG FileAccess;
 	ULONG CcbState;
-	STREAM_FILE_INFO StreamFileInfo;
+	STREAM_FILE_INFO StreamInfo;
 	UCHAR TypeOfOpen;
 }DEF_CCB, *PDEF_CCB;
 
@@ -155,20 +140,16 @@ typedef struct tagDEF_VPB
 
 #define FILE_PATH_LENGTH_MAX 512
 
-typedef struct tagDEFFCB
+typedef struct tagDEF_FCB
 {
 	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
-	UCHAR						szAlinged[4];
-	LIST_ENTRY					FcbLinks;
-	PNTFS_FCB					NtfsFcb;//ntfs
-	PVOID						Vcb;
 	ULONG						FcbState;
 	ULONG						NonCachedUnCleanupCount;
 	ULONG						UncleanCount;
 	ULONG						OpenCount;
-	SHARE_ACCESS				ShareAccess;//+0x068
+	SHARE_ACCESS				ShareAccess;
 	PVOID						LazyWriteThread[2];
 	FAST_MUTEX					AdvancedFcbHeaderMutex;
 	//
@@ -177,10 +158,6 @@ typedef struct tagDEFFCB
 	//
 	OPLOCK		Oplock;
 	PFILE_LOCK	FileLock;
-	ULONG		CCBFlags;
-
-	UCHAR		Flags;
-
 	LONGLONG	CreationTime;                                          //  offset = 0x000
 	LONGLONG	LastWriteTime;                                  //  offset = 0x008
 	//
@@ -201,13 +178,6 @@ typedef struct tagDEFFCB
 	LONGLONG		CurrentLastAccess;
 	BOOLEAN			DeletePending;
 	BOOLEAN			Directory;
-
-	BOOLEAN			bModifiedByOther; //当这个cleanup里面把 UncleanCount 减为零的时候，就说明所有的Process 全部把自己的close 关闭了
-	//如果没有立即收到Close 的irp话，那么就是说明系统有这个Fileobject的reference。
-	//当可信的进程打开的时候很显然肯定要increament 这个UncleanCount 的值 ，同时把这个条件 设为FALSE
-	//当非可信的进程有要求写的时候，判断是不是为TRUE，如果是那么ok 让它打开，
-	//当非可惜进程要求写的时候，判断为false，那么返回 说明这个文件正在编辑，以只读方式打开？？？
-	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
 	BOOLEAN			bAddHeaderLength;
 	WCHAR			wszFile[FILE_PATH_LENGTH_MAX];
@@ -228,21 +198,16 @@ typedef struct tagDEFFCB
 	ULONG ProcessAcessType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
-	PVOID Ccb;
 	PKEVENT MoveFileEvent;
-	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
-	HANDLE ProcessID;
-	HANDLE ThreadID;
-}DEFFCB, *PDEFFCB;
+}DEF_FCB, *PDEF_FCB;
 
 typedef struct tagCREATE_INFO
 {
 	UCHAR FileHeader[ENCRYPT_HEAD_LENGTH];
 	UCHAR OrgFileHeader[ENCRYPT_HEAD_LENGTH];
-	UNICODE_STRING strName;
-	HANDLE hStreamHanle;
-	PFILE_OBJECT pStreamObject;
+	HANDLE StreamHanle;
+	PFILE_OBJECT StreamObject;
 	BOOLEAN bNetWork;
 	ULONG_PTR Information;
 
@@ -258,19 +223,17 @@ typedef struct tagCREATE_INFO
 	BOOLEAN bRealSize;
 	BOOLEAN Directory;
 
-	ULONG uProcType;
-
+	ULONG ProcType;
 	ULONG FileAccess;
 	BOOLEAN bDeleteOnClose;
 
-	PDEFFCB pFcb;
-	PDEF_CCB pCcb;
+	PDEF_FCB Fcb;
+	PDEF_CCB Ccb;
 	DEF_VPB Vpb;
 
 	BOOLEAN bReissueIo;
 	BOOLEAN bOplockPostIrp;
-	PERESOURCE pFO_Resource;
-	PFLT_FILE_NAME_INFORMATION nameInfo;
+	PFLT_FILE_NAME_INFORMATION NameInfo;
 	BOOLEAN bWriteHeader;
 	BOOLEAN bEnFile;
 	BOOLEAN bDecrementHeader;
@@ -321,14 +284,14 @@ typedef struct tagIRP_CONTEXT
 	FLT_RELATED_OBJECTS FltObjects;
 	PFILE_OBJECT   FileObject;
 
-	CREATE_INFO createInfo;
-	ULONG ulSectorSize;
-	ULONG uSectorsPerAllocationUnit;
+	CREATE_INFO CreateInfo;
+	ULONG SectorSize;
+	ULONG SectorsPerAllocationUnit;
 
 	FLT_PREOP_CALLBACK_STATUS FltStatus;
 
 	PMDL AllocateMdl;
-	PDEF_IO_CONTEXT pIoContext;
+	PDEF_IO_CONTEXT IoContext;
 }DEF_IRP_CONTEXT, *PDEF_IRP_CONTEXT;
 
 typedef enum tagPROCETYPE

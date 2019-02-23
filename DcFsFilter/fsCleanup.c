@@ -11,19 +11,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	BOOLEAN bPure = FALSE;
 
 	PAGED_CODE();
-
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreCleanup"))
-	{
-		KdBreakPoint();
-		PFSRTL_COMMON_FCB_HEADER Header = FltObjects->FileObject->FsContext;
-		if (NULL != Header)
-		{
-			KdPrint(("File Size=%d, vaildata size=%d....\n", Header->FileSize.QuadPart, Header->ValidDataLength.QuadPart));
-		}
-	}
-#endif
-
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -81,7 +68,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostCleanup(__inout PFLT_CALLBACK_DATA Data, __in P
 FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	BOOLEAN bAcquireFcb = FALSE;
 	LARGE_INTEGER TruncateSize;
@@ -118,7 +105,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			__leave;
 		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		KdPrint(("clean:processID:%d, openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->ProcessID, Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
+		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
 		if (1 == Fcb->OpenCount)
 		{
 			//
@@ -195,11 +182,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						Fcb->CcFileObject = NULL;
 						Fcb->CcFileHandle = NULL;
 					}
-				}
-				else
-				{
-					Fcb->CcFileObject = NULL;
-					Fcb->CcFileHandle = NULL;
 				}				
 
 				Fcb->DestCacheObject = NULL;
@@ -210,18 +192,22 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		}
 		if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 		{
-			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
-			if (Ccb->StreamFileInfo.StreamObject)
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamInfo.FileObject, Ccb));
+			if (Ccb->StreamInfo.FileObject)
 			{
-				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
-				FltClose(Ccb->StreamFileInfo.hStreamHandle);
-				Ccb->StreamFileInfo.StreamObject = NULL;
-				Ccb->StreamFileInfo.hStreamHandle = NULL;
+				ObDereferenceObject(Ccb->StreamInfo.FileObject);
+				FltClose(Ccb->StreamInfo.FileHandle);
+				Ccb->StreamInfo.FileObject = NULL;
+				Ccb->StreamInfo.FileHandle = NULL;
 			}
 		}
 		
 		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);
 		IoRemoveShareAccess(FileObject, &Fcb->ShareAccess);
+		if (FlagOn(FileObject->Flags, FO_NO_INTERMEDIATE_BUFFERING))
+		{
+			InterlockedDecrement((PLONG)&Fcb->NonCachedUnCleanupCount);
+		}
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
 		if (bAcquireFcb)

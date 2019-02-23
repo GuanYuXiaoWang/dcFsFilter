@@ -13,12 +13,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	UNREFERENCED_PARAMETER(CompletionContext);
 	
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		
-	}
-#endif
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -26,15 +20,12 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	}
 	FsRtlEnterFileSystem();
 	KdPrint(("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass));
-#ifdef TEST
-	KdBreakPoint();
-#endif
 
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
 		{
-			bTopLevelIrp = FsIsIrpTopLevel(Data);
+			bTopLevelIrp = IsTopLevelIRP(Data);
 			IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
 			if (NULL == IrpContext)
 			{
@@ -93,7 +84,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 	PFILE_ALL_INFORMATION FileAllInfo = NULL;
 	PFILE_NETWORK_OPEN_INFORMATION FileNetInfo = NULL;
 	PFILE_POSITION_INFORMATION FilePositionInfo = NULL;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
 	PVOID pFileInfoBuffer = Data->Iopb->Parameters.QueryFileInformation.InfoBuffer;
@@ -241,13 +232,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
-	{
-		KdPrint(("(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass));
-	}
-	
-#endif
+
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -274,7 +259,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	{
 		__try
 		{
-			bTopLevelIrp = FsIsIrpTopLevel(Data);
+			bTopLevelIrp = IsTopLevelIRP(Data);
 			IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
 			if (NULL == IrpContext)
 			{
@@ -326,19 +311,13 @@ FLT_POSTOP_CALLBACK_STATUS PtPostSetInformation(__inout PFLT_CALLBACK_DATA Data,
 FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryEA"))
-	{
-		KdBreakPoint();
-	}
-	
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -351,7 +330,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		if (g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile)
 		{
 			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
-				Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
+				Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, &Data->Iopb->Parameters.QueryEa.EaIndex,
 				TRUE, &Data->IoStatus.Information);
 		}
 		else
@@ -381,20 +360,13 @@ FLT_POSTOP_CALLBACK_STATUS PtPostQueryEA(__inout PFLT_CALLBACK_DATA Data, __in P
 FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreSetEA"))
-	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	KdBreakPoint();
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -436,12 +408,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreAcquireForSection"))
-	{
-		KdBreakPoint();
-	}
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -449,10 +416,20 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 
 	KdPrint(("PtPreAcquireForSection....\n"));
 
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	if (Fcb && Fcb->Header.PagingIoResource)
+	PDEF_FCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb)
 	{
-		ExAcquireResourceExclusive(Fcb->Header.PagingIoResource, TRUE);
+		if (Fcb->Header.Resource)
+		{
+			if (ExIsResourceAcquiredLite(Fcb->Header.Resource))
+			{
+				ExAcquireResourceShared(Fcb->Header.Resource, TRUE);
+			}
+			else
+			{
+				ExAcquireResourceExclusive(Fcb->Header.Resource, TRUE);
+			}
+		}
 	}
 
 	return FLT_PREOP_COMPLETE;
@@ -472,23 +449,20 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreReleaseForSection"))
-	{
-		KdBreakPoint();
-	}
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreReleaseForSection....\n"));
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	if (Fcb && Fcb->Header.PagingIoResource)
+	PDEF_FCB Fcb = FltObjects->FileObject->FsContext;
+	if (Fcb)
 	{
-		ExReleaseResource(Fcb->Header.PagingIoResource);
+		if (Fcb->Header.Resource)
+		{
+			ExReleaseResource(Fcb->Header.Resource);
+		}
 	}
-
 	return FLT_PREOP_COMPLETE;
 }
 
@@ -507,7 +481,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFILE_OBJECT FileObject = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	BOOLEAN bFcbAcquired = FALSE;
 	BOOLEAN bPagingIo = FALSE;
@@ -643,7 +617,7 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	return Status;
 }
 
-NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __inout PDEFFCB Fcb)
+NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __inout PDEF_FCB Fcb)
 {
 	LONGLONG CurrentTime;
 	BOOLEAN bTimeChanged = FALSE;
@@ -680,7 +654,7 @@ NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT I
 	return STATUS_SUCCESS;
 }
 
-NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
+NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFILE_ALLOCATION_INFORMATION Buffer = NULL;
@@ -799,7 +773,7 @@ BOOLEAN FsIsIoRangeValid(__in LARGE_INTEGER Start, __in ULONG Length)
 	return !(Start.HighPart || Start.LowPart + Length < Start.LowPart);
 }
 
-NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
+NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFILE_END_OF_FILE_INFORMATION Buffer = NULL;
@@ -1007,7 +981,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 	BOOLEAN bTopLevelIrp = FALSE;
 	BOOLEAN bAcquireResource = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	ULONG RetLength = 0;
 
@@ -1076,7 +1050,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 	BOOLEAN bTopLevelIrp = FALSE;
 	BOOLEAN bAcquireResource = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 
 	PAGED_CODE();
@@ -1145,7 +1119,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	BOOLEAN bTopLevelIrp = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	PFLT_CALLBACK_DATA NewData = NULL;
 	ULONG Retlength = 0;
@@ -1229,7 +1203,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetVolumeInformation(__inout PFLT_CALLBACK_DATA D
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	BOOLEAN bTopLevelIrp = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 
 	PAGED_CODE();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
@@ -1341,7 +1315,7 @@ BOOLEAN GetVolDevNameByQueryObj(__in UNICODE_STRING * pSymName, __out UNICODE_ST
 	return bRet;
 }
 #define SURPORT_NAME_LENGTH 64
-NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb)
+NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PFILE_OBJECT FileObject = FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
@@ -1381,8 +1355,8 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 			KdPrint(("FltSetInformationFile failed(0x%x)...\n", ntStatus));
 			__leave;
 		}
-		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);		
-		
+		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
+		/*
 		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
 		if (!NT_SUCCESS(ntStatus))
 		{
@@ -1461,6 +1435,7 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 		RtlInitUnicodeString(&strFullPath, pFileName);
 		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
 		RtlCopyMemory(Fcb->wszFile, strFullPath.Buffer, strFullPath.Length);
+		*/
 		/*
 		length = bNetWork ? 7 : 6;	
 		pRename = ExAllocatePoolWithTag(NonPagedPool, FileRenameInfo->FileNameLength - length * sizeof(WCHAR) + sizeof(WCHAR), 'rnif');

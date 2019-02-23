@@ -63,17 +63,17 @@ FLT_POSTOP_CALLBACK_STATUS PtPostReleaseForSection(__inout PFLT_CALLBACK_DATA Da
 	__in_opt PVOID CompletionContext,
 	__in FLT_POST_OPERATION_FLAGS Flags);
 
-NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __inout PDEFFCB Fcb);
+NTSTATUS FsSetBasicInfo(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __inout PDEF_FCB Fcb);
 
-NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
+NTSTATUS FsSetAllocationInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb);
 
 BOOLEAN FsIsIoRangeValid(__in LARGE_INTEGER Start, __in ULONG Length);
 
-NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
+NTSTATUS FsSetEndOfFileInfo(__in PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PFILE_OBJECT FileObject, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb);
 
 NTSTATUS FsSetPositionInfo(__in PFLT_CALLBACK_DATA Data, __in PFILE_OBJECT FileObject);
 
-NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
+NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF_FCB Fcb, __in PDEF_CCB Ccb);
 
 FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data,
 	__in PCFLT_RELATED_OBJECTS FltObjects,

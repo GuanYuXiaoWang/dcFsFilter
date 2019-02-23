@@ -24,11 +24,11 @@ FLT_PREOP_CALLBACK_STATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Dat
 								__in PCFLT_RELATED_OBJECTS FltObjects,
 								__in PDEF_IRP_CONTEXT IrpContext);
 
-NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects,
-	IN PDEF_IRP_CONTEXT IrpContext,
-	IN PVOID SystemBuffer,
-	IN LARGE_INTEGER ByteOffset,
-	IN ULONG ByteCount,
-	OUT PULONG_PTR RetBytes);
+NTSTATUS FsRealReadFile(__in PCFLT_RELATED_OBJECTS FltObjects,
+	__in PDEF_IRP_CONTEXT IrpContext,
+	__in PVOID SystemBuffer,
+	__in LARGE_INTEGER ByteOffset,
+	__in ULONG ByteCount,
+	OUT PULONG_PTR RetBytes);	
 
 #endif

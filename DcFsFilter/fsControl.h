@@ -50,7 +50,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostDirectoryControl(__inout PFLT_CALLBACK_DATA Dat
 
 NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject);
 
-NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PDEFFCB Fcb);
+NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PDEF_FCB Fcb);
 
 FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data,
 	__in PCFLT_RELATED_OBJECTS FltObjects,

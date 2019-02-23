@@ -65,7 +65,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostFlush(__inout PFLT_CALLBACK_DATA Data, __in PCF
 NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext)
 {
 	IO_STATUS_BLOCK IoStatus;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PFILE_OBJECT FileObject = NULL;
 	BOOLEAN bAcquiredResource = FALSE;
 	
@@ -112,7 +112,7 @@ NTSTATUS FsCommonFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 
 FLT_PREOP_CALLBACK_STATUS PtPreAcquireForCcFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	PDEF_FCB Fcb = FltObjects->FileObject->FsContext;
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -123,9 +123,23 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForCcFlush(__inout PFLT_CALLBACK_DATA Data
 	}
 	KdPrint(("PtPreAcquireForCcFlush......\n"));
 
-	if (Fcb && Fcb->Header.PagingIoResource != NULL)
+	if (Fcb)
 	{
-		ExAcquireResourceShared(Fcb->Header.PagingIoResource, TRUE);
+		if (Fcb->Header.Resource)
+		{
+			if (ExIsResourceAcquiredSharedLite(Fcb->Header.Resource))
+			{
+				ExAcquireResourceShared(Fcb->Header.Resource, TRUE);
+			}
+			else
+			{
+				ExAcquireResourceExclusive(Fcb->Header.Resource, TRUE);
+			}
+		}
+		if (Fcb->Header.PagingIoResource)
+		{
+			ExAcquireResourceShared(Fcb->Header.PagingIoResource, TRUE);
+		}
 	}
 	return FLT_PREOP_COMPLETE;
 }
@@ -142,7 +156,7 @@ FLT_POSTOP_CALLBACK_STATUS PtPostAcquireForCcFlush(__inout PFLT_CALLBACK_DATA Da
 
 FLT_PREOP_CALLBACK_STATUS PtPreReleaseForCcFlush(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
+	PDEF_FCB Fcb = FltObjects->FileObject->FsContext;
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
@@ -152,9 +166,16 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForCcFlush(__inout PFLT_CALLBACK_DATA Data
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreReleaseForCcFlush......\n"));
-	if (Fcb && Fcb->Header.PagingIoResource != NULL)
+	if (Fcb)
 	{
-		ExReleaseResource(Fcb->Header.PagingIoResource);
+		if (Fcb->Header.Resource)
+		{
+			ExReleaseResource(Fcb->Header.Resource);
+		}
+		if (Fcb->Header.PagingIoResource)
+		{
+			ExReleaseResource(Fcb->Header.PagingIoResource);
+		}
 	}
 	return FLT_PREOP_COMPLETE;
 }

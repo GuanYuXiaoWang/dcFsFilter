@@ -12,13 +12,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		KdBreakPoint();
-	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-#endif
 	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -31,7 +24,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	{
 		__try
 		{
-			bTopLevelIrp = FsIsIrpTopLevel(Data);
+			bTopLevelIrp = IsTopLevelIRP(Data);
 			IrpContext = FsCreateIrpContext(Data, FltObjects, CanFsWait(Data));
 			if (NULL == IrpContext)
 			{
@@ -122,7 +115,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreLockControl(__inout PFLT_CALLBACK_DATA Data, __in
 	}
 	FsRtlEnterFileSystem();
 	KdPrint(("PtPreLockControl....\n"));
-	bTopLevelIrp = FsIsIrpTopLevel(Data);
+	bTopLevelIrp = IsTopLevelIRP(Data);
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		do
@@ -179,7 +172,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	PFILE_OBJECT FileObject = NULL;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	BOOLEAN bFcbAcquired = FALSE;
 	BOOLEAN bOplockPostIrp = FALSE;
 	PFLT_CALLBACK_DATA OrgData = NULL;
@@ -241,7 +234,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonLockControl(__inout PFLT_CALLBACK_DATA Data, _
 		if (FltStatus == FLT_PREOP_PENDING)
 		{
 			IrpContext->FltStatus = FLT_PREOP_PENDING;
-			IrpContext->createInfo.bOplockPostIrp = TRUE;
+			IrpContext->CreateInfo.bOplockPostIrp = TRUE;
 			try_return(NOTHING);
 		}
 		if (FltStatus == FLT_PREOP_COMPLETE)
@@ -308,7 +301,7 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 	ULONG OutBufferLength = Data->Iopb->Parameters.FileSystemControl.Common.OutputBufferLength;
 	PFILE_OBJECTID_BUFFER pBuf = Data->Iopb->Parameters.FileSystemControl.Buffered.SystemBuffer;
 	PFILE_OBJECT FileObject = NULL;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	
 	if (NULL == FltObjects)
@@ -392,7 +385,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDirectoryControl(__inout PFLT_CALLBACK_DATA Data,
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	BOOLEAN bTopIrp = FALSE;
 	FILE_INFORMATION_CLASS FileClass;
@@ -513,7 +506,7 @@ NTSTATUS FsPostUnderlyingDriverControl(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	return Status;
 }
 
-NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PDEFFCB Fcb)
+NTSTATUS FsOplockRequest(__inout PFLT_CALLBACK_DATA Data, __in PDEF_IRP_CONTEXT IrpContext, __in PDEF_FCB Fcb)
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	BOOLEAN AcquireFcb = FALSE;
@@ -655,7 +648,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 {
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	BOOLEAN bTopIrp = FALSE;
 	ULONG RetLength = 0;

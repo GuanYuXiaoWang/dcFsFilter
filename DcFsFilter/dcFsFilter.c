@@ -600,12 +600,6 @@ The return value is the status of the operation.
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
 	//
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreOperationPassThrough"))
-	{
-		//return FltStatus;
-	}
-#endif	
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -859,13 +853,13 @@ BOOLEAN IsShadowCopyType(PUNICODE_STRING pDeviceName)
 	return FALSE;
 }
 
-NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __in PFLT_CALLBACK_DATA CallbackData, __in FLT_FILE_NAME_OPTIONS NameOptions, __inout PBOOLEAN CacheFileNameInformation, __inout PFLT_NAME_CONTROL FileName)
+NTSTATUS GenerateFileName(__in PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __in PFLT_CALLBACK_DATA CallbackData, __in FLT_FILE_NAME_OPTIONS NameOptions, __inout PBOOLEAN CacheFileNameInformation, __inout PFLT_NAME_CONTROL FileName)
 {
 	NTSTATUS Status = STATUS_UNSUCCESSFUL;
 	PFILE_OBJECT StreamObject = FileObject;
 	PFLT_FILE_NAME_INFORMATION FileNameInformation = NULL;
 	BOOLEAN bEncryptResource = FALSE;
-	PDEFFCB Fcb = FileObject->FsContext;
+	PDEF_FCB Fcb = FileObject->FsContext;
 	PDEF_CCB Ccb = FileObject->FsContext2;
 
 	FsRtlEnterFileSystem();
@@ -875,13 +869,13 @@ NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObjec
 		if (IsMyFakeFcb(FileObject))
 		{
 			bEncryptResource = ExAcquireResourceSharedLite(Fcb->Resource, TRUE);
-			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) || Ccb->StreamFileInfo.StreamObject == NULL)
+			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE) || Ccb->StreamInfo.FileObject == NULL)
 			{
 				try_return(Status = STATUS_FILE_DELETED);
 			}
 			else
 			{
-				StreamObject = Ccb->StreamFileInfo.StreamObject;
+				StreamObject = Ccb->StreamInfo.FileObject;
 			}
 		}
 

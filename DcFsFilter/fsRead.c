@@ -25,27 +25,15 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 	ULONG ProcessType = 0;
 
 	PAGED_CODE();
-
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreRead"))
-	{
-		KdPrint(("read:offset=%d, byteCount=%d....\n", Data->Iopb->Parameters.Read.ByteOffset, Data->Iopb->Parameters.Read.Length));
-	}
-	
-#endif
-
 	
  	if (!IsMyFakeFcb(FltObjects->FileObject))
  	{
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
  	}
-#ifdef TEST
-	KdBreakPoint();
-#endif
 
 	KdPrint(("PtPreRead begin......\n"));
 	FsRtlEnterFileSystem();
-	bTopLevel = FsIsIrpTopLevel(Data);
+	bTopLevel = IsTopLevelIRP(Data);
 	__try
 	{
 		if (FLT_IS_IRP_OPERATION(Data))
@@ -125,7 +113,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	ULONG RequestedByteCount = 0;
 	ULONG ActualBytesRead = 0;
 	PFILE_OBJECT FileObject = NULL;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	PVOID SystemBuffer = NULL;
 
@@ -176,7 +164,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
-	KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb ? Ccb->StreamFileInfo.StreamObject : 0, Ccb));
+	KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb ? Ccb->StreamInfo.FileObject : 0, Ccb));
 
 	Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &volCtx);
 	if (!NT_SUCCESS(Status))
@@ -188,33 +176,33 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 	if (bNonCachedIo)
 	{
-		if (NULL == IrpContext->pIoContext)
+		if (NULL == IrpContext->IoContext)
 		{
 			if (!bWait)
 			{
-				IrpContext->pIoContext = (PDEF_IO_CONTEXT)ExAllocateFromNPagedLookasideList(&g_IoContextLookasideList);
+				IrpContext->IoContext = (PDEF_IO_CONTEXT)ExAllocateFromNPagedLookasideList(&g_IoContextLookasideList);
 				ClearFlag(IrpContext->Flags, IRP_CONTEXT_STACK_IO_CONTEXT);
 			}
 			else
 			{
-				IrpContext->pIoContext = &stackIoContext;
+				IrpContext->IoContext = &stackIoContext;
 				SetFlag(IrpContext->Flags, IRP_CONTEXT_STACK_IO_CONTEXT);
 			}
 		}
-		RtlZeroMemory(IrpContext->pIoContext, sizeof(DEF_IO_CONTEXT));
+		RtlZeroMemory(IrpContext->IoContext, sizeof(DEF_IO_CONTEXT));
 		if (bWait)
 		{
-			KeInitializeEvent(&IrpContext->pIoContext->Wait.SyncEvent, NotificationEvent, FALSE);
-			IrpContext->pIoContext->bPagingIo = bPagingIo;
+			KeInitializeEvent(&IrpContext->IoContext->Wait.SyncEvent, NotificationEvent, FALSE);
+			IrpContext->IoContext->bPagingIo = bPagingIo;
 		}
 		else
 		{
-			IrpContext->pIoContext->bPagingIo = bPagingIo;
-			IrpContext->pIoContext->Wait.Async.ResourceThreadId = ExGetCurrentResourceThread();
-			IrpContext->pIoContext->Wait.Async.RequestedByteCount = ByteCount;
-			IrpContext->pIoContext->Wait.Async.FileObject = FileObject;
+			IrpContext->IoContext->bPagingIo = bPagingIo;
+			IrpContext->IoContext->Wait.Async.ResourceThreadId = ExGetCurrentResourceThread();
+			IrpContext->IoContext->Wait.Async.RequestedByteCount = ByteCount;
+			IrpContext->IoContext->Wait.Async.FileObject = FileObject;
 		}
-		RtlCopyMemory(IrpContext->pIoContext->FileHeader, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
+		RtlCopyMemory(IrpContext->IoContext->FileHeader, Fcb->szFileHead, ENCRYPT_HEAD_LENGTH);
 	}
 
 	__try
@@ -246,8 +234,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				{
 					try_return(bPostIrp = TRUE);
 				}
-				IrpContext->pIoContext->Wait.Async.Resource = Fcb->Header.Resource;
-				IrpContext->pIoContext->Wait.Async.ResourceThreadId = ((ULONG_PTR)IrpContext->pIoContext) | 3;
+				IrpContext->IoContext->Wait.Async.Resource = Fcb->Header.Resource;
+				IrpContext->IoContext->Wait.Async.ResourceThreadId = ((ULONG_PTR)IrpContext->IoContext) | 3;
 			}
 			else
 			{
@@ -268,7 +256,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				bPagingIoResourceAcquired = TRUE;
 				if (!bWait)
 				{
-					IrpContext->pIoContext->Wait.Async.Resource = Fcb->Header.PagingIoResource;
+					IrpContext->IoContext->Wait.Async.Resource = Fcb->Header.PagingIoResource;
 				}
 			}
 		}
@@ -345,7 +333,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			Data->IoStatus.Status = 0;
 			try_return(Status = STATUS_END_OF_FILE);
 		}
-		if (NULL == Fcb->CcFileObject && Ccb != NULL && NULL == Ccb->StreamFileInfo.StreamObject && !FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
+		if (NULL == Fcb->CcFileObject && Ccb != NULL && NULL == Ccb->StreamInfo.FileObject && !FlagOn(FileObject->Flags, FO_CLEANUP_COMPLETE))
 		{
 			try_return(Status = STATUS_FILE_DELETED);
 		}
@@ -357,7 +345,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			RequestedByteCount = (ULONG)ByteCount;
 			if (bNonCachedIo && !bWait)
 			{
-				IrpContext->pIoContext->Wait.Async.RequestedByteCount = (ULONG)RequestedByteCount;
+				IrpContext->IoContext->Wait.Async.RequestedByteCount = (ULONG)RequestedByteCount;
 			}
 		}
 
@@ -375,7 +363,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 			{
-				Fcb->CcFileObject = Ccb->StreamFileInfo.StreamObject;
+				Fcb->CcFileObject = Ccb->StreamInfo.FileObject;
 			}
 
 			if (NULL == Fcb->CcFileObject)
@@ -435,31 +423,31 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				try_return(Status = STATUS_INSUFFICIENT_RESOURCES);
 			}
 			RtlZeroMemory(newBuf, readLen);
-			if (Ccb && ExAcquireResourceSharedLite(Ccb->StreamFileInfo.pFO_Resource, TRUE))
+			if (Ccb && ExAcquireResourceSharedLite(Ccb->StreamInfo.FoResource, TRUE))
 			{
 				bFOResourceAcquired = TRUE;
-				IrpContext->pIoContext->Wait.Async.FO_Resource = Ccb->StreamFileInfo.pFO_Resource;
+				IrpContext->IoContext->Wait.Async.FO_Resource = Ccb->StreamInfo.FoResource;
 			}
 			if (ExAcquireResourceSharedLite(Fcb->Resource, TRUE))
 			{
 				bFcbResourceAcquired = TRUE;
 			}
-			IrpContext->pIoContext->Wait.Async.Resource2 = Fcb->Resource;
+			IrpContext->IoContext->Wait.Async.Resource2 = Fcb->Resource;
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
 			IrpContext->FileObject = bFileMap ? Fcb->CcFileObject : FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
-			IrpContext->pIoContext->Data = Data;
-			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
-			IrpContext->pIoContext->SwapBuffer = newBuf;
-			IrpContext->pIoContext->SwapMdl = newMdl;
-			IrpContext->pIoContext->volCtx = volCtx;
-			IrpContext->pIoContext->Wait.Async.ByteCount = ByteCount;
-			IrpContext->pIoContext->Wait.Async.FileObjectMutex = NULL;
-			IrpContext->pIoContext->FltObjects = FltObjects;
-			IrpContext->pIoContext->Instance = FltObjects->Instance;
-			IrpContext->pIoContext->FileHeaderLength = Fcb->FileHeaderLength;
-			IrpContext->pIoContext->bEnFile = Fcb->bEnFile;
+			IrpContext->IoContext->Data = Data;
+			IrpContext->IoContext->SystemBuffer = SystemBuffer;
+			IrpContext->IoContext->SwapBuffer = newBuf;
+			IrpContext->IoContext->SwapMdl = newMdl;
+			IrpContext->IoContext->VolCtx = volCtx;
+			IrpContext->IoContext->Wait.Async.ByteCount = ByteCount;
+			IrpContext->IoContext->Wait.Async.FileObjectMutex = NULL;
+			IrpContext->IoContext->FltObjects = FltObjects;
+			IrpContext->IoContext->Instance = FltObjects->Instance;
+			IrpContext->IoContext->FileHeaderLength = Fcb->FileHeaderLength;
+			IrpContext->IoContext->bEnFile = Fcb->bEnFile;
 
 			Status = FsRealReadFile(FltObjects, IrpContext, newBuf, NewByteOffset, readLen, &RetBytes);
 			if (bFileMap)
@@ -472,7 +460,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 				if (Fcb->bEnFile)
 				{
 					//解密newBuf
-					DecBuf(newBuf, ByteCount, IrpContext->pIoContext->FileHeader);
+					DecBuf(newBuf, ByteCount, IrpContext->IoContext->FileHeader);
 				}
 				RtlCopyMemory(SystemBuffer, newBuf, ByteCount);
 				if (NT_SUCCESS(Status))
@@ -483,7 +471,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			else if (NT_SUCCESS(Status))
 			{
 				bNonCachedIoPending = TRUE;
-				IrpContext->pIoContext = NULL;
+				IrpContext->IoContext = NULL;
 				volCtx = NULL;
 				newBuf = NULL;
 				newMdl = NULL;
@@ -586,7 +574,7 @@ try_exit:NOTHING;
 		{
 			if (bFOResourceAcquired)
 			{
-				ExReleaseResourceLite(Ccb->StreamFileInfo.pFO_Resource);
+				ExReleaseResourceLite(Ccb->StreamInfo.FoResource);
 			}
 			if (bFcbResourceAcquired)
 			{
@@ -655,7 +643,7 @@ try_exit:NOTHING;
 FLT_PREOP_CALLBACK_STATUS FsFastIoRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects)
 {
 	PDEF_CCB Ccb = NULL;
-	PDEFFCB Fcb = NULL;
+	PDEF_FCB Fcb = NULL;
 	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_DISALLOW_FASTIO;
 	PFILE_OBJECT FileObject = FltObjects->FileObject;
 	PFLT_IO_PARAMETER_BLOCK Iopb = Data->Iopb;
@@ -687,7 +675,7 @@ FLT_PREOP_CALLBACK_STATUS FsFastIoRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	return FltStatus;
 }
 
-VOID FsStackOverflowRead(IN PVOID Context, IN PKEVENT Event)
+VOID FsStackOverflowRead(__in PVOID Context, __in PKEVENT Event)
 {
 	NTSTATUS ExceptionCode;
 	PDEF_IRP_CONTEXT IrpContext = (PDEF_IRP_CONTEXT)Context;
@@ -720,7 +708,7 @@ FLT_PREOP_CALLBACK_STATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Dat
 {
 	KEVENT Event;
 	PERESOURCE Resource;
-	PDEFFCB Fcb;
+	PDEF_FCB Fcb;
 	KeInitializeEvent(&Event, NotificationEvent, FALSE);
 	Fcb = Data->Iopb->TargetFileObject->FsContext;
 	if (NULL == Fcb)
@@ -752,13 +740,13 @@ FLT_PREOP_CALLBACK_STATUS FsPostStackOverflowRead(__inout PFLT_CALLBACK_DATA Dat
 	return FLT_PREOP_PENDING;
 }
 
-VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEXT Context)
+VOID FsReadFileAsyncCompletionRoutine(__in PFLT_CALLBACK_DATA Data, __in PFLT_CONTEXT Context)
 {
 	PDEF_IO_CONTEXT IoContext = (PDEF_IO_CONTEXT)Context;
 	PERESOURCE Resource = IoContext->Wait.Async.Resource;
 	PERESOURCE Resource2 = IoContext->Wait.Async.Resource2;
 	PERESOURCE FO_Resource = IoContext->Wait.Async.FO_Resource;
-	PVOLUMECONTEXT volCtx = IoContext->volCtx;
+	PVOLUMECONTEXT volCtx = IoContext->VolCtx;
 	ERESOURCE_THREAD ResourceThread = IoContext->Wait.Async.ResourceThreadId;
 	PFLT_CALLBACK_DATA orgData = IoContext->Data;
 	PFAST_MUTEX FileObjectMutex = IoContext->Wait.Async.FileObjectMutex;
@@ -826,7 +814,7 @@ VOID FsReadFileAsyncCompletionRoutine(IN PFLT_CALLBACK_DATA Data, IN PFLT_CONTEX
 	FltCompletePendedPreOperation(orgData, FLT_PREOP_COMPLETE, NULL);//可以在dpc级别调用
 }
 
-NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects, IN PDEF_IRP_CONTEXT IrpContext, IN PVOID SystemBuffer, IN LARGE_INTEGER ByteOffset, IN ULONG ByteCount, OUT PULONG_PTR RetBytes)
+NTSTATUS FsRealReadFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CONTEXT IrpContext, __in PVOID SystemBuffer, __in LARGE_INTEGER ByteOffset, __in ULONG ByteCount, OUT PULONG_PTR RetBytes)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
 	PFLT_CALLBACK_DATA NewData = NULL;
@@ -869,23 +857,23 @@ NTSTATUS FsRealReadFile(IN PCFLT_RELATED_OBJECTS FltObjects, IN PDEF_IRP_CONTEXT
 		}
 		else
 		{
-			if (FlagOn(IrpContext->pIoContext->Wait.Async.ResourceThreadId, 3))
+			if (FlagOn(IrpContext->IoContext->Wait.Async.ResourceThreadId, 3))
 			{
-				if (IrpContext->pIoContext->Wait.Async.Resource != NULL)
+				if (IrpContext->IoContext->Wait.Async.Resource != NULL)
 				{
-					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+					ExSetResourceOwnerPointer(IrpContext->IoContext->Wait.Async.Resource, (PVOID)IrpContext->IoContext->Wait.Async.ResourceThreadId);
 				}
-				if (IrpContext->pIoContext->Wait.Async.Resource2 != NULL)
+				if (IrpContext->IoContext->Wait.Async.Resource2 != NULL)
 				{
-					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.Resource2, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+					ExSetResourceOwnerPointer(IrpContext->IoContext->Wait.Async.Resource2, (PVOID)IrpContext->IoContext->Wait.Async.ResourceThreadId);
 				}
-				if (IrpContext->pIoContext->Wait.Async.FO_Resource != NULL)
+				if (IrpContext->IoContext->Wait.Async.FO_Resource != NULL)
 				{
-					ExSetResourceOwnerPointer(IrpContext->pIoContext->Wait.Async.FO_Resource, (PVOID)IrpContext->pIoContext->Wait.Async.ResourceThreadId);
+					ExSetResourceOwnerPointer(IrpContext->IoContext->Wait.Async.FO_Resource, (PVOID)IrpContext->IoContext->Wait.Async.ResourceThreadId);
 				}
 			}
 			
-			Status = FltPerformAsynchronousIo(NewData, FsReadFileAsyncCompletionRoutine, IrpContext->pIoContext);
+			Status = FltPerformAsynchronousIo(NewData, FsReadFileAsyncCompletionRoutine, IrpContext->IoContext);
 		}
 	}
 
