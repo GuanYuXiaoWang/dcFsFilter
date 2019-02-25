@@ -600,9 +600,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		if (!bCalledByLazyWrite && !bRecursiveWriteThrough && (StartByte.QuadPart + ByteCount > ValidDataLength.QuadPart))
 		{
 			bExtendingValidData = TRUE;
-#ifndef CHANGE_TOP_IRP
-			//FsExtendingValidDataSetFile(FltObjects, Fcb, Ccb);
-#endif
 		}
 		else
 		{

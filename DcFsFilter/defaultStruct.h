@@ -139,6 +139,7 @@ typedef struct tagDEF_VPB
 }DEF_VPB, *PDEF_VPB;
 
 #define FILE_PATH_LENGTH_MAX 512
+#define FILE_TAG 'fntg'
 
 typedef struct tagDEF_FCB
 {
@@ -180,10 +181,10 @@ typedef struct tagDEF_FCB
 	BOOLEAN			Directory;
 	BOOLEAN			bWriteHead;
 	BOOLEAN			bAddHeaderLength;
-	WCHAR			wszFile[FILE_PATH_LENGTH_MAX];
+	WCHAR*			wszFile;
+	ULONG			FileLength;
 	UCHAR			szFileHead[ENCRYPT_HEAD_LENGTH];
 	UCHAR			szOrgFileHead[ENCRYPT_HEAD_LENGTH];
-
 	PRKEVENT		OutstandingAsyncEvent;
 	ULONG			OutstandingAsyncWrites;
 

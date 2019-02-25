@@ -84,6 +84,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 	PFILE_ALL_INFORMATION FileAllInfo = NULL;
 	PFILE_NETWORK_OPEN_INFORMATION FileNetInfo = NULL;
 	PFILE_POSITION_INFORMATION FilePositionInfo = NULL;
+	PFILE_NAME_INFORMATION FileNameInfo = NULL;
 	PDEF_FCB Fcb = NULL;
 	PDEF_CCB Ccb = NULL;
 	FILE_INFORMATION_CLASS FileInfoClass = Data->Iopb->Parameters.QueryFileInformation.FileInformationClass;
@@ -121,7 +122,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_BASIC_INFORMATION))
 			{
 				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_BASIC_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
-				try_return(ntStatus);
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
 			}
 			length = sizeof(FILE_BASIC_INFORMATION);
 			FileBasicInfo = (PFILE_BASIC_INFORMATION)pFileInfoBuffer;
@@ -135,7 +136,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_ALL_INFORMATION))
 			{
 				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_ALL_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
-				try_return(ntStatus);
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
 			}
 			length = sizeof(FILE_ALL_INFORMATION);
 			FileAllInfo = (PFILE_ALL_INFORMATION)pFileInfoBuffer;
@@ -154,7 +155,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_STANDARD_INFORMATION))
 			{
 				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
-				try_return(ntStatus);
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
 			}
 			length = sizeof(FILE_STANDARD_INFORMATION);
 			FileStandardInfo = (PFILE_STANDARD_INFORMATION)pFileInfoBuffer;
@@ -168,7 +169,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_NETWORK_OPEN_INFORMATION))
 			{
 				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_STANDARD_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
-				try_return(ntStatus);
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
 			}
 			length = sizeof(FILE_NETWORK_OPEN_INFORMATION);
 			FileNetInfo = (PFILE_NETWORK_OPEN_INFORMATION)pFileInfoBuffer;
@@ -188,11 +189,22 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 			if (Data->Iopb->Parameters.QueryFileInformation.Length < sizeof(FILE_POSITION_INFORMATION))
 			{
 				KdPrint(("QueryInformation:length(%d) < sizeof(FILE_POSITION_INFORMATION)...\n", Data->Iopb->Parameters.QueryFileInformation.Length));
-				try_return(ntStatus);
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
 			}
 			length = sizeof(FILE_POSITION_INFORMATION);
 			FilePositionInfo = (PFILE_POSITION_INFORMATION)pFileInfoBuffer;
 			FilePositionInfo->CurrentByteOffset.QuadPart = FltObjects->FileObject->CurrentByteOffset.QuadPart;
+			break;
+		case FileNormalizedNameInformation:
+			if (Data->Iopb->Parameters.QueryFileInformation.Length < Fcb->FileLength)
+			{
+				KdPrint(("QueryInformation:length(%d) < %d...\n", Data->Iopb->Parameters.QueryFileInformation.Length, Fcb->FileLength));
+				try_return(ntStatus = STATUS_BUFFER_OVERFLOW);
+			}
+			length = sizeof(FILE_NAME_INFORMATION) + Fcb->FileLength;
+			FileNameInfo = (PFILE_NAME_INFORMATION)pFileInfoBuffer;
+			FileNameInfo->FileNameLength = Fcb->FileLength;
+			RtlCopyMemory(FileNameInfo->FileName, Fcb->wszFile, Fcb->FileLength);
 			break;
 		case FileAttributeTagInformation:
 		case FileStreamInformation:

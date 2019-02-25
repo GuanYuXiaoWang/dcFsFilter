@@ -31,7 +31,7 @@ typedef struct tagENCRYPT_FILE_FCB
 	ULONG uType;
 }ENCRYPT_FILE_FCB, *PENCRYPT_FILE_FCB;
 
-extern PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
+extern NPAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
 extern ERESOURCE g_FcbResource;
 extern LIST_ENTRY g_FcbEncryptFileList;
 

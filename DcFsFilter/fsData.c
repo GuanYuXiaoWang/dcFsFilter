@@ -29,7 +29,7 @@ NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
 BOOLEAN g_bUnloading = FALSE;
 BOOLEAN g_bAllModuleInitOk = FALSE;
 BOOLEAN g_bSafeDataReady = FALSE;
-PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
+NPAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
 NPAGED_LOOKASIDE_LIST g_EncryptingFilesListLookasideList;
 ERESOURCE g_FcbResource;
 ERESOURCE g_EncryptingNetworkFilesResource;
@@ -260,7 +260,7 @@ VOID InitData()
 	ExInitializeNPagedLookasideList(&g_FcbLookasideList, NULL, NULL, 0, sizeof(DEF_FCB), 'FCB', 0);
 	ExInitializeNPagedLookasideList(&g_CcbLookasideList, NULL, NULL, 0, sizeof(DEF_CCB), 'CCB', 0);
 	ExInitializeNPagedLookasideList(&g_EResourceLookasideList, NULL, NULL, 0, sizeof(ERESOURCE), 'Res', 0);
-	ExInitializePagedLookasideList(&g_EncryptFileListLookasideList, NULL, NULL, 0, sizeof(ENCRYPT_FILE_FCB), 'efl', 0);
+	ExInitializeNPagedLookasideList(&g_EncryptFileListLookasideList, NULL, NULL, 0, sizeof(ENCRYPT_FILE_FCB), 'efl', 0);
 	ExInitializeNPagedLookasideList(&g_FastMutexInFCBLookasideList, NULL, NULL, 0, sizeof(FAST_MUTEX), 'fsmt', 0);
 	ExInitializeNPagedLookasideList(&g_Npaged64KBList, NULL, NULL, 0, SIZEOF_64KBList, BUF_64KB_TAG, 0);
 	ExInitializeNPagedLookasideList(&g_Npaged4KBList, NULL, NULL, 0, SIZEOF_4KBList, BUF_4KB_TAG, 0);
@@ -526,7 +526,7 @@ BOOLEAN InsertFcbList(__in PDEF_FCB *Fcb)
 	BOOLEAN bRet = FALSE;
 	__try
 	{
-		pFileFcb = ExAllocateFromPagedLookasideList(&g_EncryptFileListLookasideList);
+		pFileFcb = ExAllocateFromNPagedLookasideList(&g_EncryptFileListLookasideList);
 		if (NULL == pFileFcb)
 		{
 			__leave;
@@ -576,8 +576,8 @@ BOOLEAN RemoveFcbList(__in WCHAR * pwszFile)
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
 			if (pContext && pContext->Fcb && 0 == wcsicmp(pwszFile, pContext->Fcb->wszFile))
 			{
-				RemoveEntryList(&pContext->listEntry);
-				ExFreeToPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
+				RemoveEntryList(&pContext->listEntry);	
+				ExFreeToNPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
 				bRet = TRUE;
 				break;
 			}
@@ -606,7 +606,7 @@ VOID ClearFcbList()
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
 			RemoveEntryList(&pContext->listEntry);
 			FsFreeFcb(pContext->Fcb, NULL);
-			ExFreeToPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
+			ExFreeToNPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
 		}
 	}
 	__finally
@@ -882,6 +882,7 @@ VOID FsVerifyOperationIsLegal(__in PDEF_IRP_CONTEXT IrpContext)
 
 VOID FsRaiseStatus(__in PDEF_IRP_CONTEXT IrpContext, __in NTSTATUS Status)
 {
+	KdPrint(("status:0x%x.....\n", Status));
 	if (IrpContext != NULL)
 	{
 		IrpContext->ExceptionStatus = Status;
@@ -1248,7 +1249,6 @@ NTSTATUS FsGetFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF
 			if (IsEncryptedFileHead(pFileHeader, &FileType, IrpContext->CreateInfo.FileHeader))
 			{
 				RtlCopyMemory(IrpContext->CreateInfo.OrgFileHeader, pFileHeader, ENCRYPT_HEAD_LENGTH);
-
 				IrpContext->CreateInfo.bEnFile = TRUE;
 				IrpContext->CreateInfo.bWriteHeader = TRUE;
 				//IrpContext->createInfo.bDecrementHeader = TRUE;
@@ -1284,7 +1284,6 @@ NTSTATUS FsGetFileHeaderInfo(__in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEF
 						if (IsEncryptedFileHead(pFileHeader, &FileType, IrpContext->CreateInfo.FileHeader))
 						{
 							RtlCopyMemory(IrpContext->CreateInfo.OrgFileHeader, pFileHeader, ENCRYPT_HEAD_LENGTH);
-
 							IrpContext->CreateInfo.bEnFile = TRUE;
 							IrpContext->CreateInfo.bWriteHeader = TRUE;
 						}
@@ -1339,12 +1338,12 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		Fcb = FsCreateFcb();
 		if (NULL == Fcb)
 		{
-			return STATUS_INSUFFICIENT_RESOURCES;
+			try_return(status = STATUS_INSUFFICIENT_RESOURCES);
 		}
 		Ccb = FsCreateCcb();
 		if (NULL == Ccb)
 		{
-			return STATUS_INSUFFICIENT_RESOURCES;
+			try_return(status = STATUS_INSUFFICIENT_RESOURCES);
 		}
 		
 		//todo::如果解密，需减去加密头的长度
@@ -1443,12 +1442,14 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 			}
 		}
 		
-		if (IrpContext->CreateInfo.NameInfo->Name.Length < FILE_PATH_LENGTH_MAX)
+		Fcb->FileLength = IrpContext->CreateInfo.NameInfo->Name.Length;
+		Fcb->wszFile = ExAllocatePoolWithTag(NonPagedPool, Fcb->FileLength + sizeof(WCHAR), FILE_TAG);
+		if (NULL == Fcb->wszFile)
 		{
-			RtlCopyMemory(Fcb->wszFile, IrpContext->CreateInfo.NameInfo->Name.Buffer, IrpContext->CreateInfo.NameInfo->Name.Length);
+			try_return(status = STATUS_INSUFFICIENT_RESOURCES);
 		}
-		else
-			RtlCopyMemory(Fcb->wszFile, IrpContext->CreateInfo.NameInfo->Name.Buffer, FILE_PATH_LENGTH_MAX);
+		RtlZeroMemory(Fcb->wszFile, Fcb->FileLength + sizeof(WCHAR));
+		RtlCopyMemory(Fcb->wszFile, IrpContext->CreateInfo.NameInfo->Name.Buffer, Fcb->FileLength);
 
 		Fcb->bRecycleBinFile = IsRecycleBinFile(IrpContext->CreateInfo.NameInfo->Name.Buffer, IrpContext->CreateInfo.NameInfo->Name.Length);
 		if (Fcb->bRecycleBinFile)
@@ -1654,6 +1655,10 @@ BOOLEAN FsFreeFcb(__in PDEF_FCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 			FsRtlUninitializeFileLock(Fcb->FileLock);
 		}
 		Fcb->FileLock = NULL;
+	}
+	if (Fcb->wszFile)
+	{
+		ExFreePoolWithTag(Fcb->wszFile, FILE_TAG);
 	}
 	
 	ExFreeToNPagedLookasideList(&g_FcbLookasideList, Fcb);
