@@ -166,16 +166,16 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 
 	if (4 == ProcessID)
 	{
-#ifndef REAL_ENCRYPTE
+//#ifndef REAL_ENCRYPTE
  		if (IsIn(PsGetCurrentThreadId()))
  		{
  			bControl = TRUE;
 			if (ProcessType)
 			{
-				*ProcessType = PROCESS_ACCESS_ANTIS;
+				*ProcessType = /*PROCESS_ACCESS_ANTIS*/0;
 			}
  		}		
-#endif
+//#endif
 	}
 	else
 	{
@@ -200,7 +200,7 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 			}
 			else if (0 == _stricmp(ProcessName, "ntrtscan.exe"))//test
 			{
-				*ProcessType = PROCESS_ACCESS_ANTIS;
+				*ProcessType = /*PROCESS_ACCESS_ANTIS*/0;
 			}
 			else
 			{
@@ -533,7 +533,7 @@ BOOLEAN InsertFcbList(__in PDEF_FCB *Fcb)
 		}
 		RtlZeroMemory(pFileFcb, sizeof(ENCRYPT_FILE_FCB));
 		pFileFcb->Fcb = *Fcb;
-		pFileFcb->uType = LAYER_NTC_FCB;
+		pFileFcb->uType = 0;
 		ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		bAcquireResource = TRUE;
 		InsertTailList(&g_FcbEncryptFileList, &pFileFcb->listEntry);
@@ -574,7 +574,7 @@ BOOLEAN RemoveFcbList(__in WCHAR * pwszFile)
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
 		{
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
-			if (pContext && pContext->Fcb && 0 == wcsicmp(pwszFile, pContext->Fcb->wszFile))
+			if (pContext && pContext->Fcb && 0 == _wcsicmp(pwszFile, pContext->Fcb->wszFile))
 			{
 				RemoveEntryList(&pContext->listEntry);	
 				ExFreeToNPagedLookasideList(&g_EncryptFileListLookasideList, pContext);
@@ -634,6 +634,7 @@ BOOLEAN FindFcb(__in PFLT_CALLBACK_DATA Data, __in WCHAR * pwszFile, __in PDEF_F
 	{
 		if (NULL == pFcb)
 		{
+			KdPrint(("[%s]quit, line=%d...\n", __FUNCTION__, __LINE__));
 			__leave;
 		}
 
@@ -642,6 +643,7 @@ BOOLEAN FindFcb(__in PFLT_CALLBACK_DATA Data, __in WCHAR * pwszFile, __in PDEF_F
 			status = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &NameInfo);
 			if (!NT_SUCCESS(status) && (NULL == pwszFile || wcslen(pwszFile) <= 1))
 			{
+				KdPrint(("[%s]quit, line=%d...\n", __FUNCTION__, __LINE__));
 				__leave;
 			}
 		}
@@ -656,6 +658,7 @@ BOOLEAN FindFcb(__in PFLT_CALLBACK_DATA Data, __in WCHAR * pwszFile, __in PDEF_F
 		}
 		if (0 == FileLength)
 		{
+			KdPrint(("[%s]quit, line=%d...\n", __FUNCTION__, __LINE__));
 			__leave;
 		}
 
@@ -676,17 +679,17 @@ BOOLEAN FindFcb(__in PFLT_CALLBACK_DATA Data, __in WCHAR * pwszFile, __in PDEF_F
 		bAcquireResource = ExAcquireResourceExclusiveLite(&g_FcbResource, TRUE);
 		if (IsListEmpty(&g_FcbEncryptFileList))
 		{
+			KdPrint(("[%s]quit, line=%d...\n", __FUNCTION__, __LINE__));
 			bRet = FALSE;
 			__leave;
 		}
 		for (pListEntry = g_FcbEncryptFileList.Flink; pListEntry != &g_FcbEncryptFileList; pListEntry = pListEntry->Flink)
 		{
 			pContext = CONTAINING_RECORD(pListEntry, ENCRYPT_FILE_FCB, listEntry);
-			if (pContext && pContext->Fcb && 0 == wcsicmp(pTempFile, pContext->Fcb->wszFile))
+			if (pContext && pContext->Fcb && 0 == _wcsicmp(pTempFile, pContext->Fcb->wszFile))
 			{
 				*pFcb = pContext->Fcb;
 				bRet = TRUE;
-				KdPrint(("Find Fcb:%S...\n", pTempFile));
 				break;
 			}
 		}
@@ -3080,8 +3083,6 @@ void EncrypteFileThread(PVOID Context)
 	if (!NT_SUCCESS(ntStatus))
 	{
 		FsDeleteEncryptingFilesInfo(Param->FilePath, Param->Length, Param);
-		ExFreePoolWithTag(Param->FilePath, 'tpfp');
-		ExFreePoolWithTag(Param, 'tpfp');
 		KdPrint(("[%s]PsLookupProcessByProcessId failed...\n", __FUNCTION__));
 		PsTerminateSystemThread(STATUS_SUCCESS);
 		return;
@@ -3115,8 +3116,6 @@ void EncrypteFileThread(PVOID Context)
 		ObDereferenceObject(Process);
 	}
 	FsDeleteEncryptingFilesInfo(Param->FilePath, Param->Length, Param);
-	ExFreePoolWithTag(Param->FilePath, 'tpfp');
-	ExFreePoolWithTag(Param, 'tpfp');
 
 	PsTerminateSystemThread(STATUS_SUCCESS);
 }
@@ -3268,7 +3267,7 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 
 PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEF_FCB Fcb, __in PDEF_CCB Ccb)
 {
-	if (Ccb && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+	if (Ccb && (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || BooleanFlagOn(Ccb->CcbState, CCB_FLAG_RECYCLE_BIN_FILE)))
 	{
 		return Ccb->StreamInfo.FileObject;
 	}
@@ -3294,6 +3293,7 @@ BOOLEAN FsInsertEncryptingFilesInfo(__in THREAD_PARAM * Param)
 	}
 	RtlZeroMemory(pItem, sizeof(ENCRYPTING_FILE_INFO));
 	pItem->Paream = Param;
+	KdPrint(("[%s]file:%S....\n", __FUNCTION__, Param->FilePath));
 	bAcquireResource = ExAcquireResourceExclusiveLite(&g_EncryptingNetworkFilesResource, TRUE);
 	InsertTailList(&g_EncryptingNetworkFilesList, &pItem->listEntry);
 	if (bAcquireResource)
@@ -3341,6 +3341,11 @@ VOID FsDeleteEncryptingFilesInfo(__in WCHAR * FileName, __in ULONG Length, __in 
 	}
 	__finally
 	{
+		if (Param)
+		{
+			ExFreePoolWithTag(Param->FilePath, 'tpfp');
+			ExFreePoolWithTag(Param, 'tpfp');
+		}
 		if (bAcquireResource)
 		{
 			ExReleaseResourceLite(&g_EncryptingNetworkFilesResource);

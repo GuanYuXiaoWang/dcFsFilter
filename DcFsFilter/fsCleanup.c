@@ -192,7 +192,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		}
 		if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 		{
-			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamInfo.FileObject, Ccb));
 			if (Ccb->StreamInfo.FileObject)
 			{
 				ObDereferenceObject(Ccb->StreamInfo.FileObject);

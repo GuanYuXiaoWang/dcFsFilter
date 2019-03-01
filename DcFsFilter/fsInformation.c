@@ -1347,6 +1347,7 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 	ULONG NetVolumeLength = 0;
 	int i = 0;
 	WCHAR * pRename = NULL;
+	PFLT_CALLBACK_DATA NewData = NULL;
 
 	__try
 	{
@@ -1358,7 +1359,41 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 				KdPrint(("[%s]CcFlushCache failed(0x%x)...\n", __FUNCTION__, IoStatus.Status));
 			}
 		}
-		
+		//
+// 		ntStatus = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
+// 		if (NT_SUCCESS(ntStatus))
+// 		{
+// 			NewData->Iopb->MajorFunction = Data->Iopb->MajorFunction;
+// 			NewData->Iopb->MinorFunction = Data->Iopb->MinorFunction;
+// 			NewData->Iopb->Parameters.SetFileInformation.FileInformationClass = FileRenameInformation;
+// 			NewData->Iopb->Parameters.SetFileInformation.InfoBuffer = Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
+// 			NewData->Iopb->Parameters.SetFileInformation.Length = Data->Iopb->Parameters.SetFileInformation.Length;
+// 			NewData->Iopb->Parameters.SetFileInformation.AdvanceOnly = Data->Iopb->Parameters.SetFileInformation.AdvanceOnly;
+// 			NewData->Iopb->Parameters.SetFileInformation.ClusterCount = Data->Iopb->Parameters.SetFileInformation.ClusterCount;
+// 			NewData->Iopb->Parameters.SetFileInformation.ReplaceIfExists = Data->Iopb->Parameters.SetFileInformation.ReplaceIfExists;
+// 			NewData->Iopb->Parameters.SetFileInformation.ParentOfTarget = Data->Iopb->Parameters.SetFileInformation.ParentOfTarget;
+// 
+// 			NewData->Iopb->TargetFileObject = FileObject;
+// 			NewData->Iopb->IrpFlags |= IRP_SYNCHRONOUS_API;
+// 			FltPerformSynchronousIo(NewData);
+// 			ntStatus = NewData->IoStatus.Status;
+// 			FltFreeCallbackData(NewData);
+// 			if (NT_SUCCESS(NewData))
+// 			{
+// 				__leave;
+// 			}
+// 		}
+		if (Ccb && !(BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || BooleanFlagOn(Ccb->CcbState, CCB_FLAG_RECYCLE_BIN_FILE)))
+		{
+			if (Fcb && Fcb->CcFileObject && 1 == Fcb->OpenCount)
+			{
+				ObDereferenceObject(Fcb->CcFileObject);
+				FltClose(Fcb->CcFileHandle);
+				Fcb->CcFileObject = NULL;
+				Fcb->CcFileHandle = NULL;
+			}
+		}
+// 		
 		//更新fcb，更新相关文件信息（已打开文件的相关关闭）或设置Flag，close时判断处理
 		ntStatus = FltSetInformationFile(FltObjects->Instance, FileObject, Data->Iopb->Parameters.SetFileInformation.InfoBuffer,
 			Data->Iopb->Parameters.SetFileInformation.Length, Data->Iopb->Parameters.SetFileInformation.FileInformationClass);
@@ -1368,7 +1403,7 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 			__leave;
 		}
 		SetFlag(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
-		/*
+		
 		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
 		if (!NT_SUCCESS(ntStatus))
 		{
@@ -1445,33 +1480,15 @@ NTSTATUS FsRenameFileInfo(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OB
 		}
 
 		RtlInitUnicodeString(&strFullPath, pFileName);
-		RtlZeroMemory(Fcb->wszFile, FILE_PATH_LENGTH_MAX);
-		RtlCopyMemory(Fcb->wszFile, strFullPath.Buffer, strFullPath.Length);
-		*/
-		/*
-		length = bNetWork ? 7 : 6;	
-		pRename = ExAllocatePoolWithTag(NonPagedPool, FileRenameInfo->FileNameLength - length * sizeof(WCHAR) + sizeof(WCHAR), 'rnif');
-		if (NULL == pFileName)
+		ExFreePoolWithTag(Fcb->wszFile, FILE_TAG);
+		
+		Fcb->wszFile = ExAllocatePoolWithTag(NonPagedPool, strFullPath.Length + sizeof(WCHAR), FILE_TAG);
+		if (NULL == Fcb->wszFile)
 		{
 			__leave;
 		}
-		RtlZeroMemory(pRename, FileRenameInfo->FileNameLength - length * sizeof(WCHAR));
-
-		ExFreePool(Data->Iopb->TargetFileObject->FileName.Buffer);
-		Data->Iopb->TargetFileObject->FileName.Length = FileRenameInfo->FileNameLength - length * sizeof(WCHAR);
-		RtlCopyMemory(pRename, FileRenameInfo->FileName + length, Data->Iopb->TargetFileObject->FileName.Length);
-		Data->Iopb->TargetFileObject->FileName.Buffer = pRename;
-		Data->Iopb->TargetFileObject->FileName.MaximumLength = FltObjects->FileObject->FileName.Length + sizeof(WCHAR);
-	*/	
-		
-// 		ExFreePool(/*Data->Iopb->Target*/FileObject->FileName.Buffer);
-// 		/*Data->Iopb->Target*/FileObject->FileName.Length = strFullPath.Length;
-// 		/*Data->Iopb->Target*/FileObject->FileName.Buffer = pFileName;
-// 		/*Data->Iopb->Target*/FileObject->FileName.MaximumLength = strFullPath.MaximumLength;
-
-// 		Data->IoStatus.Status = STATUS_REPARSE;
-// 		Data->IoStatus.Information = IO_REPARSE;
-//		pFileName = NULL;
+		RtlZeroMemory(Fcb->wszFile, strFullPath.Length + sizeof(WCHAR));
+		RtlCopyMemory(Fcb->wszFile, strFullPath.Buffer, strFullPath.Length);
 	}
 	__finally
 	{

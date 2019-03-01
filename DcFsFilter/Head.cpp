@@ -99,7 +99,6 @@ BOOLEAN IsEncryptedFileHead(UCHAR *lpBuff, ULONG *dwCryptType, UCHAR *lpbtHeadIn
 	RtlCopyMemory(lpbtHeadInfo, lpBuff, ENCRYPT_HEAD_LENGTH);
 	FileFlag_XOR(lpbtHeadInfo, SMALL_FILE_FLAG_LEN);
 
-	KdPrint(("Dog id=%d...\n", g_SafeData.SystemUser.DogID));
 	ULONG dogID = 0;
 	memcpy(&dogID, lpbtHeadInfo + DOCGUARDER_SMALL_HEAD_LENGTH + 2 * sizeof(ULONG), sizeof(ULONG));
 	if (dogID != g_SafeData.SystemUser.DogID)

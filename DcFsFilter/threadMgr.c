@@ -31,7 +31,7 @@ __in BOOLEAN	bCreate
 BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 {
 #ifdef REAL_ENCRYPTE
-	return TRUE;
+//	return TRUE;
 #endif
 	BOOLEAN		bRet = FALSE;
 	NTSTATUS	ntStatus = STATUS_UNSUCCESSFUL;
@@ -73,7 +73,7 @@ BOOLEAN InitThreadMgr(PDRIVER_OBJECT DeviceObject)
 BOOLEAN UnInitThreadMgr()
 {
 #ifdef REAL_ENCRYPTE
-	return TRUE;
+//	return TRUE;
 #endif
 	BOOLEAN		bRet = FALSE;
 	NTSTATUS	ntStatus = STATUS_UNSUCCESSFUL;
@@ -465,7 +465,7 @@ BOOLEAN InitOffset()
 				   {
 							 if (VER_NT_WORKSTATION == pVersionInfo->wProductType)
 							 {
-								 KdPrint((L"Windows 10"));
+								 KdPrint(("Windows 10"));
 #ifdef _X86_
 								 switch (pVersionInfo->dwBuildNumber)
 								 {
@@ -566,7 +566,7 @@ BOOLEAN InitOffset()
 #endif
 							 }
 							 else
-								 KdPrint((L"Windows Server 2016"));
+								 KdPrint(("Windows Server 2016"));
 
 							 break;
 				   }

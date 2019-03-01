@@ -40,7 +40,8 @@ BOOLEAN IsConcernedCreateOptions(__inout PFLT_CALLBACK_DATA Data);
 NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data,
 							__in PCFLT_RELATED_OBJECTS FltObjects,
 							__in PDEF_FCB Fcb,
-							__in PDEF_IRP_CONTEXT IrpContext
+							__in PDEF_IRP_CONTEXT IrpContext,
+							__in BOOLEAN bSkipCreate
 							);
 
 NTSTATUS  CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data,

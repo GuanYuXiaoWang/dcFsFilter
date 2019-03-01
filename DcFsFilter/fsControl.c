@@ -85,8 +85,6 @@ NTSTATUS FsCommonFileSystemControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_R
 	case IRP_MN_USER_FS_REQUEST:
 		ntStatus = FsUserRequestControl(Data, FltObjects, IrpContext);
 		break;
-	case IRP_MN_MOUNT_VOLUME:
-		break;
 
 	default:
 		ntStatus = STATUS_INVALID_DEVICE_REQUEST;
@@ -373,9 +371,15 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		
 		
 	default:
-		ntStatus = STATUS_INVALID_PARAMETER;
+	{
+		ULONG Length = 0;
+		ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, Data->Iopb->Parameters.FileSystemControl.Neither.InputBuffer,
+			Data->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength, Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer,
+			Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength, &Length);
+		Data->IoStatus.Information = Length;
 		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 		break;
+	}
 	}
 
 	return ntStatus;
@@ -664,6 +668,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreDeviceControl(__inout PFLT_CALLBACK_DATA Data, __
 	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
 	Ccb = FltObjects->FileObject->FsContext2;
+	if (NULL == Fcb || NULL == Fcb->CcFileObject)
+	{
+		FsRtlExitFileSystem();
+		return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	}
 	__try
 	{
 		bTopIrp = IsTopLevelIRP(Data);

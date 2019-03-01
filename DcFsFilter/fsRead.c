@@ -164,7 +164,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
-	KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb ? Ccb->StreamInfo.FileObject : 0, Ccb));
 
 	Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &volCtx);
 	if (!NT_SUCCESS(Status))
