@@ -179,8 +179,8 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	BOOLEAN bExtendingFile = FALSE;
 	PVOID SystemBuffer = NULL;
 	PVOLUMECONTEXT volCtx = NULL;
-
 	DEF_IO_CONTEXT IoContext = {0};
+	BOOLEAN bNeedCheckContext = FALSE;
 
 	StartByte = Iopb->Parameters.Write.ByteOffset;
 	ByteCount = Iopb->Parameters.Write.Length;
@@ -211,6 +211,10 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 	bNonCachedIo = BooleanFlagOn(Iopb->IrpFlags, IRP_NOCACHE);
 	bSynchronousIo = BooleanFlagOn(FileObject->Flags, FO_SYNCHRONOUS_IO);
 	bWriteToEndOfFile = ((FILE_WRITE_TO_END_OF_FILE == StartByte.LowPart) && (-1 == StartByte.HighPart));
+	//覆盖写时，如果写入的内容就是加密的，怎么办？（比如将要写入的内容来源一个非受控类型的加密文件）
+	//不作处理，导致双重加密
+	bNeedCheckContext = BooleanFlagOn(Ccb->CcbState, CCB_FLAG_CHECK_ORIGIN_ENCRYPTED);
+
 	if (FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
 	{
 		SetFlag(IrpContext->Flags, IRP_CONTEXT_NETWORK_FILE);
@@ -222,8 +226,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
-	KdPrint(("[%s]read:%d, write:%d, LockOperation:%d, DeletePending:%d, DeleteAccess:%d,SharedRead:%d,SharedWrite:%d,SharedDelete:%d,Flags:0x%x ...\n", __FUNCTION__, 
-		FileObject->ReadAccess, FileObject->WriteAccess, FileObject->LockOperation, FileObject->DeletePending, FileObject->DeleteAccess, FileObject->SharedRead, FileObject->SharedWrite, FileObject->SharedDelete, FileObject->Flags));
+	KdPrint(("[%s]bNonCachedIo:%d, bPagingIo:%d,bEnFile:%d, StartByte:%d, ByteCount:%d...\n", __FUNCTION__, bNonCachedIo, bPagingIo, Fcb->bEnFile, StartByte, ByteCount));
 	//如果一个非加密文件收到了写请求转变他成为加密文件
 	if (!bPagingIo && !Fcb->bEnFile&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
 	{

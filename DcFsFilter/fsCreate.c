@@ -397,7 +397,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				if (4 == PsGetCurrentProcessId())
 				{
 					IrpContext->FltStatus = FLT_PREOP_COMPLETE;
-					try_return(Status = STATUS_ACCESS_DENIED);
+					try_return(Status = STATUS_NO_SUCH_FILE);
 				}
 				KeSleep(100);
 				KdPrint(("[%s]sleep......\n", __FUNCTION__));
@@ -405,7 +405,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				bPostIrp = TRUE;
 				try_return(Status = STATUS_PENDING);
 			}
-			//if (4 != PsGetCurrentProcessId())
+			if (4 != PsGetCurrentProcessId())
 			{
 				Param = ExAllocatePoolWithTag(NonPagedPool, sizeof(THREAD_PARAM), 'tpfp');
 				if (NULL == Param)
@@ -1084,15 +1084,16 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 
 		//写过了加密头
-		if (!Fcb->bEnFile && IrpContext->CreateInfo.bEnFile)
+		if (IrpContext->CreateInfo.bEnFile)
 		{
 			Fcb->bEnFile = IrpContext->CreateInfo.bEnFile;
 			Fcb->bWriteHead = IrpContext->CreateInfo.bWriteHeader;
-			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 			SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
 			RtlCopyMemory(Fcb->szFileHead, IrpContext->CreateInfo.FileHeader, ENCRYPT_HEAD_LENGTH);
 			RtlCopyMemory(Fcb->szOrgFileHead, IrpContext->CreateInfo.OrgFileHeader, ENCRYPT_HEAD_LENGTH);
 		}
+
 		//todo::如果解密，需减去加密头的长度
 		if (IrpContext->CreateInfo.bDecrementHeader)
 		{
@@ -1200,13 +1201,14 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			CreateDisposition == FILE_OVERWRITE_IF)
 		{
 			Status = FsOverWriteFile(FileObject, Fcb, AllocationSize);
+			SetFlag(Ccb->CcbState, CCB_FLAG_CHECK_ORIGIN_ENCRYPTED);
 		}
 
 		if (!NoIntermediateBuffering)
 		{
 			FileObject->Flags |= FO_CACHE_SUPPORTED;
 		}
-		
+		KdPrint(("[%s]Fcb bEnFile:%d, bWriteHead:%d, bAddHeaderLength:%d, Ccb bEnFile:%d, FileSize:%d....\n", __FUNCTION__, Fcb->bEnFile, Fcb->bWriteHead, Fcb->bAddHeaderLength, IrpContext->CreateInfo.bEnFile, Fcb->Header.FileSize.QuadPart));
 	try_exit: NOTHING;
 		if (IrpContext->FltStatus == FLT_PREOP_COMPLETE)
 		{
@@ -1477,6 +1479,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				FILE_OVERWRITE_IF == CreateDisposition)
 			{
 				Status = FsOverWriteFile(FileObject, Fcb, AllocationSize);
+				SetFlag(Ccb->CcbState, CCB_FLAG_CHECK_ORIGIN_ENCRYPTED);
 			}
 			
 			if (!bNoIntermediaBuffering)
@@ -1489,6 +1492,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Fcb->Vpb.VolumeSerialNumber = IrpContext->CreateInfo.Vpb.VolumeSerialNumber;
 			Fcb->Vpb.VolumeLabelLength = IrpContext->CreateInfo.Vpb.VolumeLabelLength;
 			RtlCopyMemory(Fcb->Vpb.VolumeLabel, IrpContext->CreateInfo.Vpb.VolumeLabel, Fcb->Vpb.VolumeLabelLength);
+			KdPrint(("[%s]Fcb bEnFile:%d, bWriteHead:%d, bAddHeaderLength:%d, Ccb bEnFile:%d, FileSize:%d....\n", __FUNCTION__, Fcb->bEnFile, Fcb->bWriteHead, Fcb->bAddHeaderLength, IrpContext->CreateInfo.bEnFile, Fcb->Header.FileSize.QuadPart));
 		}
 	try_exit: NOTHING;
 	}
@@ -1608,7 +1612,7 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			}
 		}
 	}
-	if (PROCESS_ACCESS_EXPLORER != ProcessType && !bNetWork && FILE_CREATE == CreateDisposition)
+	if ((PROCESS_ACCESS_EXPLORER != ProcessType && PROCESS_ACCESS_WPS != ProcessType) && !bNetWork && FILE_CREATE == CreateDisposition)
 	{
 		Status = STATUS_OBJECT_NAME_NOT_FOUND;
 		return Status;

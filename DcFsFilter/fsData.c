@@ -172,7 +172,7 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
  			bControl = TRUE;
 			if (ProcessType)
 			{
-				*ProcessType = /*PROCESS_ACCESS_ANTIS*/0;
+				*ProcessType = PROCESS_ACCESS_ANTIS_TREND;
 			}
  		}		
 //#endif
@@ -194,13 +194,17 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 		if (ProcessType)
 		{
 			//*ProcessType = (0 == _stricmp(ProcessName, "explorer.exe") ? PROCESS_ACCESS_EXPLORER : 0);
-			if (0 == _stricmp(ProcessName, "explorer.exe"))
+			if (IsExplorerProcess(ProcessName))
 			{
 				*ProcessType = PROCESS_ACCESS_EXPLORER;
 			}
+			else if (IsWpsProcess(ProcessName))
+			{
+				*ProcessType = PROCESS_ACCESS_WPS;
+			}
 			else if (0 == _stricmp(ProcessName, "ntrtscan.exe"))//test
 			{
-				*ProcessType = /*PROCESS_ACCESS_ANTIS*/0;
+				*ProcessType = PROCESS_ACCESS_ANTIS_TREND;
 			}
 			else
 			{
@@ -250,6 +254,26 @@ VOID FsSetExplorerInfo(__in  PFILE_OBJECT FileObject, __in PDEF_FCB Fcb)
 	g_LastProcessInfo.Fcb = Fcb;
 	g_LastProcessInfo.ProcessId = PsGetCurrentProcessId();
 	g_LastProcessInfo.NetWork = Fcb ? Fcb->bNetWork : FALSE;
+}
+
+BOOLEAN IsOfficeProcess(__in CHAR * ProcessName)
+{
+	return (0 == _stricmp(ProcessName, "word.exe") ||
+		0 == _stricmp(ProcessName, "winword.exe") ||
+		0 == _stricmp(ProcessName, "excel.exe") ||
+		0 == _stricmp(ProcessName, "ppt.exe"));
+}
+
+BOOLEAN IsExplorerProcess(__in CHAR * ProcessName)
+{
+	return 0 == _stricmp(ProcessName, "explorer.exe");
+}
+
+BOOLEAN IsWpsProcess(__in CHAR * ProcessName)
+{
+	return (0 == _stricmp(ProcessName, "wps.exe") ||
+		0 == _stricmp(ProcessName, "et.exe") ||
+		0 == _stricmp(ProcessName, "wpp.exe"));
 }
 
 VOID InitData()
@@ -349,6 +373,7 @@ PDEF_IRP_CONTEXT FsCreateIrpContext(__in PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		}
 		pIrpContext->FileObject = pFileObject;
 	}
+	KdPrint(("Process id:%d, thread id:%d......\n", PsGetCurrentProcessId(), PsGetCurrentThreadId()));
 
 	return pIrpContext;
 }
@@ -1414,6 +1439,7 @@ NTSTATUS FsCreateFcbAndCcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_O
 		//todo::受控进程只要打开了受控的文件，退出时就加密？？
 		Fcb->bEnFile = IrpContext->CreateInfo.bEnFile;
 		Fcb->bWriteHead = IrpContext->CreateInfo.bWriteHeader;
+		Fcb->bAddHeaderLength = FALSE;
 		Fcb->CacheType = CACHE_ALLOW;
 		Fcb->ProcessAcessType = IrpContext->CreateInfo.ProcType;
 		Fcb->bNetWork = IrpContext->CreateInfo.bNetWork;
@@ -2415,6 +2441,11 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			{
 				__leave;
 			}
+			//针对趋势，扫描出带病毒文件时，会对临时文件重命名成目标文件，若这里对此加密，后面会读取该文件写入目标文件，导致目标文件双重加密
+			if (PROCESS_ACCESS_ANTIS_TREND == ProcessType)
+			{
+				__leave;
+			}
 	
 			ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
 			if (!NT_SUCCESS(ntStatus))
@@ -2542,7 +2573,7 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		else if (FileRenameInformation == FileInfoClass && PROCESS_ACCESS_EXPLORER != ProcessType)
 		{
 			//受控进程把一个文件重命名为受控类型文件，对此文件进行加密
-			KdPrint(("ReName file.....\n"));
+			KdPrint(("[%s]pid:%d, ReName file:%S.....\n", __FUNCTION__, PsGetCurrentProcessId(), strFullPath.Buffer));
 			if (bNetWork)
 			{
 				ntStatus = FsDelayEncrypteFile(FltObjects, strFullPath.Buffer, strFullPath.Length, bNetWork);
@@ -2729,7 +2760,7 @@ VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject)
 
 NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in  PWCHAR FilePath, __in ULONG FileLength, __in BOOLEAN NetWork, __in PFILE_OBJECT CcFileObject)
 {
-	NTSTATUS ntStatus = STATUS_SUCCESS;
+	NTSTATUS ntStatus = STATUS_UNSUCCESSFUL;
 	WCHAR * pFileName = NULL;
 	PFLT_FILE_NAME_INFORMATION FileNameInfo = NULL;
 	WCHAR szTmpName[5] = { L".tmp" };

@@ -68,6 +68,9 @@ extern "C" {
 	BOOLEAN IsNeedEncrypted();
 	BOOLEAN IsLastAccessNetWorkFile();
 	VOID FsSetExplorerInfo(__in  PFILE_OBJECT FileObject, __in PDEF_FCB Fcb);
+	BOOLEAN IsOfficeProcess(__in CHAR * ProcessName);
+	BOOLEAN IsExplorerProcess(__in CHAR * ProcessName);
+	BOOLEAN IsWpsProcess(__in CHAR * ProcessName);
 
 	PDEF_IRP_CONTEXT FsCreateIrpContext(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in BOOLEAN Wait);
 
