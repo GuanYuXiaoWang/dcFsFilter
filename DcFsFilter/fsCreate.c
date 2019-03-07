@@ -154,7 +154,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-
 	KdPrint(("PtPreOperationNetworkQueryOpen begin, data flag=0x%x......\n", Data->Flags));
 	FsRtlEnterFileSystem();
 	__try
@@ -926,18 +925,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = STATUS_USER_MAPPED_FILE);
 			}
 		}
-		if (IrpContext->createInfo.bNetWork && Fcb->CcFileObject)
-		{
-			for (i; i < Fcb->FileAllOpenCount; i++)
-			{
-				ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
-				FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
-			}
-			RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* Fcb->FileAllOpenCount);
-			Fcb->FileAllOpenCount = 0;
-			Fcb->CcFileHandle = NULL;
-			Fcb->CcFileObject = NULL;
-		}
 
 		Status = FsCreateFileLimitation(Data,
 			FltObjects,
@@ -1094,22 +1081,20 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status);
 			}
 		}
-		KdPrint(("[%s]line:%d......\n", __FUNCTION__, __LINE__));
-		Ccb = Fcb->Ccb ? Fcb->Ccb : FsCreateCcb();
+
+		Ccb = /*Fcb->Ccb ? Fcb->Ccb : */FsCreateCcb();
 		Ccb->StreamFileInfo.hStreamHandle = IrpContext->createInfo.hStreamHanle;
 		Ccb->StreamFileInfo.StreamObject = IrpContext->createInfo.pStreamObject;
-		Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
+		//if (NULL == Fcb->Ccb)
+		{
+			Ccb->StreamFileInfo.pFO_Resource = FsAllocateResource();
+		}
+		//Fcb->Ccb = Ccb;
+		
 		Ccb->ProcType = IrpContext->createInfo.uProcType;
 		Ccb->FileAccess = IrpContext->createInfo.FileAccess;
-		Fcb->FileAcessType = IrpContext->createInfo.uProcType;
+		Fcb->ProcessAcessType = IrpContext->createInfo.uProcType;
 	
-		if (Fcb->FileAllOpenCount < SUPPORT_OPEN_COUNT_MAX)
-		{
-			Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileObject = IrpContext->createInfo.pStreamObject;
-			Fcb->FileAllOpenInfo[Fcb->FileAllOpenCount].FileHandle = IrpContext->createInfo.hStreamHanle;
-			Fcb->FileAllOpenCount += 1;
-		}
-
 		if (IrpContext->createInfo.bNetWork)
 		{
 			SetFlag(Ccb->CcbState, CCB_FLAG_NETWORK_FILE);
@@ -1119,7 +1104,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 
 		FileObject->FsContext = Fcb;
 		FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
-		FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 		FileObject->FsContext2 = Ccb;
 
 		SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
@@ -1210,7 +1194,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				FsFreeCcb(Ccb);
 				FileObject->FsContext2 = NULL;
 			}
-			Fcb->Ccb = NULL;
 		}
 
 		if (bFcbAcquired)
@@ -1244,6 +1227,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 	ACCESS_MASK DesiredAccess = 0;
 	ULONG ShareAccess = 0;
 	LARGE_INTEGER AllocationSize = {0};
+	
 
 	AllocationSize.QuadPart = Iopb->Parameters.Create.AllocationSize.QuadPart;
 	DesiredAccess = Iopb->Parameters.Create.SecurityContext->DesiredAccess;
@@ -1269,7 +1253,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 	__try
 	{
-		KdPrint(("[%s]test....line=%d....\n", __FUNCTION__, __LINE__));
 		Status = FsCreateFileLimitation(Data, FltObjects, &IrpContext->createInfo.nameInfo->Name, &IrpContext->createInfo.hStreamHanle,
 			&IrpContext->createInfo.pStreamObject, &Data->IoStatus, IrpContext->createInfo.bNetWork, &IrpContext->createInfo.Vpb);
 		if (!NT_SUCCESS(Status))
@@ -1290,7 +1273,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 				try_return(NOTHING);
 			}
 		}
-		KdPrint(("[%s]test....line=%d....\n", __FUNCTION__, __LINE__));
 		IrpContext->createInfo.Information = Data->IoStatus.Information;
 		Status = FsGetFileStandardInfo(Data, FltObjects, IrpContext);//这里还不能用FltObject中的文件对象
 		if (IrpContext->createInfo.Directory)
@@ -1303,7 +1285,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Data->IoStatus.Status = Status;
 			try_return(IrpContext->FltStatus = FLT_PREOP_COMPLETE);
 		}
-		KdPrint(("[%s]test....line=%d....\n", __FUNCTION__, __LINE__));
 		Status = FsGetFileHeaderInfo(FltObjects, IrpContext);
 		if (!NT_SUCCESS(Status))
 		{
@@ -1311,7 +1292,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			Data->IoStatus.Status = Status;
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 		}
-		KdPrint(("[%s]test....line=%d....\n", __FUNCTION__, __LINE__));
 		//TODO::非加密文件不过滤
  		if (!IrpContext->createInfo.bEnFile)
  		{
@@ -1359,7 +1339,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 			FileObject->FsContext = Fcb;
 			FileObject->SectionObjectPointer = &Fcb->SectionObjectPointers;
-			FileObject->Vpb = IrpContext->createInfo.pStreamObject->Vpb;
 			FileObject->FsContext2 = Ccb;
 			SetFlag(FileObject->Flags, FO_WRITE_THROUGH);
 
@@ -1388,7 +1367,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			{
 				FileObject->Flags |= FO_CACHE_SUPPORTED;
 			}
-			Fcb->Ccb = FileObject->FsContext2;
 			Fcb->Vpb.SupportsObjects = IrpContext->createInfo.Vpb.SupportsObjects;
 			Fcb->Vpb.VolumeCreationTime.QuadPart = IrpContext->createInfo.Vpb.VolumeCreationTime.QuadPart;
 			Fcb->Vpb.VolumeSerialNumber = IrpContext->createInfo.Vpb.VolumeSerialNumber;
@@ -1475,7 +1453,6 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 	CreateDisposition = (Options >> 24) & 0x000000ff;
 	InitializeObjectAttributes(&ob, FileName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, SecurityDescriptor);
 
-	KdPrint(("create:test, line=%d....\n", __LINE__));
 	if (FILE_CREATE == CreateDisposition)
 	{
 		Status = STATUS_OBJECT_NAME_NOT_FOUND;
@@ -1502,21 +1479,17 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			0
 			);
 
-		KdPrint(("create:test, line=%d....\n", __LINE__));
 		if (!NT_SUCCESS(Status) && (STATUS_OBJECT_NAME_NOT_FOUND == Status || FILE_DOES_NOT_EXIST == IoStatus->Information))
 		{
 			KdPrint(("open file failed(0x%x)...\n", Status));
 			return Status;
 		}
 
-		KdPrint(("create:test, line=%d....\n", __LINE__));
 		if (NT_SUCCESS(Status))
 		{
 			FltClose(*phFile);
 		}
 	}
-
-	KdPrint(("create:test, line=%d....\n", __LINE__));
 	
 	Status = FltCreateFile(FltObjects->Filter, //FltCreateFileEx
 		FltObjects->Instance,
@@ -1533,7 +1506,6 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		EaLength,
 		Flags
 		);
-	KdPrint(("create:test, line=%d....\n", __LINE__));
 	if (NT_SUCCESS(Status))
 	{
 		Status = ObReferenceObjectByHandle(*phFile,
@@ -1549,16 +1521,11 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			*pFileObject = NULL;
 		}
 	}
-
-	KdPrint(("create:test, line=%d....\n", __LINE__));
 	
 	if (NT_SUCCESS(Status))
 	{
 		if (bNetWork)
 		{
-
-			KdPrint(("create:test, line=%d....\n", __LINE__));
-			
 			NTSTATUS ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, *pFileObject, VolumeInfo, 128, FileFsVolumeInformation, &RetLength);
 			if (NT_SUCCESS(ntStatus))
 			{
@@ -1574,12 +1541,5 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			}
 		}
 	}
-	else
-	{
-		KdPrint(("create false filename %ws \n", FileName->Buffer));
-	}
-
-	KdPrint(("create:test, line=%d....\n", __LINE__));
-	
 	return Status;
 }

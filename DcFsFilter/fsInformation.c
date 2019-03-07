@@ -203,7 +203,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileStreamInformation:
 		case FileNameInformation:
 		case FileEaInformation:
-			ntStatus = FltQueryInformationFile(FltObjects->Instance, Fcb->CcFileObject,
+			ntStatus = FltQueryInformationFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb),
 				Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, 
 				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
 			if (!NT_SUCCESS(ntStatus))
@@ -313,6 +313,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -332,9 +333,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	__try
 	{
 		Fcb = FltObjects->FileObject->FsContext;
+		Ccb = FltObjects->FileObject->FsContext2;
 		if (g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile)
 		{
-			 ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
+			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.QueryEaFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Data->Iopb->Parameters.QueryEa.EaBuffer, Data->Iopb->Parameters.QueryEa.Length, TRUE,
 				Data->Iopb->Parameters.QueryEa.EaList, Data->Iopb->Parameters.QueryEa.EaListLength, Data->Iopb->Parameters.QueryEa.EaIndex,
 				TRUE, &Data->IoStatus.Information);
 		}
@@ -366,6 +368,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 {
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
@@ -387,9 +390,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	__try
 	{
 		Fcb = FltObjects->FileObject->FsContext;
+		Ccb = FltObjects->FileObject->FsContext2;
 		if (g_DYNAMIC_FUNCTION_POINTERS.SetEaFile)
 		{
-			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.SetEaFile(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
+			ntStatus = g_DYNAMIC_FUNCTION_POINTERS.SetEaFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Data->Iopb->Parameters.SetEa.EaBuffer, Data->Iopb->Parameters.SetEa.Length);
 		}
 		else
 		{
@@ -569,8 +573,8 @@ NTSTATUS FsCommonSetInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 		{
 			FILE_DISPOSITION_INFORMATION FileDisPosition;
 			FileDisPosition.DeleteFile = TRUE;
-			Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, 
-				&FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
+				Status = FsSetFileInformation(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb),
+					&FileDisPosition, sizeof(FILE_DISPOSITION_INFORMATION), FileDispositionInformation);
 			if (NT_SUCCESS(Status))
 			{
 				SetFlag(FileObject->Flags, FO_DELETE_ON_CLOSE);
@@ -977,6 +981,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 	BOOLEAN bAcquireResource = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
 	ULONG RetLength = 0;
 
 	PAGED_CODE();
@@ -988,13 +993,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreQuerySecurity(__inout PFLT_CALLBACK_DATA Data, __
 	KdPrint(("PtPreQuerySecurity, is irp operation(%d)....\n", FLT_IS_IRP_OPERATION(Data)));
 	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
+	Ccb = FltObjects->FileObject->FsContext2;
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
 		{
 			bTopLevelIrp = IsTopLevelIRP(Data);
 			//bAcquireResource = ExAcquireResourceShared(Fcb->Resource, TRUE);
-			ntStatus = FsGetFileSecurityInfo(Data, FltObjects, Fcb);
+			ntStatus = FsGetFileSecurityInfo(Data, FltObjects, Fcb, Ccb);
 
 			if (!NT_SUCCESS(ntStatus))
 			{
@@ -1044,6 +1050,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 	BOOLEAN bAcquireResource = FALSE;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
 	PDEFFCB Fcb = NULL;
+	PDEF_CCB Ccb = NULL;
 
 	PAGED_CODE();
 	
@@ -1054,13 +1061,14 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetSecurity(__inout PFLT_CALLBACK_DATA Data, __in
 	KdPrint(("PtPreSetSecurity start....\n"));
 	FsRtlEnterFileSystem();
 	Fcb = FltObjects->FileObject->FsContext;
+	Ccb = FltObjects->FileObject->FsContext2;
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
 		__try
 		{
 			bTopLevelIrp = IsTopLevelIRP(Data);
 			bAcquireResource = ExAcquireResourceShared(Fcb->Resource, TRUE);
-			ntStatus = FltSetSecurityObject(FltObjects->Instance, Fcb->CcFileObject, Data->Iopb->Parameters.SetSecurity.SecurityInformation, Data->Iopb->Parameters.SetSecurity.SecurityDescriptor);
+			ntStatus = FltSetSecurityObject(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Data->Iopb->Parameters.SetSecurity.SecurityInformation, Data->Iopb->Parameters.SetSecurity.SecurityDescriptor);
 			if (!NT_SUCCESS(ntStatus))
 			{
 				KdPrint(("FltSetSecurityObject failed(0x%x)...\n", ntStatus));
@@ -1149,7 +1157,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 			}
 			else
 			{
-				ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, Fcb->CcFileObject, VolumeInfo, Data->Iopb->Parameters.QueryVolumeInformation.Length, 
+				ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), VolumeInfo, Data->Iopb->Parameters.QueryVolumeInformation.Length,
 					FsClass, &Retlength);
 			}
 			Data->IoStatus.Information = Retlength;
@@ -1309,7 +1317,7 @@ NTSTATUS FsRenameFileInfo(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJEC
 {
 	PFLT_CALLBACK_DATA NewData = NULL;
 	NTSTATUS ntStatus = STATUS_SUCCESS;
-	PFILE_OBJECT FileObject = Fcb->CcFileObject;
+	PFILE_OBJECT FileObject = FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 	PFILE_RENAME_INFORMATION FileRenameInfo = (PFILE_RENAME_INFORMATION)Data->Iopb->Parameters.SetFileInformation.InfoBuffer;
 	IO_STATUS_BLOCK IoStatus = {0};
 	WCHAR * pFileName = NULL;

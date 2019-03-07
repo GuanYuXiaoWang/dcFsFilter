@@ -29,9 +29,9 @@ typedef enum tagCREATE_ACCESS_TYPE
 #define CACHE_DISABLE		0x004
 #define CACHE_ALLOW			0x008
 
-#define FILE_ACCESS_PROCESS_READ 0x001
-#define FILE_ACCESS_PROCESS_RW 0x002
-#define FILE_ACCESS_PROCESS_DISABLE 0x004
+#define FILE_ACCESS_PROCESS_READ 0x0010
+#define FILE_ACCESS_PROCESS_RW 0x0020
+#define FILE_ACCESS_PROCESS_DISABLE 0x0040
 
 #ifndef ENCRYPT_HEAD_LENGTH
 #define ENCRYPT_HEAD_LENGTH 1024
@@ -44,6 +44,14 @@ typedef struct tagFILE_OPEN_INFO
 	PVOID FileObject;
 	HANDLE FileHandle;
 }FILE_OPEN_INFO, *PFILE_OPEN_INFO;
+
+typedef struct tagEXPLORER_PROCESS_FILE
+{
+	ULONG ProcessId;
+	PVOID FileOBject;
+	PVOID Fcb;
+	BOOLEAN NetWork;
+}EXPLORER_PROCESS_FILE, *PEXPLORER_PROCESS_FILE;
 
 typedef struct tagDEF_IO_CONTEXT
 {
@@ -152,10 +160,7 @@ typedef struct tagDEFFCB
 	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
-	UCHAR						szAlinged[4];
 	LIST_ENTRY					FcbLinks;
-	PNTFS_FCB					NtfsFcb;//ntfs
-	PVOID						Vcb;
 	ULONG						FcbState;
 	ULONG						NonCachedUnCleanupCount;
 	ULONG						UncleanCount;
@@ -169,8 +174,6 @@ typedef struct tagDEFFCB
 	//
 	OPLOCK		Oplock;
 	PFILE_LOCK	FileLock;
-	ULONG		CCBFlags;
-
 	UCHAR		Flags;
 
 	LONGLONG	CreationTime;                                          //  offset = 0x000
@@ -193,13 +196,6 @@ typedef struct tagDEFFCB
 	LONGLONG		CurrentLastAccess;
 	BOOLEAN			DeletePending;
 	BOOLEAN			Directory;
-
-	BOOLEAN			bModifiedByOther; //当这个cleanup里面把 UncleanCount 减为零的时候，就说明所有的Process 全部把自己的close 关闭了
-	//如果没有立即收到Close 的irp话，那么就是说明系统有这个Fileobject的reference。
-	//当可信的进程打开的时候很显然肯定要increament 这个UncleanCount 的值 ，同时把这个条件 设为FALSE
-	//当非可信的进程有要求写的时候，判断是不是为TRUE，如果是那么ok 让它打开，
-	//当非可惜进程要求写的时候，判断为false，那么返回 说明这个文件正在编辑，以只读方式打开？？？
-	PFAST_MUTEX		Other_Mutex;
 	BOOLEAN			bWriteHead;
 	BOOLEAN			bAddHeaderLength;
 	WCHAR			wszFile[FILE_PATH_LENGTH_MAX];
@@ -214,26 +210,22 @@ typedef struct tagDEFFCB
 	PFILE_OBJECT DestCacheObject;
 	LARGE_INTEGER ValidDataToDisk;
 	BOOLEAN bEnFile;
+	BOOLEAN bNetWork;
+	BOOLEAN bRecycleBinFile;
 	ULONG FileHeaderLength;
-	ULONG FileAcessType;
+	ULONG ProcessAcessType;
 	HANDLE CcFileHandle;
 	PVOID CcFileObject;
-	PVOID Ccb;
 	PKEVENT MoveFileEvent;
-	FILE_OPEN_INFO FileAllOpenInfo[SUPPORT_OPEN_COUNT_MAX];//用链表存储更好，不用限制次数
-	ULONG FileAllOpenCount;
-	FILE_OBJECTID_INFORMATION FileObjectIdInfo;
 	DEF_VPB Vpb;
 	HANDLE ProcessID;
 	HANDLE ThreadID;
-	ERESOURCE_THREAD ThreadEresource;
 }DEFFCB, *PDEFFCB;
 
 typedef struct tagCREATE_INFO
 {
 	UCHAR FileHeader[ENCRYPT_HEAD_LENGTH];
 	UCHAR OrgFileHeader[ENCRYPT_HEAD_LENGTH];
-	UNICODE_STRING strName;
 	HANDLE hStreamHanle;
 	PFILE_OBJECT pStreamObject;
 	BOOLEAN bNetWork;
@@ -268,7 +260,6 @@ typedef struct tagCREATE_INFO
 	BOOLEAN bEnFile;
 	BOOLEAN bDecrementHeader;
 }CREATE_INFO, *PCREATE_INFO;
-
 
 typedef struct tagIRP_CONTEXT
 {
@@ -328,7 +319,9 @@ typedef struct tagIRP_CONTEXT
 typedef enum tagPROCETYPE
 {
 	PROCESS_ACCESS_ALLOW,
-	PROCESS_ACCESS_DISABLE
+	PROCESS_ACCESS_DISABLE,
+	PROCESS_ACCESS_EXPLORER,
+	PROCESS_ACCESS_ANTIS
 }PROCETYPE;
 
 #define NTFS_NTC_DATA_HEADER             ((NODE_TYPE_CODE)0x0700)
@@ -399,33 +392,43 @@ typedef NTSTATUS (*fsQueryInformationProcess)(
 	__out_opt     PULONG ReturnLength
 	);
 
-typedef NTSTATUS (*fltSetEaFile)(
-__in PFLT_INSTANCE Instance,
-__in PFILE_OBJECT FileObject,
-__in_bcount(Length) PVOID EaBuffer,
-__in ULONG Length
+typedef FLT_PREOP_CALLBACK_STATUS (*fltOplockFsctrlEx)(
+__in POPLOCK Oplock,
+__in PFLT_CALLBACK_DATA CallbackData,
+__in ULONG OpenCount,
+__in ULONG Flags
 );
 
-typedef NTSTATUS (*fltQueryEaFile)(
-__in PFLT_INSTANCE Instance,
-__in PFILE_OBJECT FileObject,
-__out_bcount_part(Length, *LengthReturned) PVOID ReturnedEaData,
-__in ULONG Length,
-__in BOOLEAN ReturnSingleEntry,
-__in_bcount_opt(EaListLength) PVOID EaList,
-__in ULONG EaListLength,
-__in_opt PULONG EaIndex,
-__in BOOLEAN RestartScan,
-__out_opt PULONG LengthReturned
-);
+typedef BOOLEAN (*fsRtlCheckLockForOplockRequest)(__in PFILE_LOCK FileLock, __in PLARGE_INTEGER AllocationSize);
 
-typedef BOOLEAN (*fltOplockIsSharedRequest)(
-__in PFLT_CALLBACK_DATA CallbackData
-);
+typedef NTSTATUS(*fltSetEaFile)(
+	__in PFLT_INSTANCE Instance,
+	__in PFILE_OBJECT FileObject,
+	__in_bcount(Length) PVOID EaBuffer,
+	__in ULONG Length
+	);
 
-typedef BOOLEAN (*fsRtlAreThereCurrentOrInProgressFileLocks)(
-__in PFILE_LOCK FileLock
-);
+typedef NTSTATUS(*fltQueryEaFile)(
+	__in PFLT_INSTANCE Instance,
+	__in PFILE_OBJECT FileObject,
+	__out_bcount_part(Length, *LengthReturned) PVOID ReturnedEaData,
+	__in ULONG Length,
+	__in BOOLEAN ReturnSingleEntry,
+	__in_bcount_opt(EaListLength) PVOID EaList,
+	__in ULONG EaListLength,
+	__in_opt PULONG EaIndex,
+	__in BOOLEAN RestartScan,
+	__out_opt PULONG LengthReturned
+	);
+
+typedef BOOLEAN(*fltOplockIsSharedRequest)(
+	__in PFLT_CALLBACK_DATA CallbackData
+	);
+
+typedef BOOLEAN(*fsRtlAreThereCurrentOrInProgressFileLocks)(
+	__in PFILE_LOCK FileLock
+	);
+
 
 typedef struct tagDYNAMIC_FUNCTION_POINTERS
 {
@@ -436,6 +439,8 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 	fsGetVersion pGetVersion;
 	fltQueryDirectoryFile  QueryDirectoryFile;
 	fsQueryInformationProcess QueryInformationProcess;
+	fltOplockFsctrlEx OplockFsctrlEx;
+	fsRtlCheckLockForOplockRequest pFsRtlCheckLockForOplockRequest;
 	fltSetEaFile SetEaFile;
 	fltQueryEaFile QueryEaFile;
 	fltOplockIsSharedRequest OplockIsSharedRequest;
@@ -451,6 +456,7 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 #define LAYER_NTC_FCB -32768
 #define CCB_FLAG_NETWORK_FILE 0x0010
 #define CCB_FLAG_FILE_CHANGED 0x0020
+#define CCB_FLAG_RECYCLE_BIN_FILE 0x0040
 
 #ifndef OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY //win7及以后的系统才支持
 #define OPLOCK_FLAG_OPLOCK_KEY_CHECK_ONLY   0x00000002
@@ -461,6 +467,14 @@ typedef struct tagDYNAMIC_FUNCTION_POINTERS
 
 #define FsReleaseFcb(IRPCONTEXT,Fcb) {                 \
 	ExReleaseResourceLite((Fcb)->Header.Resource);    \
+}
+
+#define FsReleasePagingIoResouce(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceLite((Fcb)->Header.PagingIoResource);    \
+}
+
+#define FsReleaseFcbEx(IRPCONTEXT,Fcb) {                 \
+	ExReleaseResourceForThreadLite((Fcb)->Header.Resource, ExGetCurrentResourceThread());    \
 }
 
 typedef struct _KLDR_DATA_TABLE_ENTRY{

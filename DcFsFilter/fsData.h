@@ -12,7 +12,6 @@ extern NPAGED_LOOKASIDE_LIST  g_FcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_CcbLookasideList;
 extern NPAGED_LOOKASIDE_LIST  g_EResourceLookasideList;
 extern CACHE_MANAGER_CALLBACKS g_CacheManagerCallbacks;
-extern NPAGED_LOOKASIDE_LIST g_NTFSFCBLookasideList;
 extern NPAGED_LOOKASIDE_LIST g_FastMutexInFCBLookasideList;
 extern ULONG g_SectorSize;
 extern NPAGED_LOOKASIDE_LIST	g_Npaged4KBList;
@@ -21,8 +20,6 @@ extern NPAGED_LOOKASIDE_LIST	g_Npaged64KBList;
 extern BOOLEAN g_bUnloading;
 extern BOOLEAN g_bAllModuleInitOk;
 extern BOOLEAN g_bSafeDataReady;
-
-UCHAR szVcbPlacer[300];
 
 #define READ_AHEAD_GRANULARITY           (0x10000)
 
@@ -77,6 +74,7 @@ extern "C" {
 	BOOLEAN GetVersion();
 	BOOLEAN IsWin7OrLater();
 	BOOLEAN IsVistaOrLater();
+	BOOLEAN IsWin10();
 
 	BOOLEAN InsertFcbList(PDEFFCB *Fcb);
 	BOOLEAN RemoveFcbList(WCHAR * pwszFile);
@@ -135,8 +133,8 @@ extern "C" {
 	BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName);
 
 	BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING pFilePath, __inout WCHAR * FileExt, __inout USHORT* nLength);
-	NTSTATUS FsTransformFileToEncrypted(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PDEFFCB Fcb, __in PDEF_CCB Ccb);
-	NTSTATUS FsWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PLARGE_INTEGER RealFileSize, __in WCHAR * FileFullName);
+	NTSTATUS FsWriteFileHeader(__in PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObject, __inout PVOID HeadBuf);
+	NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PDEFFCB Fcb);
 	NTSTATUS FsExtendingValidDataSetFile(__in PCFLT_RELATED_OBJECTS FltObjects, PDEFFCB Fcb, PDEF_CCB Ccb);
 	BOOLEAN FsZeroData(IN PDEF_IRP_CONTEXT IrpContext,
 		IN PDEFFCB Fcb,
@@ -149,15 +147,14 @@ extern "C" {
 	NTSTATUS FsSetFileInformation(__in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __in PVOID FileInfoBuffer, __in ULONG Length, __in FILE_INFORMATION_CLASS FileInfoClass);
 	BOOLEAN CheckEnv(__in ULONG ulMinifilterEnvType);
 	BOOLEAN IsFilterFileByExt(__in WCHAR * pwszExtName, __in USHORT Length);
-	NTSTATUS FsGetFileObjectIdInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PFILE_OBJECT FileObject, __inout PDEFFCB Fcb);
-	NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb);
+	NTSTATUS FsGetFileSecurityInfo(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects, __inout PDEFFCB Fcb, __in PDEF_CCB Ccb);
 
 	NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA  Data, __in PCFLT_RELATED_OBJECTS FltObjects);
 	NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessImageName);
-	NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout  PVOID * CcFileObject, __in BOOLEAN NetWork);
+	NTSTATUS FsGetCcFileInfo(__in PFLT_FILTER Filter, __in PFLT_INSTANCE Instance, __in PWCHAR FileName, __inout PHANDLE CcFileHandle, __inout PVOID * CcFileObject, __in BOOLEAN NetWork);
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR FilePath, __in USHORT Length);
-
+	PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb);
 	BOOLEAN FsAcquireFilterExclusiveResource();
 	VOID FsReleaseFilterExclusiveResource();
 

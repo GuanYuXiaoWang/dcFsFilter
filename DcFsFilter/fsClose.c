@@ -41,37 +41,16 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 			if (0 == Fcb->OpenCount)
 			{
 				bAcquire = ExAcquireResourceExclusiveLite(Fcb->Resource, TRUE);
-				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+				
+				if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || Fcb->bRecycleBinFile)
 				{
-					for (i = 0; i < Fcb->FileAllOpenCount; i++)
-					{
-						if (Fcb->FileAllOpenInfo[i].FileObject)
-						{
-							ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
-						}
-						if (Fcb->FileAllOpenInfo[i].FileHandle)
-						{
-							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
-						}
-					}
-					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO)* SUPPORT_OPEN_COUNT_MAX);
-					Fcb->FileAllOpenCount = 0;
 					Fcb->CcFileObject = NULL;
 					Fcb->CcFileHandle = NULL;
 				}
-				if (FlagOn(Fcb->FcbState, FCB_STATE_REAME_INFO))
-				{
-					if (Fcb->CcFileObject)
-					{
-						ObDereferenceObject(Fcb->CcFileObject);
-						FltClose(Fcb->CcFileHandle);
-						Fcb->CcFileObject = NULL;
-						Fcb->CcFileHandle = NULL;
-					}
-					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
-				}
+
 				if (FlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
 				{
+					KdPrint(("file deleted.......\n"));
 					ClearFlag(Fcb->FcbState, FCB_STATE_REAME_INFO);
 					if (bAcquire)
 					{
@@ -81,16 +60,21 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					FsFreeFcb(Fcb, NULL);
 					FltObjects->FileObject->FsContext = NULL;
 				}
-				else if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+				if (Fcb)
 				{
-					//有一种情况：文件关闭，手动删除，把另一个文件重命名为该文件，那么FCB就需要重新更新了或删除
-					//解决方法：监控非受控进程的文件行为，如果存在删除、移动、重命名情况，直接删除从FCB链表里摧毁该FCB
-					//
+					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
-				FsFreeCcb(Ccb);
-				Fcb->Ccb = NULL;
-				FltObjects->FileObject->FsContext2 = NULL;
 			}
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
+			if (Ccb->StreamFileInfo.StreamObject)
+			{
+				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
+				FltClose(Ccb->StreamFileInfo.hStreamHandle);
+				Ccb->StreamFileInfo.StreamObject = NULL;
+				Ccb->StreamFileInfo.hStreamHandle = NULL;
+			}
+			FsFreeCcb(Ccb);
+			FltObjects->FileObject->FsContext2 = NULL;
 		}
 		__finally
 		{

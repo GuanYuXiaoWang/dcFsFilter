@@ -118,7 +118,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 			__leave;
 		}
 		//先不考虑文件只被打开一次（即当前只有一个访问者，只有一个文件句柄）
-		KdPrint(("clean:openCount=%d, uncleanup=%d, filesize=%d...\n", Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart));
+		KdPrint(("clean:processID:%d, openCount=%d, uncleanup=%d, filesize=%d, file=%S...\n", Fcb->ProcessID, Fcb->OpenCount, Fcb->UncleanCount, Fcb->Header.FileSize.LowPart, Fcb->wszFile));
 		if (1 == Fcb->OpenCount)
 		{
 			//
@@ -180,30 +180,16 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					FILE_END_OF_FILE_INFORMATION FileSize;
 					FileSize.EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
 					KdPrint(("clean:file size =%d...\n", FileSize.EndOfFile.LowPart));
-					Status = FsSetFileInformation(FltObjects, Fcb->CcFileObject, &FileSize, sizeof(FILE_END_OF_FILE_INFORMATION), FileEndOfFileInformation);
+					Status = FsSetFileInformation(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), &FileSize, sizeof(FILE_END_OF_FILE_INFORMATION), FileEndOfFileInformation);
 					if (!NT_SUCCESS(Status))
 					{
 						KdPrint(("Cleanup:FltSetInformationFile failed(0x%x)....\n", Status));
 					}
 					ClearFlag(FileObject->Flags, FO_FILE_SIZE_CHANGED);
 				}
-
-				if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+				
+				if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 				{
-					for (i = 0; i < Fcb->FileAllOpenCount; i++)
-					{
-						if (Fcb->FileAllOpenInfo[i].FileObject)
-						{
-							ObDereferenceObject(Fcb->FileAllOpenInfo[i].FileObject);
-						}
-						if (Fcb->FileAllOpenInfo[i].FileHandle)
-						{
-							FltClose(Fcb->FileAllOpenInfo[i].FileHandle);
-						}
-					}
-					RtlZeroMemory(Fcb->FileAllOpenInfo, sizeof(FILE_OPEN_INFO) * SUPPORT_OPEN_COUNT_MAX);
-					Fcb->FileAllOpenCount = 0;
-
 					if (Fcb->CcFileObject)
 					{
 						ObDereferenceObject(Fcb->CcFileObject);
@@ -212,10 +198,27 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 						Fcb->CcFileHandle = NULL;
 					}
 				}
+				else
+				{
+					Fcb->CcFileObject = NULL;
+					Fcb->CcFileHandle = NULL;
+				}				
 
 				Fcb->DestCacheObject = NULL;
 				Fcb->bAddHeaderLength = FALSE;
 				Fcb->DestCacheObject = NULL;
+			}
+			SetFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
+		}
+		if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
+		{
+			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
+			if (Ccb->StreamFileInfo.StreamObject)
+			{
+				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);
+				FltClose(Ccb->StreamFileInfo.hStreamHandle);
+				Ccb->StreamFileInfo.StreamObject = NULL;
+				Ccb->StreamFileInfo.hStreamHandle = NULL;
 			}
 		}
 		SetFlag(FileObject->Flags, FO_CLEANUP_COMPLETE);

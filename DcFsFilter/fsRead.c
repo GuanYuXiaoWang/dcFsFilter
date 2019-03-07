@@ -371,9 +371,14 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 			ULONG_PTR ZeroLength = 0;
 			BOOLEAN bFileMap = FALSE;
 
+			if (Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE))
+			{
+				Fcb->CcFileObject = Ccb->StreamFileInfo.StreamObject;
+			}
+
 			if (NULL == Fcb->CcFileObject)
 			{
-				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
+				Status = FsGetCcFileInfo(FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, &Fcb->CcFileHandle, &Fcb->CcFileObject, Ccb && FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE));
 				if (!NT_SUCCESS(Status))
 				{
 					try_return(NOTHING);
@@ -441,7 +446,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 
 			NewByteOffset.QuadPart = StartByte + Fcb->FileHeaderLength;
 
-			IrpContext->FileObject = Fcb->CcFileObject/*((Ccb != NULL && BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE)) ? Ccb->StreamFileInfo.StreamObject : Fcb->CcFileObject)*/;
+			IrpContext->FileObject = bFileMap ? Fcb->CcFileObject : FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb);
 			IrpContext->pIoContext->Data = Data;
 			IrpContext->pIoContext->SystemBuffer = SystemBuffer;
 			IrpContext->pIoContext->SwapBuffer = newBuf;
@@ -519,32 +524,17 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 					CcSetReadAheadGranularity(FileObject, READ_AHEAD_GRANULARITY);
 					Fcb->DestCacheObject = FileObject;
 				}
+
 				if (!FlagOn(IrpContext->MinorFunction, IRP_MN_MDL))
 				{
 					ULONG Length = 0;
 					PVOID Buffer = NULL;
 					SystemBuffer = FsMapUserBuffer(Data, &Length);
-					__try
+					if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
 					{
-						if (!CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, SystemBuffer, &Data->IoStatus))
-						{
-							try_return(bPostIrp = TRUE);
-						}
+						try_return(bPostIrp = TRUE);
 					}
-					__except (EXCEPTION_EXECUTE_HANDLER)
-					{
-						KdPrint(("CcCopyRead exception...\n"));
-						Buffer = ExAllocatePoolWithTag(NonPagedPool, ByteCount, 'buff');
-						if (Buffer != NULL)
-						{
-							RtlZeroMemory(Buffer, ByteCount);
-							if (CcCopyRead(FileObject, (PLARGE_INTEGER)&StartByte, ByteCount, bWait, Buffer, &Data->IoStatus))
-							{
-								RtlCopyMemory(SystemBuffer, Buffer, ByteCount);
-							}
-							ExFreePoolWithTag(Buffer, 'buff');
-						}
-					}					
+
 					Status = Data->IoStatus.Status;
 					try_return(Status);
 				}
