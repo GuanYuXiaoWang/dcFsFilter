@@ -171,11 +171,8 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID)
 			Process = NULL;
 			return FALSE;
 		}
-		if (!IsControlProcess(ProcessName))
-		{
-			return FALSE;
-		}
-		bControl = TRUE;
+
+		bControl = IsControlProcess(ProcessName);	
 	}
 
 	if (Process != NULL)
