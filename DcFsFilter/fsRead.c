@@ -829,16 +829,6 @@ NTSTATUS FsRealReadFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CON
 	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))
 	{
-		/*
-		if(!InSameVACB(ByteOffset.QuadPart,ByteOffset.QuadPart+ByteCount))
-		{
-		//
-		}
-		*/
-#ifdef CHANGE_TOP_IRP
-		TopLevelIrp = IoGetTopLevelIrp();
-		IoSetTopLevelIrp(NULL);
-#endif
 		NewData->Iopb->MajorFunction = IRP_MJ_READ;
 		NewData->Iopb->Parameters.Read.ByteOffset = ByteOffset;
 		NewData->Iopb->Parameters.Read.Length = ByteCount;

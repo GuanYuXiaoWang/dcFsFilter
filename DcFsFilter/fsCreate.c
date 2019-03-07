@@ -1568,9 +1568,14 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 #ifdef USE_CACHE_READWRITE
 	SetFlag(Options, FILE_WRITE_THROUGH); //如果缓存写需要加上直接写入文件，否则cccaniwrite内部会导致等待pagingio产生死锁
 #endif
-	ClearFlag(Options, FILE_OPEN_BY_FILE_ID);
-	ClearFlag(Options, FILE_OPEN_REQUIRING_OPLOCK);
 	CreateDisposition = (Options >> 24) & 0x000000ff;
+
+	if (FILE_CREATE != CreateDisposition)
+	{
+		ClearFlag(Options, FILE_OPEN_BY_FILE_ID);
+		ClearFlag(Options, FILE_OPEN_REQUIRING_OPLOCK);
+	}
+	
 	InitializeObjectAttributes(&ob, FileName, OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE, NULL, SecurityDescriptor);
 
 	if (PROCESS_ACCESS_ANTIS == ProcessType && FALSE)

@@ -2931,7 +2931,7 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 		{
 			__leave;
 		}
-		if (/*FileInfo.EndOfFile.QuadPart < SIZEOF_64KBList*/TRUE)
+		if (FileInfo.EndOfFile.QuadPart < SIZEOF_64KBList)
 		{
 			BufLenth = SIZEOF_4KBList;
 			pBuffer = ExAllocateFromNPagedLookasideList(&g_Npaged4KBList);
@@ -2949,7 +2949,7 @@ NTSTATUS FsEncrypteFile(__in PFLT_CALLBACK_DATA Data, __in PFLT_FILTER Filter, _
 		//这里是否该考虑写失败情况？
 		while (OrgByteOffset.QuadPart < FileInfo.AllocationSize.QuadPart)
 		{
-			RtlZeroMemory(pBuffer, ENCRYPT_HEAD_LENGTH);
+			RtlZeroMemory(pBuffer, BufLenth);
 			ntStatus = FltReadFile(Instance,
 				FileObject,
 				&OrgByteOffset,
@@ -3127,7 +3127,7 @@ void EncrypteFileThread(PVOID Context)
 			break;
 		}
 		Counts++;
-		KeSleep(200);
+		KeSleep(50);
 		if (FindFcb(NULL, Param->FilePath, &Fcb) && Fcb->OpenCount != 0)
 		{
 			ntStatus = FsEncrypteFile(NULL, Param->Filter, Param->Instance, Param->FilePath, Param->Length - sizeof(WCHAR), Param->NetFile, Fcb->CcFileObject);

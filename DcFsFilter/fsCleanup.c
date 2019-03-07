@@ -136,7 +136,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
  					bPureCache = CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, 0);
 					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				}
-
+				if (bAcquireFcb)
+				{
+					FsReleaseFcb(IrpContext, Fcb);
+					bAcquireFcb = FALSE;
+				}
 				if (Fcb->bAddHeaderLength)
 				{
 					Fcb->bAddHeaderLength = FALSE;
@@ -172,7 +176,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				
 				if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 				{
-					if (/*Fcb->CcFileObject*/FALSE)
+					if (Fcb->CcFileObject)
 					{
 						ObDereferenceObject(Fcb->CcFileObject);
 						FltClose(Fcb->CcFileHandle);
@@ -206,11 +210,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		}
 		InterlockedDecrement((PLONG)&Fcb->OpenCount);
 		InterlockedDecrement((PLONG)&Fcb->UncleanCount);
-		if (bAcquireFcb)
-		{
-			FsReleaseFcb(IrpContext, Fcb);
-			bAcquireFcb = FALSE;
-		}
 		if (FileObject->PrivateCacheMap != NULL)
 		{
 			CACHE_UNINITIALIZE_EVENT Event;
