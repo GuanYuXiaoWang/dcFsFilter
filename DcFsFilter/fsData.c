@@ -198,6 +198,10 @@ BOOLEAN IsControlProcessByProcessId(__in HANDLE ProcessID, __inout ULONG * Proce
 			{
 				*ProcessType = PROCESS_ACCESS_EXPLORER;
 			}
+			else if (IsOfficeProcess(ProcessName))
+			{
+				*ProcessType = PROCESS_ACCESS_OFFICE;
+			}
 			else if (IsWpsProcess(ProcessName))
 			{
 				*ProcessType = PROCESS_ACCESS_WPS;
@@ -236,11 +240,12 @@ BOOLEAN IsFltFileLock()
 //2.记录最后一次打开的文件，下一次操作的文件根据最后一次操作的文件进行判断是否加密？？会不会存在漏洞？？
 BOOLEAN IsNeedEncrypted()
 {
-	if (NULL == g_LastProcessInfo.Fcb)
+	PDEF_FCB Fcb = g_LastProcessInfo.Fcb;
+	if (NULL == Fcb)
 	{
 		return FALSE;
 	}
-	return TRUE;
+	return Fcb->bEnFile;
 }
 
 BOOLEAN IsLastAccessNetWorkFile()
@@ -256,12 +261,20 @@ VOID FsSetExplorerInfo(__in  PFILE_OBJECT FileObject, __in PDEF_FCB Fcb)
 	g_LastProcessInfo.NetWork = Fcb ? Fcb->bNetWork : FALSE;
 }
 
+VOID FsCheckAndEmptyExplorerInfo(__in PDEF_FCB Fcb)
+{
+	if (g_LastProcessInfo.Fcb && Fcb == g_LastProcessInfo.Fcb)
+	{
+		RtlZeroMemory(&g_LastProcessInfo, sizeof(EXPLORER_PROCESS_FILE));
+	}
+}
+
 BOOLEAN IsOfficeProcess(__in CHAR * ProcessName)
 {
 	return (0 == _stricmp(ProcessName, "word.exe") ||
 		0 == _stricmp(ProcessName, "winword.exe") ||
 		0 == _stricmp(ProcessName, "excel.exe") ||
-		0 == _stricmp(ProcessName, "ppt.exe"));
+		0 == _stricmp(ProcessName, "powerpnt.exe"));
 }
 
 BOOLEAN IsExplorerProcess(__in CHAR * ProcessName)
@@ -274,6 +287,15 @@ BOOLEAN IsWpsProcess(__in CHAR * ProcessName)
 	return (0 == _stricmp(ProcessName, "wps.exe") ||
 		0 == _stricmp(ProcessName, "et.exe") ||
 		0 == _stricmp(ProcessName, "wpp.exe"));
+}
+
+BOOLEAN IsNeedCreateNewFile(ULONG Type)
+{
+	if (PROCESS_ACCESS_EXPLORER == Type || PROCESS_ACCESS_WPS == Type/* || PROCESS_ACCESS_OFFICE == Type*/) 
+	{
+		return TRUE; 
+	} 
+	return FALSE;
 }
 
 VOID InitData()
@@ -1618,6 +1640,9 @@ BOOLEAN FsFreeFcb(__in PDEF_FCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	FILE_BASIC_INFORMATION fileInfo = { 0 };
 	BOOLEAN bSetBasicInfo = FALSE;
 	RemoveFcbList(Fcb->wszFile);
+	
+	FsCheckAndEmptyExplorerInfo(Fcb);
+
 	if (NULL != Fcb->CcFileObject)
 	{
 		if (!BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))

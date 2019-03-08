@@ -226,23 +226,28 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
-	KdPrint(("[%s]bNonCachedIo:%d, bPagingIo:%d,bEnFile:%d, StartByte:%d, ByteCount:%d...\n", __FUNCTION__, bNonCachedIo, bPagingIo, Fcb->bEnFile, StartByte, ByteCount));
-	//如果一个非加密文件收到了写请求转变他成为加密文件
-	if (!bPagingIo && !Fcb->bEnFile&& BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
+	if (PROCESS_ACCESS_EXPLORER == Ccb->ProcType && 0 == StartByte.QuadPart && IsNeedEncrypted())
 	{
-		Status = FsNonCacheWriteFileHeader(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Fcb);
-		//Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), Ccb->StreamFileInfo.StreamObject);
-		if (!NT_SUCCESS(Status))
+		FsSetExplorerInfo(NULL, NULL);
+		//如果一个非加密文件收到了写请求转变他成为加密文件
+		if (!bPagingIo && !Fcb->bEnFile && BooleanFlagOn(Ccb->ProcType, PROCESS_ACCESS_EXPLORER))
 		{
-			Data->IoStatus.Status = Status;
-			Data->IoStatus.Information = 0;
-			return FLT_PREOP_COMPLETE;
-		}	
-		Fcb->bEnFile = TRUE;
-		Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
-		Fcb->bWriteHead = TRUE;
-		SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+			Status = FsNonCacheWriteFileHeader(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), Fcb);
+			//Status = FsEncrypteFile(Data, FltObjects->Filter, FltObjects->Instance, Fcb->wszFile, wcslen(Fcb->wszFile) * sizeof(WCHAR), FlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE), Ccb->StreamFileInfo.StreamObject);
+			if (!NT_SUCCESS(Status))
+			{
+				Data->IoStatus.Status = Status;
+				Data->IoStatus.Information = 0;
+				return FLT_PREOP_COMPLETE;
+			}
+			Fcb->bEnFile = TRUE;
+			Fcb->FileHeaderLength = ENCRYPT_HEAD_LENGTH;
+			Fcb->bWriteHead = TRUE;
+			SetFlag(Fcb->FcbState, FCB_STATE_FILEHEADER_WRITED);
+		}
 	}
+	KdPrint(("[%s]bNonCachedIo:%d, bPagingIo:%d,bEnFile:%d, StartByte:%d, ByteCount:%d...\n", __FUNCTION__, bNonCachedIo, bPagingIo, Fcb->bEnFile, StartByte, ByteCount));
+	
 	// 处理延迟写请求(非缓存跟pagingio 均不支持延迟写入)
 	if (!bPagingIo && !bNonCachedIo && 
 		!CcCanIWrite(FileObject, 

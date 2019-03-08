@@ -536,27 +536,27 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 				FltStatus = FLT_PREOP_COMPLETE;
 			}
 		}
-		if (PROCESS_ACCESS_EXPLORER == IrpContext->CreateInfo.ProcType)
-		{
-			//if (!(STATUS_OBJECT_NAME_NOT_FOUND == Status && IrpContext->createInfo.bNetWork))
-			{
-				if (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus)
-				{
-					FsSetExplorerInfo(NULL, NULL);
-				}
-				else
-				{
-					if (pFcb && pFcb->bEnFile)
-					{
-						FsSetExplorerInfo(pFileObject, pFcb);
-					}
-					else if (!bPostIrp)
-					{
-						FsSetExplorerInfo(NULL, NULL);
-					}
-				}
-			}
-		}	
+// 		if (PROCESS_ACCESS_EXPLORER == IrpContext->CreateInfo.ProcType)
+// 		{
+// 			//if (!(STATUS_OBJECT_NAME_NOT_FOUND == Status && IrpContext->createInfo.bNetWork))
+// 			{
+// 				if (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus)
+// 				{
+// 					FsSetExplorerInfo(NULL, NULL);
+// 				}
+// 				else
+// 				{
+// 					if (pFcb && pFcb->bEnFile)
+// 					{
+// 						FsSetExplorerInfo(pFileObject, pFcb);
+// 					}
+// 					else if (!bPostIrp)
+// 					{
+// 						FsSetExplorerInfo(NULL, NULL);
+// 					}
+// 				}
+// 			}
+// 		}	
 
 		Data->IoStatus.Status = (FLT_PREOP_SUCCESS_NO_CALLBACK == FltStatus ? 0 : Status);
 		if (NT_SUCCESS(Data->IoStatus.Status) && FLT_PREOP_COMPLETE == FltStatus)
@@ -1341,7 +1341,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 
 	__try
 	{
-		if (PROCESS_ACCESS_EXPLORER == IrpContext->CreateInfo.ProcType && (FILE_CREATE == CreateDisposition || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition) && !IsNeedEncrypted())
+		if (PROCESS_ACCESS_EXPLORER == IrpContext->CreateInfo.ProcType && !(FILE_CREATE == CreateDisposition && Iopb->Parameters.Create.AllocationSize.QuadPart > 0  || FILE_OVERWRITE == CreateDisposition || FILE_OVERWRITE_IF == CreateDisposition)/* && !IsNeedEncrypted()*/)
 		{
 			Status = STATUS_UNSUCCESSFUL;
 			try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
@@ -1352,7 +1352,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		if (!NT_SUCCESS(Status))
 		{
 			KdPrint(("CreateFileLimitation failed(0x%x)...\n", Status));
-			if (STATUS_FILE_IS_A_DIRECTORY == Status || (PROCESS_ACCESS_EXPLORER != IrpContext->CreateInfo.ProcType && STATUS_OBJECT_NAME_NOT_FOUND == Status))
+			if (STATUS_FILE_IS_A_DIRECTORY == Status || (PROCESS_ACCESS_EXPLORER != IrpContext->CreateInfo.ProcType  && PROCESS_ACCESS_ANTIS_TREND != IrpContext->CreateInfo.ProcType && STATUS_OBJECT_NAME_NOT_FOUND == Status))
 			{
 				try_return(IrpContext->FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK);
 			}
@@ -1370,7 +1370,7 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 		}
 		//趋势驱动里hook了FltCreate等函数来监视文件，FsCreateFileLimitation里使用FltCreate来打开文件，会被监视到，TmXPFlt.sys驱动里会创建线程来读取该文件以判断是否含有病毒
 		//此时又会产生IRP_CREATE，直到线程检测文件完毕后才会调用系统原来的FltCreate，这样就产生了Fcb.
-		//这里重新判断Fcb是否存在
+		//这里重新判断Fcb是否存在，这里有一定的性能损耗
 		if (FindFcb(Data, IrpContext->CreateInfo.NameInfo->Name.Buffer, &Fcb))
 		{
 			Status = CreateFileByExistFcb(Data, FltObjects, Fcb, IrpContext, TRUE);
@@ -1512,7 +1512,6 @@ NTSTATUS CreateFileByNonExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_REL
 			}
 		}
 	}
-	KdPrint(("[%s]line=%d.....\n", __FUNCTION__, __LINE__));
 	return Status;
 }
 
@@ -1617,7 +1616,7 @@ NTSTATUS FsCreateFileLimitation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELA
 			}
 		}
 	}
-	if ((PROCESS_ACCESS_EXPLORER != ProcessType && PROCESS_ACCESS_WPS != ProcessType) && !bNetWork && FILE_CREATE == CreateDisposition)
+	if (FILE_CREATE == CreateDisposition && !IsNeedCreateNewFile(ProcessType) && !bNetWork)
 	{
 		Status = STATUS_OBJECT_NAME_NOT_FOUND;
 		return Status;

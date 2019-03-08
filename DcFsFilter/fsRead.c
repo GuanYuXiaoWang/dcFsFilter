@@ -164,6 +164,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonRead(__inout PFLT_CALLBACK_DATA Data, __in PCF
 		Data->IoStatus.Information = 0;
 		return FLT_PREOP_COMPLETE;
 	}
+	if (PROCESS_ACCESS_EXPLORER == Ccb->ProcType && 0 == StartByte)
+	{
+		FsSetExplorerInfo(FileObject, Fcb);
+	}
+
 	KdPrint(("[%s]bNonCachedIo:%d, bPagingIo:%d, StartByte:%d, ByteCount:%d...\n", __FUNCTION__, bNonCachedIo, bPagingIo, StartByte, ByteCount));
 	Status = FltGetVolumeContext(FltObjects->Filter, FltObjects->Volume, &volCtx);
 	if (!NT_SUCCESS(Status))
