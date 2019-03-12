@@ -53,7 +53,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 				IoSetTopLevelIrp(NULL);
 			}
 		}
-		FsCompleteRequest(&IrpContext, &Data, STATUS_SUCCESS, FALSE);
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 	}
  	else if (FLT_IS_FASTIO_OPERATION(Data))
 	{

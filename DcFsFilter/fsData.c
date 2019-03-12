@@ -72,36 +72,46 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 			*pStatus = STATUS_UNSUCCESSFUL;
 			__leave;
 		}
-		/*
-		RtlInitUnicodeString(&strProcessName, szProcessName);
-		strProcessName.Length = (MAX_PATH - 1)* sizeof(WCHAR);
-		strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
-		*pStatus = FsGetProcessName(ProcessId, &strProcessName);
+		//
+		if (4 == ProcessId)
+		{
+#ifndef REAL_ENCRYPTE
+			if (!IsIn(PsGetCurrentThreadId()))
+			{
+				__leave;
+			}
+#else
+			__leave;
+#endif
+		}
+		else
+		{
+			RtlInitUnicodeString(&strProcessName, szProcessName);
+			strProcessName.Length = (MAX_PATH - 1)* sizeof(WCHAR);
+			strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
+			*pStatus = FsGetProcessName(ProcessId, &strProcessName);
+			if (!NT_SUCCESS(*pStatus))
+			{
+				__leave;
+			}
+			if (!IsControlProcessEx(strProcessName.Buffer))
+			{
+				__leave;
+			}
+		}
+		
+// 		if (!IsControlProcessByProcessId(ProcessId))
+// 		{
+// 			__leave;
+// 		}
+
+		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
 		if (!NT_SUCCESS(*pStatus))
 		{
 			__leave;
 		}
-		if (!IsControlProcessEx(strProcessName.Buffer))
-		{
-			__leave;
-		}
-		*/
-		if (0 == ProcessId)
-		{
-			__leave;
-		}
-		if (!IsControlProcessByProcessId(ProcessId))
-		{
-			__leave;
-		}
-
-// 		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
-// 		if (!NT_SUCCESS(*pStatus))
-// 		{
-// 			__leave;
-// 		}
 		//判断文件后缀名
-		if (!FsGetFileExtFromFileName(&Data->Iopb->TargetFileObject->FileName, szExName, &length))
+		if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
 		{
 			__leave;
 		}
@@ -116,20 +126,20 @@ BOOLEAN IsFilterProcess(IN PFLT_CALLBACK_DATA Data, IN PNTSTATUS pStatus, IN PUL
 		{
 			__leave;
 		}
-		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
-		if (!NT_SUCCESS(*pStatus))
-		{
-		 	__leave;
-		}
+// 		*pStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+// 		if (!NT_SUCCESS(*pStatus))
+// 		{
+// 		 	__leave;
+// 		}
 		//回收站的文件不处理：$Recycle.Bin
 		if (IsRecycleBinFile(FileInfo->Name.Buffer, FileInfo->Name.Length))
 		{
 			__leave;
 		}
-	//	KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
+		KdPrint(("PID=%d,FileName=%S,Extension=%S....\n", ProcessId, FileInfo->Name.Buffer ? FileInfo->Name.Buffer : L"none", FileInfo->Extension.Buffer ? FileInfo->Extension.Buffer : L"none"));
 		bFilter = TRUE;
 		*pStatus = STATUS_SUCCESS;
-		KdPrint(("[%s]line=%d....\n", __FUNCTION__, __LINE__));
+
 	}
 	__finally
 	{
@@ -2701,7 +2711,7 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 
 	__try
 	{
-		if (4 == ProcessID || 0 == ProcessID)
+		if (4 == ProcessID)
 		{
 			//系统进程，暂不处理
 			__leave;

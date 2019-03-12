@@ -144,11 +144,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 #endif
 	PAGED_CODE();
 
-// 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
-// 	{		
-// 		return FLT_PREOP_DISALLOW_FASTIO;
-// 	}
-// 	return FLT_PREOP_SUCCESS_NO_CALLBACK;
+	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
+	{		
+		return FLT_PREOP_DISALLOW_FASTIO;
+	}
+	return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	
 	if (!IsFilterProcess(Data, &Status, &ProcType))
 	{
