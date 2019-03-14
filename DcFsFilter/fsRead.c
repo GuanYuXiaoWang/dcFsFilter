@@ -26,22 +26,10 @@ FLT_PREOP_CALLBACK_STATUS PtPreRead(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_
 
 	PAGED_CODE();
 
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreRead"))
-	{
-		KdPrint(("read:offset=%d, byteCount=%d....\n", Data->Iopb->Parameters.Read.ByteOffset, Data->Iopb->Parameters.Read.Length));
-	}
-	
-#endif
-
-	
  	if (!IsMyFakeFcb(FltObjects->FileObject))
  	{
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;
  	}
-#ifdef TEST
-	KdBreakPoint();
-#endif
 
 	KdPrint(("PtPreRead begin......\n"));
 	FsRtlEnterFileSystem();

@@ -13,12 +13,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 	UNREFERENCED_PARAMETER(CompletionContext);
 	
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		
-	}
-#endif
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -203,6 +197,7 @@ NTSTATUS FsCommonQueryInformation(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RE
 		case FileStreamInformation:
 		case FileNameInformation:
 		case FileEaInformation:
+		case FileInternalInformation:
 			ntStatus = FltQueryInformationFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb),
 				Data->Iopb->Parameters.QueryFileInformation.InfoBuffer, Data->Iopb->Parameters.QueryFileInformation.Length, 
 				Data->Iopb->Parameters.QueryFileInformation.FileInformationClass, &length);
@@ -237,13 +232,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreSetInformation"))
-	{
-		KdPrint(("(FileClass=%d)......\n", Data->Iopb->Parameters.SetFileInformation.FileInformationClass));
-	}
-	
-#endif
+
 	FsRtlEnterFileSystem();
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
@@ -252,9 +241,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetInformation(__inout PFLT_CALLBACK_DATA Data, _
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PtPreSetInformation begin, (FileClass=%d)......\n", FileInfoClass));
-#ifdef TEST
-	KdBreakPoint();
-#endif
 	
 	if (FLT_IS_IRP_OPERATION(Data))
 	{
@@ -318,13 +304,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryEA(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryEA"))
-	{
-		KdBreakPoint();
-	}
-	
-#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -373,14 +352,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreSetEA(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (!IsTest(Data, FltObjects, "PtPreSetEA"))
-	{
-		return FLT_PREOP_SUCCESS_NO_CALLBACK;
-	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-	KdBreakPoint();
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -422,12 +394,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreAcquireForSection"))
-	{
-		KdBreakPoint();
-	}
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -458,12 +425,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForSection(__inout PFLT_CALLBACK_DATA Data
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreReleaseForSection"))
-	{
-		KdBreakPoint();
-	}
-#endif
+
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;

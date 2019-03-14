@@ -2044,7 +2044,7 @@ VOID FsFreeCcb(IN PDEF_CCB Ccb)
 
 FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __deref_out_opt PVOID *CompletionContext)
 {
-	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_COMPLETE;
+	FLT_PREOP_CALLBACK_STATUS FltStatus = FLT_PREOP_SUCCESS_NO_CALLBACK;
 	//哪些IRP要特殊处理？？
 	UNREFERENCED_PARAMETER(Data);
 	UNREFERENCED_PARAMETER(FltObjects);
@@ -2052,67 +2052,6 @@ FLT_PREOP_CALLBACK_STATUS FsPrePassThroughIrp(__inout PFLT_CALLBACK_DATA Data, _
 
 
 	return FltStatus;
-}
-
-BOOLEAN IsTest(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATED_OBJECTS FltObjects, __in PUCHAR FunctionName)
-{
-	NTSTATUS status;
-	PFILE_OBJECT FileObject = FltObjects->FileObject;
-	HANDLE hProcessId = NULL;
-	PEPROCESS Process = NULL;
-	WCHAR szExName[8] = { 0 };
-	BOOLEAN bTrue = FALSE;
-	ULONG length = 0;
-	WCHAR * pwszName = NULL;
-	WCHAR wszName[5] = {L".xls"};
-	WCHAR szProcessName[MAX_PATH] = { 0 };
-	UNICODE_STRING strProcessName;
-	HANDLE ProcessId = NULL;
-	//过早使用FltGetFileNameInformation会带来下层ntfs驱动兼容问题
-	__try
-	{
-		ProcessId = PsGetCurrentProcessId();
-		RtlInitUnicodeString(&strProcessName, szProcessName);
-		strProcessName.Length = MAX_PATH * sizeof(WCHAR);
-		strProcessName.MaximumLength = MAX_PATH * sizeof(WCHAR);
-		status = FsGetProcessName(ProcessId, &strProcessName);
-		if (!NT_SUCCESS(status))
-		{
-			__leave;
-		}
-
-		if (FileObject && (NULL != FileObject->FileName.Buffer))
-		{
-			length = FileObject->FileName.Length + sizeof(WCHAR);
-			pwszName = (WCHAR *)ExAllocatePoolWithTag(NonPagedPool, length, 'aaaa');
-			RtlZeroMemory(pwszName, length);
-			RtlCopyMemory(pwszName, FileObject->FileName.Buffer, FileObject->FileName.Length);
-			if (NULL == wcsstr(pwszName, wszName))
-			{
-				__leave;
-			}
-		}
-		KdPrint(("-------Test:File:%S. Process:%S ...\n", pwszName, strProcessName.Buffer));
-		if (0 == wcsicmp(L"NTRtScan.exe", strProcessName.Buffer) ||
-			0 == wcsicmp(L"coreServiceShell.exe", strProcessName.Buffer))
-		{
-			bTrue = TRUE;
-			KdPrint(("processName=%S, funtionName=%s, File Name=%S...\n", strProcessName.Buffer, FunctionName, pwszName));
-		}
-	}
-	__finally
-	{
-		if (NULL != Process)
-		{
-			ObDereferenceObject(Process);
-		}
-		if (pwszName)
-		{
-			ExFreePoolWithTag(pwszName, 'aaaa');
-		}
-	}
-
-	return bTrue;
 }
 
 BOOLEAN FsGetFileExtFromFileName(__in PUNICODE_STRING FilePath, __inout WCHAR * FileExt, __inout USHORT* nLength)

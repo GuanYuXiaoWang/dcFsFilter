@@ -12,14 +12,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	ULONG i = 0;
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreClose"))
-	{
-		Fcb = FltObjects->FileObject->FsContext;
-		KdBreakPoint();
-	}
-	
-#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
  		return FLT_PREOP_SUCCESS_NO_CALLBACK;

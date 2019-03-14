@@ -15,21 +15,11 @@ FLT_PREOP_CALLBACK_STATUS PtPreWrite(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreWrite"))
-	{
-		PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-		KdBreakPoint();
-	}
-#endif
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
-#ifdef TEST
-	KdBreakPoint();
-#endif
 	KdPrint(("PtPreWrite begin......\n"));
 	FsRtlEnterFileSystem();
 	if (FLT_IS_IRP_OPERATION(Data))
@@ -1140,12 +1130,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreAcquireForModWrite(__inout PFLT_CALLBACK_DATA Dat
 	BOOLEAN bAcquiredFile = FALSE;
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreAcquireForModWrite"))
-	{
-		KdBreakPoint();
-	}
-#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -1179,13 +1163,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreReleaseForModWrite(__inout PFLT_CALLBACK_DATA Dat
 {
 	UNREFERENCED_PARAMETER(CompletionContext);
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreReleaseForModWrite"))
-	{
-		KdBreakPoint();
-	}
-	
-#endif
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;

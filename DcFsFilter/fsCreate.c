@@ -18,13 +18,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 
 	PAGED_CODE();
 
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreCreate"))
-	{
-		//KdBreakPoint();
-		KdPrint(("Is test...\n"));
-	}
-#endif
 	FsRtlEnterFileSystem();
 	if (!IsFilterProcess(Data, &status, &uProcType))
 	{
@@ -78,9 +71,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreCreate(__inout PFLT_CALLBACK_DATA Data, __in PCFL
 	}
 
 	KdPrint(("PtPreCreate begin, Data Flag=0x%x......\n", Data->Flags));
-#ifdef TEST
-	KdBreakPoint();
-#endif
 	
 	//FsAcquireFilterExclusiveResource();
 	if (FLT_IS_IRP_OPERATION(Data))//IRP operate
@@ -137,11 +127,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreOperationNetworkQueryOpen(__inout PFLT_CALLBACK_D
 	IO_STATUS_BLOCK IoStatus = {0};
 	PVOLUMECONTEXT pVolCtx = NULL;
 	BOOLEAN bAcquireResource = FALSE;
-#ifdef TEST	
-	if (IsTest(Data, FltObjects, "PtPreOperationNetworkQueryOpen"))
-	{		
-	}
-#endif
+
 	PAGED_CODE();
 
 	if (IsMyFakeFcb(FltObjects->FileObject) || IsFilterProcess(Data, &Status, &ProcType))
@@ -743,7 +729,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 				try_return(Status = OrgData->IoStatus.Status);
 			}
 		}
-		KdPrint(("[%s]line=%d.....\n", __FUNCTION__, __LINE__));
 		if (FltCurrentBatchOplock(&Fcb->Oplock))
 		{
 			Data->IoStatus.Information = FILE_OPBATCH_BREAK_UNDERWAY;
@@ -993,7 +978,6 @@ NTSTATUS CreateFileByExistFcb(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 			Status = STATUS_ACCESS_DENIED;
 			try_return(Status);
 		}
-		KdPrint(("[%s]line:%d......\n", __FUNCTION__, __LINE__));
 		//写过了加密头
 		if (!Fcb->bEnFile && IrpContext->createInfo.bEnFile)
 		{

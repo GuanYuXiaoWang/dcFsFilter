@@ -11,18 +11,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreCleanup(__inout PFLT_CALLBACK_DATA Data, __in PCF
 	BOOLEAN bPure = FALSE;
 
 	PAGED_CODE();
-
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreCleanup"))
-	{
-		KdBreakPoint();
-		PFSRTL_COMMON_FCB_HEADER Header = FltObjects->FileObject->FsContext;
-		if (NULL != Header)
-		{
-			KdPrint(("File Size=%d, vaildata size=%d....\n", Header->FileSize.QuadPart, Header->ValidDataLength.QuadPart));
-		}
-	}
-#endif
 	
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{

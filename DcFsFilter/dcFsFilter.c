@@ -599,13 +599,7 @@ The return value is the status of the operation.
 	//  NOTE: most filters do NOT need to do this.  You only need to make
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
-	//
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreOperationPassThrough"))
-	{
-		//return FltStatus;
-	}
-#endif	
+	//	
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{

@@ -14,14 +14,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-#ifdef TEST
-	if (IsTest(Data, FltObjects, "PtPreQueryInformation"))
-	{
-		KdBreakPoint();
-	}
-	PDEFFCB Fcb = FltObjects->FileObject->FsContext;
-#endif
-
+	//KdPrint(("PtPreFileSystemControl in, ProcessId:%d, ThreadId:%d, control code=0x%x, FileObject:0x%x, Name:%S......\n", PsGetCurrentProcessId(), PsGetCurrentThreadId(), Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode, FltObjects->FileObject, strProcessName.Buffer));
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
@@ -349,13 +342,17 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		FILE_OBJECTID_BUFFER FileObjectIdInfo = { 0 };
 		ULONG Length = sizeof(FILE_OBJECTID_BUFFER);
 		ntStatus = FltFsControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, NULL, 0, &FileObjectIdInfo, Length, &Length);
-		if (!NT_SUCCESS(ntStatus))
+		if (NT_SUCCESS(ntStatus))
 		{
-			KdPrint(("[%s] FltFsControlFile failed(0x%x)....\n", __FUNCTION__, ntStatus));
+			RtlCopyMemory(&pBuf->ObjectId, &FileObjectIdInfo.ObjectId, 16);
+			RtlCopyMemory(&pBuf->ExtendedInfo, &FileObjectIdInfo.ExtendedInfo, 48);
+			Data->IoStatus.Information = 64;
 		}
-		RtlCopyMemory(&pBuf->ObjectId, &FileObjectIdInfo.ObjectId, 16);
-		RtlCopyMemory(&pBuf->ExtendedInfo, &FileObjectIdInfo.ExtendedInfo, 48);
-		Data->IoStatus.Information = 64;
+		else
+		{
+			KdPrint(("[%s] FltFsControlFile failed(0x%x), line=%d....\n", __FUNCTION__, ntStatus, __LINE__));
+		}
+		
 		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 	}
 		break;
@@ -385,13 +382,16 @@ NTSTATUS FsUserRequestControl(__inout PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		
 	default:
 	{
-			   ULONG Length = 0;
-			   ntStatus = FltDeviceIoControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, Data->Iopb->Parameters.FileSystemControl.Neither.InputBuffer,
-				   Data->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength, Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer, 
-				   Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength, &Length);
-			   Data->IoStatus.Information = Length;
-			   FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
-
+		ULONG Length = 0;
+		ntStatus = FltFsControlFile(FltObjects->Instance, Fcb->CcFileObject, ControlCode, Data->Iopb->Parameters.FileSystemControl.Neither.InputBuffer,
+			Data->Iopb->Parameters.FileSystemControl.Neither.InputBufferLength, Data->Iopb->Parameters.FileSystemControl.Neither.OutputBuffer,
+			Data->Iopb->Parameters.FileSystemControl.Neither.OutputBufferLength, &Length);
+		Data->IoStatus.Information = Length;
+		if (!NT_SUCCESS(ntStatus))
+		{
+			KdPrint(("[%s]FltFsControlFile failed(0x%x), line=%d....\n", __FUNCTION__, ntStatus, __LINE__));
+		}
+		FsCompleteRequest(&IrpContext, &Data, ntStatus, FALSE);
 	}
 		break;
 	}
