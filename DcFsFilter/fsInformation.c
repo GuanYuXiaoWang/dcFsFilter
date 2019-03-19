@@ -1122,7 +1122,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryVolumeInformation(__inout PFLT_CALLBACK_DATA
 				ntStatus = FltQueryVolumeInformationFile(FltObjects->Instance, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), VolumeInfo, Data->Iopb->Parameters.QueryVolumeInformation.Length,
 					FsClass, &Retlength);
 			}
-			Data->IoStatus.Information = Retlength;
 		}
 		__finally
 		{

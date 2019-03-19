@@ -160,12 +160,11 @@ typedef struct tagDEFFCB
 	FSRTL_ADVANCED_FCB_HEADER	Header;
 	// added for aglined to NTFS;
 	PERESOURCE					Resource;// this will be treated as pageio resource
-	LIST_ENTRY					FcbLinks;
 	ULONG						FcbState;
 	ULONG						NonCachedUnCleanupCount;
 	ULONG						UncleanCount;
 	ULONG						OpenCount;
-	SHARE_ACCESS				ShareAccess;//+0x068
+	SHARE_ACCESS				ShareAccess;
 	PVOID						LazyWriteThread[2];
 	FAST_MUTEX					AdvancedFcbHeaderMutex;
 	//
@@ -174,7 +173,6 @@ typedef struct tagDEFFCB
 	//
 	OPLOCK		Oplock;
 	PFILE_LOCK	FileLock;
-	UCHAR		Flags;
 
 	LONGLONG	CreationTime;                                          //  offset = 0x000
 	LONGLONG	LastWriteTime;                                  //  offset = 0x008

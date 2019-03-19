@@ -1557,29 +1557,29 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 	RemoveFcbList(Fcb->wszFile);
 	if (NULL != Fcb->CcFileObject)
 	{
-		if (!BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
-		{
-			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_FILE_CHANGED))
-			{
-				Status = FsCloseGetFileBasicInfo(Fcb->CcFileObject, IrpContext, &fileInfo);
-				if (NT_SUCCESS(Status))
-				{
-					bSetBasicInfo = TRUE;
-				}
-				ObDereferenceObject(Fcb->CcFileObject);
-				Status = FltClose(Fcb->CcFileHandle);
-				if (bSetBasicInfo)
-				{
-					Status = FsCloseSetFileBasicInfo(Fcb->CcFileObject, IrpContext, &fileInfo);
-				}
-			}
-			else
-			{
-				ObDereferenceObject(Fcb->CcFileObject);
-				Status = FltClose(Fcb->CcFileHandle);
-			}
-		}
-		else
+// 		if (!BooleanFlagOn(Fcb->FcbState, FCB_STATE_DELETE_ON_CLOSE))
+// 		{
+// 			if (BooleanFlagOn(Fcb->FcbState, FCB_STATE_FILE_CHANGED))
+// 			{
+// 				Status = FsCloseGetFileBasicInfo(Fcb->CcFileObject, IrpContext, &fileInfo);
+// 				if (NT_SUCCESS(Status))
+// 				{
+// 					bSetBasicInfo = TRUE;
+// 				}
+// 				ObDereferenceObject(Fcb->CcFileObject);
+// 				Status = FltClose(Fcb->CcFileHandle);
+// 				if (bSetBasicInfo)
+// 				{
+// 					Status = FsCloseSetFileBasicInfo(Fcb->CcFileObject, IrpContext, &fileInfo);
+// 				}
+// 			}
+// 			else
+// 			{
+// 				ObDereferenceObject(Fcb->CcFileObject);
+// 				Status = FltClose(Fcb->CcFileHandle);
+// 			}
+// 		}
+// 		else
 		{
 			ObDereferenceObject(Fcb->CcFileObject);
 			FltClose(Fcb->CcFileHandle);
@@ -1588,6 +1588,7 @@ BOOLEAN FsFreeFcb(__in PDEFFCB Fcb, __in PDEF_IRP_CONTEXT IrpContext)
 		Fcb->CcFileObject = NULL;
 		Fcb->CcFileHandle = NULL;
 	}
+	FsRtlTeardownPerStreamContexts(&Fcb->Header);
 	FsFreeResource(Fcb->Header.PagingIoResource);
 	FsFreeResource(Fcb->Header.Resource);
 	FsFreeResource(Fcb->Resource);
@@ -2692,7 +2693,7 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 		{
 			ImagePath = (PUNICODE_STRING)Buffer;
 			//RtlCopyUnicodeString(ProcessImagePath, ImagePath);
-			if (ImagePath->Length / sizeof(WCHAR) > MAX_PATH)
+			if (ImagePath->Length / sizeof(WCHAR) > MAX_PATH || ImagePath->Length <= 1)
 			{
 				__leave;
 			}
