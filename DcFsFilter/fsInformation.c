@@ -16,6 +16,7 @@ FLT_PREOP_CALLBACK_STATUS PtPreQueryInformation(__inout PFLT_CALLBACK_DATA Data,
 
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
+		FsDebugInfoEx(Data);
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 	KdPrint(("PreQueryInformation begin, fileclass=%d......\n", Data->Iopb->Parameters.QueryFileInformation.FileInformationClass));

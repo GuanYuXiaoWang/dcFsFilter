@@ -600,6 +600,15 @@ The return value is the status of the operation.
 	//        this call if, for example, you need to know if the oplock was
 	//        actually granted.
 	//	
+	if (FltObjects->FileObject)
+	{
+		FsDebugInfoEx(Data);
+	}
+	else /*if (IRP_MJ_FILE_SYSTEM_CONTROL == Data->Iopb->MajorFunction || IRP_MJ_DEVICE_CONTROL == Data->Iopb->MajorFunction)*/
+	{
+		KdPrint(("[%s]ProcessId:%d, Major:%d...\n", __FUNCTION__, PsGetCurrentProcessId(), Data->Iopb->MajorFunction));
+	}
+	
 
 	if (IsMyFakeFcb(FltObjects->FileObject))
 	{

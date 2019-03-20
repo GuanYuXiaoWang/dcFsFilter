@@ -934,13 +934,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 				ExReleaseResourceLite(Fcb->Resource);
 			}
 		}
-// 		else
-// 		{
-// 			if (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && bFcbAcquired)
-// 			{
-// 				FsReleaseFcb(NULL, Fcb);
-// 			}
-// 		}
 
 		if (volCtx != NULL)
 		{
@@ -948,18 +941,11 @@ FLT_PREOP_CALLBACK_STATUS FsCommonWrite(__inout PFLT_CALLBACK_DATA Data, __in PC
 			volCtx = NULL;
 		}
 
-		if (!NT_SUCCESS(Status))
-		{
-
-		}
-		else
+		if (NT_SUCCESS(Status))
 		{
 			SetFlag(Ccb->CcbState, CCB_FLAG_FILE_CHANGED);
 		}
-		if (Status == STATUS_FILE_CLOSED)
-		{
 
-		}
 		if (bNonCachedIoPending || Status == STATUS_PENDING)
 		{
 			FltStatus = FLT_PREOP_PENDING;
@@ -986,10 +972,6 @@ NTSTATUS FsRealWriteFile(__in PCFLT_RELATED_OBJECTS FltObjects, __in PDEF_IRP_CO
 	PFILE_OBJECT FileObject = IrpContext->FileObject;
 	BOOLEAN Wait = BooleanFlagOn(IrpContext->Flags, IRP_CONTEXT_FLAG_WAIT);
 	ULONG IrpFlags = IRP_WRITE_OPERATION;
-
-#ifndef USE_CACHE_READWRITE
-	SetFlag(IrpFlags, IRP_NOCACHE);
-#endif
 
 	Status = FltAllocateCallbackData(FltObjects->Instance, FileObject, &NewData);
 	if (NT_SUCCESS(Status))

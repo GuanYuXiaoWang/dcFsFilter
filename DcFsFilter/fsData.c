@@ -31,7 +31,6 @@ BOOLEAN g_bSafeDataReady = FALSE;
 PAGED_LOOKASIDE_LIST g_EncryptFileListLookasideList;
 ERESOURCE g_FcbResource;
 LIST_ENTRY g_FcbEncryptFileList;
-ERESOURCE g_FilterResource;
 
 ULONG g_OsMajorVersion = 0;
 ULONG g_OsMinorVersion = 0;
@@ -245,7 +244,6 @@ VOID InitData()
 	InitializeListHead(&g_FcbEncryptFileList);
 	KeInitializeSpinLock(&g_GeneralSpinLock);
 	ExInitializeResourceLite(&g_FcbResource);
-	ExInitializeResourceLite(&g_FilterResource);
 	InitReg();
 }
 
@@ -258,7 +256,6 @@ VOID UnInitData()
 	ExDeleteNPagedLookasideList(&g_IrpContextLookasideList);
 	ExDeleteNPagedLookasideList(&g_IoContextLookasideList);
 	ExDeleteResourceLite(&g_FcbResource);
-	ExDeleteResourceLite(&g_FilterResource);
 	UnInitReg();
 }
 
@@ -2814,16 +2811,6 @@ BOOLEAN IsRecycleBinFile(__in PWCHAR  FilePath, __in USHORT Length)
 	return FALSE;
 }
 
-BOOLEAN FsAcquireFilterExclusiveResource()
-{
-	return ExAcquireResourceExclusive(&g_FilterResource, TRUE);
-}
-
-VOID FsReleaseFilterExclusiveResource()
-{
-	ExReleaseResource(&g_FilterResource);
-}
-
 PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb)
 {
 	if (Ccb && (BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) || (Fcb && (Fcb->bRecycleBinFile || NULL == Fcb->CcFileObject))))
@@ -2892,5 +2879,66 @@ NTSTATUS FsNonCacheWriteFileHeader(__in PCFLT_RELATED_OBJECTS FltObjects, __in P
 	}
 
 	return Status;
+}
+
+VOID FsDebugInfoEx(__inout PFLT_CALLBACK_DATA  Data)
+{
+	NTSTATUS ntStatus = STATUS_SUCCESS;
+	PFLT_FILE_NAME_INFORMATION FileInfo = NULL;
+	WCHAR szExName[32] = { 0 };
+	USHORT length = 0;
+	PUCHAR ProcessName = NULL;
+	PEPROCESS Process = NULL;
+	
+	__try
+	{
+		if (!CheckEnv(MINIFILTER_ENV_TYPE_SAFE_DATA))
+		{
+			__leave;
+		}
+		
+		ntStatus = FltGetFileNameInformation(Data, FLT_FILE_NAME_NORMALIZED, &FileInfo);
+		if (NT_SUCCESS(ntStatus))
+		{
+			//判断文件后缀名
+			if (!FsGetFileExtFromFileName(&FileInfo->Name, szExName, &length))
+			{
+				__leave;
+			}
+
+// 			//过滤包含特定类型的文件??
+// 			if (!IsControlFileType(szExName, length))
+// 			{
+// 				__leave;
+// 			}
+			ntStatus = PsLookupProcessByProcessId(PsGetCurrentProcessId(), &Process);
+			if (!NT_SUCCESS(ntStatus))
+			{
+				__leave;
+			}
+
+			ProcessName = PsGetProcessImageFileName(Process);//ImageFileName有长度限制，最大支持16个字节，EPROCESS反汇编可以看出
+			if (!MmIsAddressValid(ProcessName))//Process为0x6e地址时，无法获取进程信息，这个地址是？？
+			{
+				Process = NULL;
+				__leave;
+			}
+			//if (/*0 == stricmp(ProcessName, "kxescore.exe")*/4 == PsGetCurrentProcessId())
+			{
+				KdPrint(("[%s]Pid:%d, processName:%s, Major=%d, Minor:%d, file:%S...\n", __FUNCTION__, PsGetCurrentProcessId(), ProcessName, Data->Iopb->MajorFunction, Data->Iopb->MinorFunction, FileInfo->Name.Buffer));
+			}
+		}
+	}
+	__finally
+	{
+		if (FileInfo)
+		{
+			FltReleaseFileNameInformation(FileInfo);
+		}
+		if (Process != NULL)
+		{
+			ObDereferenceObject(Process);
+		}
+	}
 }
 

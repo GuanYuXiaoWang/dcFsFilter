@@ -152,8 +152,8 @@ extern "C" {
 	VOID FsFreeCcFileInfo(__in PHANDLE CcFileHandle, __in PVOID * CcFileObject);
 	BOOLEAN IsRecycleBinFile(__in PWCHAR FilePath, __in USHORT Length);
 	PFILE_OBJECT FsGetCcFileObjectByFcbOrCcb(__in PDEFFCB Fcb, __in PDEF_CCB Ccb);
-	BOOLEAN FsAcquireFilterExclusiveResource();
-	VOID FsReleaseFilterExclusiveResource();
+
+	VOID FsDebugInfoEx(__inout PFLT_CALLBACK_DATA  Data);
 
 #ifdef __cplusplus
 }

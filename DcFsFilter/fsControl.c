@@ -9,14 +9,13 @@ FLT_PREOP_CALLBACK_STATUS PtPreFileSystemControl(__inout PFLT_CALLBACK_DATA Data
 	ULONG uProcessType = 0;
 	BOOLEAN bTopLevelIrp = FALSE;
 	PDEF_IRP_CONTEXT IrpContext = NULL;
-	BOOLEAN ApcEnable = FALSE;
 
 	UNREFERENCED_PARAMETER(CompletionContext);
 
 	PAGED_CODE();
-	//KdPrint(("PtPreFileSystemControl in, ProcessId:%d, ThreadId:%d, control code=0x%x, FileObject:0x%x, Name:%S......\n", PsGetCurrentProcessId(), PsGetCurrentThreadId(), Data->Iopb->Parameters.FileSystemControl.Common.FsControlCode, FltObjects->FileObject, strProcessName.Buffer));
 	if (!IsMyFakeFcb(FltObjects->FileObject))
 	{
+		FsDebugInfoEx(Data);
 		return FLT_PREOP_SUCCESS_NO_CALLBACK;
 	}
 
