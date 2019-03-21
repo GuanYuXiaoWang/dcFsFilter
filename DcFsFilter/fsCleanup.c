@@ -133,10 +133,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 					MmCanFileBeTruncated(&Fcb->SectionObjectPointers, NULL))
 				{
 					ExAcquireResourceExclusiveLite(Fcb->Header.PagingIoResource, TRUE);
-					if (FlagOn(FileObject->Flags, FO_FILE_MODIFIED))
-					{
-						CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
-					}
+					CcFlushCache(&Fcb->SectionObjectPointers, NULL, 0, &IoStatus);
  					bPureCache = CcPurgeCacheSection(&Fcb->SectionObjectPointers, NULL, 0, 0);
 					ExReleaseResourceLite(Fcb->Header.PagingIoResource);
 				}

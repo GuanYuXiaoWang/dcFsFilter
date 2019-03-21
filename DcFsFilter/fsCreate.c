@@ -370,25 +370,7 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCreate(__inout PFLT_CALLBACK_DATA Data, __in P
 		{
 			FindFcb(NULL, IrpContext->createInfo.nameInfo->Name.Buffer, &pFcb);
 		}
-// 		if (pFcb)
-// 		{
-// 			bAcquireFcb = ExAcquireResourceExclusiveLite(pFcb->Resource, TRUE);
-// 			if (0 == pFcb->OpenCount)
-// 			{
-// 				if (bAcquireFcb)
-// 				{
-// 					ExReleaseResourceLite(pFcb->Resource);
-// 					bAcquireFcb = FALSE;
-// 				}
-// 				FsFreeFcb(pFcb, NULL);
-// 				pFcb = NULL;
-// 			}
-// 			if (bAcquireFcb)
-// 			{
-// 				ExReleaseResourceLite(pFcb->Resource);
-// 				bAcquireFcb = FALSE;
-// 			}
-// 		}
+
 		if (pFcb)
 		{
 			Status = CreateFileByExistFcb(Data, FltObjects, pFcb, IrpContext);

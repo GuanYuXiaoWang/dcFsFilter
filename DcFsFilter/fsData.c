@@ -2597,11 +2597,17 @@ NTSTATUS FsFileInfoChangedNotify(__in PFLT_CALLBACK_DATA Data, __in PCFLT_RELATE
 		}
 		if (FindFcb(Data, pFileName, &pFcb))
 		{
+			ExAcquireResourceExclusiveLite(pFcb->Header.Resource, TRUE);
 			SetFlag(pFcb->FcbState, FCB_STATE_DELETE_ON_CLOSE);
 			//如果文件正在被其他程序打开，create时是否有权限？
 			if (FileDispositionInformation == FileInfoClass && 0 == pFcb->OpenCount)
 			{
+				ExReleaseResourceLite(pFcb->Header.Resource);
 				FsFreeFcb(pFcb, NULL);
+			}
+			else
+			{
+				ExReleaseResourceLite(pFcb->Header.Resource);
 			}
 		}
 		else if (FileRenameInformation == FileInfoClass)
@@ -2673,9 +2679,9 @@ NTSTATUS FsGetProcessName(__in ULONG ProcessID, __inout PUNICODE_STRING ProcessI
 			__leave;
 		}
 
-		if (RetLength > MAX_PATH || RetLength <= sizeof (UNICODE_STRING))
+		if (RetLength > MAX_PATH * sizeof(WCHAR) || RetLength <= sizeof (UNICODE_STRING))
 		{
-			KdPrint(("QueryInformationProcess:Retlength > %d...\n", MAX_PATH));
+			KdPrint(("QueryInformationProcess:Retlength(%d) > %d...\n", RetLength, MAX_PATH));
 			__leave;
 		}
 		BufferLength = RetLength - sizeof (UNICODE_STRING);
@@ -2889,6 +2895,7 @@ VOID FsDebugInfoEx(__inout PFLT_CALLBACK_DATA  Data)
 	USHORT length = 0;
 	PUCHAR ProcessName = NULL;
 	PEPROCESS Process = NULL;
+	return;
 	
 	__try
 	{
