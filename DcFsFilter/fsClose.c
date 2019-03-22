@@ -57,7 +57,6 @@ FLT_PREOP_CALLBACK_STATUS PtPreClose(__inout PFLT_CALLBACK_DATA Data, __in PCFLT
 					ClearFlag(Fcb->FcbState, FCB_STATE_DELAY_CLOSE);
 				}
 			}
-			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
 			if (Ccb->StreamFileInfo.StreamObject)
 			{
 				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);

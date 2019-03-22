@@ -54,44 +54,13 @@ NTSTATUS FLTAPI ConnectNotify(
 	)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
-	HANDLE ProcessID = NULL;
-	PEPROCESS Process = NULL;
-	PUCHAR ProcessImageName = NULL;
 	
 	UNREFERENCED_PARAMETER(ServerPortCookie);
 	UNREFERENCED_PARAMETER(ConnectionContext);
 	UNREFERENCED_PARAMETER(SizeOfContext);
 	UNREFERENCED_PARAMETER(ConnectionPortCookie);
 	
-	__try
-	{
-		g_FltClientPort = ClientPort;
-		ProcessID = PsGetCurrentProcessId();
-		if (NULL == ProcessID)
-		{
-			__leave;
-		}
-		Status = PsLookupProcessByProcessId(ProcessID, &Process);
-		if (!NT_SUCCESS(Status))
-		{
-			__leave;
-		}
-// 		ProcessImageName = PsGetProcessImageFileName(Process);
-// 		if (NULL == ProcessImageName)
-// 		{
-// 			__leave;
-// 		}
-		//DbgPrint("process image name = %s....\n", ProcessImageName);
-	}
-	__finally
-	{
-		if (Process != NULL)
-		{
-			ObDereferenceObject(Process);
-		}
-	}
-
-	KdPrint(("Recv Connect Msg, process id=0x%x......\n", ProcessID));
+	g_FltClientPort = ClientPort;
 
 	return Status;
 }

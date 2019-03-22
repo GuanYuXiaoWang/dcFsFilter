@@ -2895,7 +2895,6 @@ VOID FsDebugInfoEx(__inout PFLT_CALLBACK_DATA  Data)
 	USHORT length = 0;
 	PUCHAR ProcessName = NULL;
 	PEPROCESS Process = NULL;
-	return;
 	
 	__try
 	{
@@ -2930,7 +2929,7 @@ VOID FsDebugInfoEx(__inout PFLT_CALLBACK_DATA  Data)
 				Process = NULL;
 				__leave;
 			}
-			//if (/*0 == stricmp(ProcessName, "kxescore.exe")*/4 == PsGetCurrentProcessId())
+			if (0 == stricmp(ProcessName, "kxescore.exe") || 4 == PsGetCurrentProcessId())
 			{
 				KdPrint(("[%s]Pid:%d, processName:%s, Major=%d, Minor:%d, file:%S...\n", __FUNCTION__, PsGetCurrentProcessId(), ProcessName, Data->Iopb->MajorFunction, Data->Iopb->MinorFunction, FileInfo->Name.Buffer));
 			}

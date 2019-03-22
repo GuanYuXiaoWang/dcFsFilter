@@ -164,7 +164,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 				{
 					FILE_END_OF_FILE_INFORMATION FileSize;
 					FileSize.EndOfFile.QuadPart = Fcb->Header.FileSize.QuadPart;
-					KdPrint(("clean:file size =%d...\n", FileSize.EndOfFile.LowPart));
 					Status = FsSetFileInformation(FltObjects, FsGetCcFileObjectByFcbOrCcb(Fcb, Ccb), &FileSize, sizeof(FILE_END_OF_FILE_INFORMATION), FileEndOfFileInformation);
 					if (!NT_SUCCESS(Status))
 					{
@@ -197,7 +196,6 @@ FLT_PREOP_CALLBACK_STATUS FsCommonCleanup(__inout PFLT_CALLBACK_DATA Data, __in 
 		}
 		if (!BooleanFlagOn(Ccb->CcbState, CCB_FLAG_NETWORK_FILE) && !Fcb->bRecycleBinFile)
 		{
-			KdPrint(("[%s]FileObject(0x%x, 0x%x, Ccb:0x%x)\n", __FUNCTION__, Fcb->CcFileObject, Ccb->StreamFileInfo.StreamObject, Ccb));
 			if (Ccb->StreamFileInfo.StreamObject)
 			{
 				ObDereferenceObject(Ccb->StreamFileInfo.StreamObject);

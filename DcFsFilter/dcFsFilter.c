@@ -886,7 +886,6 @@ NTSTATUS GenerateFileName(IN PFLT_INSTANCE Instance, __in PFILE_OBJECT FileObjec
 				StreamObject = Ccb->StreamFileInfo.StreamObject;
 			}
 		}
-		KdPrint(("[%s]file name:%S, Fcb File:%S....\n", __FUNCTION__, FileName->Name.Buffer, Fcb->wszFile));
 		ClearFlag(NameOptions, FLT_FILE_NAME_REQUEST_FROM_CURRENT_PROVIDER);
 
 		if (FlagOn(NameOptions, FLT_FILE_NAME_NORMALIZED))

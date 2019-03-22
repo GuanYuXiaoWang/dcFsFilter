@@ -152,7 +152,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;_WIN32_WINNT=_WIN32_WINNT_WIN7;NTDDI_VERSION=NTDDI_WIN7;UNICODE;USE_CACHE_READWRITE;DBG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_X86_=1;i386=1;STD_CALL;_WIN32_WINNT=_WIN32_WINNT_WIN7;NTDDI_VERSION=NTDDI_WIN7;UNICODE;USE_CACHE_READWRITE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>F:\WinDDK\7600.16385.1\inc\ddk;F:\WinDDK\7600.16385.1\inc\crt;F:\WinDDK\7600.16385.1\inc\api</AdditionalIncludeDirectories>
       <CallingConvention>StdCall</CallingConvention>
       <ExceptionHandling>Sync</ExceptionHandling>
@@ -210,7 +210,7 @@
       <Optimization>Disabled</Optimization>
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
-      <PreprocessorDefinitions>_AMD64_;AMD64;STD_CALL;_WIN32_WINNT=_WIN32_WINNT_WIN7;NTDDI_VERSION=NTDDI_WIN7;BINARY_COMPATIBLE=0;UNICODE;USE_CACHE_READWRITE;DBG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>_AMD64_;AMD64;STD_CALL;_WIN32_WINNT=_WIN32_WINNT_WIN7;NTDDI_VERSION=NTDDI_WIN7;BINARY_COMPATIBLE=0;UNICODE;USE_CACHE_READWRITE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <AdditionalIncludeDirectories>F:\WinDDK\7600.16385.1\inc\ddk;F:\WinDDK\7600.16385.1\inc\crt;F:\WinDDK\7600.16385.1\inc\api</AdditionalIncludeDirectories>
       <CallingConvention>StdCall</CallingConvention>
       <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
